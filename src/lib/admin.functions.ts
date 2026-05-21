@@ -485,7 +485,7 @@ function extractImageUrl(payload: any): string | null {
      }
 
        // Key priority is strict: per-model API Key first, global API Key only as fallback.
-       const targetKey = (model as any).api_key || global_api_key;
+       const targetKey = normalizeUpstreamApiKey((model as any).api_key) || normalizeUpstreamApiKey(global_api_key);
        const pureApiKey = String(targetKey).replace(/Bearer\s+/i, "").trim();
        if (!pureApiKey) {
         throw new Error("该模型或全局接口设置尚未配置 API Key，请联系管理员");
