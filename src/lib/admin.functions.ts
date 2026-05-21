@@ -516,6 +516,15 @@ export const generateImage = createServerFn({ method: "POST" })
 
     // 占位符：{{aspect}} / {{prompt}} 替换为字符串；{{urls}} 替换为整个参考图数组（用 __URLS__ 标记）
     const URLS_TOKEN = "__LOVABLE_URLS_ARRAY__";
+    // Wan2.6 推荐分辨率（按宽高比映射）
+    const WAN_SIZE_MAP: Record<string, string> = {
+      "1:1": "1280*1280",
+      "3:4": "1104*1472",
+      "4:3": "1472*1104",
+      "9:16": "960*1696",
+      "16:9": "1696*960",
+    };
+    const wanSize = WAN_SIZE_MAP[data.aspectRatio] ?? "1280*1280";
     const rawExtra = (model as any).extra_params ?? {};
     const substitute = (v: any): any => {
       if (typeof v === "string") {
@@ -523,6 +532,7 @@ export const generateImage = createServerFn({ method: "POST" })
         // 整个字符串就是 {{urls}} → 直接替换为数组
         if (/^\{\{\s*urls\s*\}\}$/.test(trimmed)) return URLS_TOKEN;
         return v
+          .replace(/\{\{\s*wan_size\s*\}\}/g, wanSize)
           .replace(/\{\{\s*aspect\s*\}\}/g, size)
           .replace(/\{\{\s*prompt\s*\}\}/g, data.prompt);
       }
