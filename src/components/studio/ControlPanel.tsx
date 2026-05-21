@@ -333,11 +333,11 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
                       <ChevronDown className="h-3 w-3 text-muted-foreground" />
                     </button>
                   </PopoverTrigger>
-                  <PopoverContent align="start" className="w-auto border-border bg-popover/95 p-2 backdrop-blur-xl">
+                  <PopoverContent align="start" className="w-auto max-w-[360px] border-border bg-popover/95 p-2 backdrop-blur-xl">
                     <div className="mb-1.5 px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                       画面比例
                     </div>
-                    <div className="grid grid-cols-5 gap-1.5">
+                    <div className="grid grid-cols-4 gap-1.5">
                       {RATIOS.map((r) => {
                         const Icon = r.icon;
                         const active = ratio === r.id;
@@ -345,13 +345,14 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
                           <button
                             key={r.id}
                             onClick={() => { setRatio(r.id); setRatioOpen(false); }}
-                            className={`flex flex-col items-center gap-1 rounded-lg border px-2.5 py-2 transition-all ${
+                            className={`flex flex-col items-center gap-1 rounded-lg border px-2 py-2 transition-all ${
                               active ? "border-primary/50 bg-primary/10 text-primary"
                               : "border-border bg-white/[0.02] text-muted-foreground hover:bg-white/5"
                             }`}
                           >
                             <Icon className="h-3.5 w-3.5" strokeWidth={1.5} />
-                            <span className="font-mono text-[9px]">{r.id}</span>
+                            <span className="font-mono text-[9px] leading-none">{r.id}</span>
+                            <span className="text-[9px] font-light leading-none">{r.label}</span>
                           </button>
                         );
                       })}
