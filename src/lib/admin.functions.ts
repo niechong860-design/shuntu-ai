@@ -461,160 +461,149 @@ function extractImageUrl(payload: any): string | null {
     return normalizeNested(parsed);
   }
 
- export const generateImage = createServerFn({ method: "POST" })
-   .middleware([requireSupabaseAuth])
-   .inputValidator((d) =>
-     z.object({
-       modelKey: z.string().min(1).max(64),
-       prompt: z.string().min(1).max(4000),
-       aspectRatio: z.string().min(1).max(16).default("1:1"),
-       referenceImages: z.array(z.string().url().or(z.string().startsWith("data:"))).max(5).optional(),
-     }).parse(d),
-   )
-   .handler(async ({ data, context }) => {
-     const { supabase, userId } = context;
+// 提交生图任务：上游提交 + 立即扣费记账，**不在服务端循环轮询**。
+// 同步模型（sync_url）直接返回 imageUrl；异步模型返回 taskId 由前端轮询 checkImageStatus。
+export const generateImage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      modelKey: z.string().min(1).max(64),
+      prompt: z.string().min(1).max(4000),
+      aspectRatio: z.string().min(1).max(16).default("1:1"),
+      referenceImages: z.array(z.string().url().or(z.string().startsWith("data:"))).max(5).optional(),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
 
-     const { base_url, global_api_key } = await loadGlobalConfig();
+    const { base_url, global_api_key } = await loadGlobalConfig();
 
-     const { data: model, error: mErr } = await supabaseAdmin
-       .from("models_config")
-       .select("id, model_key, name, cost, api_url, api_key, request_format, prompt_key, fetch_url")
-       .eq("model_key", data.modelKey)
-       .maybeSingle();
-     if (mErr) throw new Error(mErr.message);
-     if (!model) throw new Error("模型不存在");
-     if (!model.api_url) throw new Error("该模型尚未配置 API 接口地址，请联系管理员");
+    const { data: model, error: mErr } = await supabaseAdmin
+      .from("models_config")
+      .select("id, model_key, name, cost, api_url, api_key, request_format, prompt_key, fetch_url")
+      .eq("model_key", data.modelKey)
+      .maybeSingle();
+    if (mErr) throw new Error(mErr.message);
+    if (!model) throw new Error("模型不存在");
+    if (!model.api_url) throw new Error("该模型尚未配置 API 接口地址，请联系管理员");
 
-     const { data: prof, error: pErr } = await supabase
-       .from("profiles").select("credits").eq("id", userId).maybeSingle();
-     if (pErr) throw new Error(pErr.message);
-     if (!prof || Number(prof.credits) < Number(model.cost)) {
-       throw new Error("您的算力余额不足，请联系老板兑换充值卡密");
-     }
+    const { data: prof, error: pErr } = await supabase
+      .from("profiles").select("credits").eq("id", userId).maybeSingle();
+    if (pErr) throw new Error(pErr.message);
+    if (!prof || Number(prof.credits) < Number(model.cost)) {
+      throw new Error("您的算力余额不足，请联系老板兑换充值卡密");
+    }
 
-       // Key priority is strict: per-model API Key first, global API Key only as fallback.
-       const targetKey = normalizeUpstreamApiKey((model as any).api_key) || normalizeUpstreamApiKey(global_api_key);
-       const pureApiKey = String(targetKey).replace(/Bearer\s+/i, "").trim();
-       if (!pureApiKey) {
-        throw new Error("该模型或全局接口设置尚未配置 API Key，请联系管理员");
+    const targetKey = normalizeUpstreamApiKey((model as any).api_key) || normalizeUpstreamApiKey(global_api_key);
+    const pureApiKey = String(targetKey).replace(/Bearer\s+/i, "").trim();
+    if (!pureApiKey) {
+      throw new Error("该模型或全局接口设置尚未配置 API Key，请联系管理员");
+    }
+
+    const headers = { "Content-Type": "application/json" };
+    const submitUrl = resolveUrl(base_url, model.api_url);
+
+    const size = VALID_SIZES.has(data.aspectRatio) ? data.aspectRatio : "auto";
+    const httpRefs = (data.referenceImages ?? []).filter((u) => /^https?:\/\//i.test(u));
+    const promptKey = (model as any).prompt_key || "prompt";
+    const requestFormat = (model as any).request_format || "async_id";
+
+    const body: Record<string, unknown> = {
+      key: pureApiKey,
+      [promptKey]: data.prompt,
+      size,
+    };
+    if (httpRefs.length > 0) body.urls = httpRefs;
+
+    let imageUrl: string | null = null;
+    let taskId: string | null = null;
+
+    if (requestFormat === "sync_url") {
+      let res: Response;
+      try {
+        res = await fetch(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
+      } catch (e: any) {
+        throw new Error(`请求上游失败: ${e?.message ?? "网络错误"}`);
       }
-
-      // 官方规范：API Key 必须放在 JSON Body 中，使用 POST + application/json
-      const headers = { "Content-Type": "application/json" };
-
-      const submitUrl = resolveUrl(base_url, model.api_url);
-
-      const size = VALID_SIZES.has(data.aspectRatio) ? data.aspectRatio : "auto";
-      const httpRefs = (data.referenceImages ?? []).filter((u) => /^https?:\/\//i.test(u));
-      const promptKey = (model as any).prompt_key || "prompt";
-      const requestFormat = (model as any).request_format || "async_id";
-
-      const body: Record<string, unknown> = {
-        key: pureApiKey,
-        [promptKey]: data.prompt,
-        size,
-      };
-      if (httpRefs.length > 0) body.urls = httpRefs;
-
-      let imageUrl: string | null = null;
-
-      if (requestFormat === "sync_url") {
-        let res: Response;
-        try {
-          res = await fetch(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
-        } catch (e: any) {
-          throw new Error(`请求上游失败: ${e?.message ?? "网络错误"}`);
-        }
+      const text = await res.text();
+      const json: any = parseUpstreamResponse(text);
+      if (!res.ok) throw new Error(`上游接口返回 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
+      if (Number(json?.code) >= 400) throw new Error(`上游接口失败: ${json?.msg ?? "未知错误"}`);
+      imageUrl = extractImageUrl(json ?? text);
+      if (!imageUrl) throw new Error("上游未返回图片地址");
+    } else {
+      try {
+        const res = await fetch(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
         const text = await res.text();
-        const json: any = parseUpstreamResponse(text);
-        if (!res.ok) {
-          throw new Error(`上游接口返回 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
-        }
-        if (Number(json?.code) >= 400) {
-          throw new Error(`上游接口失败: ${json?.msg ?? "未知错误"}`);
-        }
-        imageUrl = extractImageUrl(json ?? text);
-        if (!imageUrl) throw new Error("上游未返回图片地址");
-      } else {
-        let taskId: string | null = null;
-        try {
-          const res = await fetch(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
-          const text = await res.text();
-          const json = parseUpstreamResponse(text);
-          if (!res.ok) {
-            throw new Error(`上游提交失败 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
-          }
-          if (Number(json?.code) >= 400) {
-            throw new Error(`上游提交失败: ${json?.msg ?? "未知错误"}`);
-          }
-          taskId = json?.data?.id ?? json?.id ?? json?.task_id ?? (typeof json?.data === "string" ? json.data : null);
-          if (!taskId) throw new Error("上游未返回任务ID");
-        } catch (e: any) {
-          throw new Error(e?.message ?? "提交任务失败");
-        }
-
-        // 轮询查询任务结果：官方规范 POST /api/async/fetch_result，body = { key, id }
-        // 返回 data.status: 0 初始化 / 1 进行中 / 2 成功 / 3 失败
-        // 无限等待：只要 status=0/1 就持续轮询，直到 status=2 成功或 status=3 失败
-        const fetchResultUrl = "https://api.wuyinkeji.com/api/async/fetch_result";
-        const INTERVAL_MS = 8000; // 每 8 秒轮询一次，降低上游压力
-
-        while (true) {
-          await new Promise((r) => setTimeout(r, INTERVAL_MS));
-          try {
-            const r = await fetch(fetchResultUrl, {
-              method: "POST",
-              headers,
-              body: JSON.stringify({ key: pureApiKey, id: taskId }),
-            });
-            const t = await r.text();
-            const j = parseUpstreamResponse(t);
-            if (!r.ok) {
-              // 网络/HTTP 错误不抛出，继续等待重试
-              continue;
-            }
-            const code = Number(j?.code);
-            if (code >= 400) {
-              throw new Error(`上游查询失败: ${j?.msg ?? "未知错误"}`);
-            }
-            const status = Number(j?.data?.status);
-            if (status === 3) {
-              throw new Error(`上游生成失败: ${j?.data?.message ?? j?.msg ?? "未知错误"}`);
-            }
-            if (status === 2) {
-              const url = extractImageUrl(j?.data) ?? extractImageUrl(j);
-              if (url) { imageUrl = url; break; }
-              // 成功但暂未解析到 URL，继续轮询
-              continue;
-            }
-            // status 0 / 1 / NaN —— 仍在处理中，继续轮询
-          } catch (e: any) {
-            if (e?.message?.startsWith("上游生成失败") || e?.message?.startsWith("上游查询失败")) throw e;
-            // 其他瞬时错误不抛出，继续等待
-          }
-        }
-
+        const json = parseUpstreamResponse(text);
+        if (!res.ok) throw new Error(`上游提交失败 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
+        if (Number(json?.code) >= 400) throw new Error(`上游提交失败: ${json?.msg ?? "未知错误"}`);
+        taskId = json?.data?.id ?? json?.id ?? json?.task_id ?? (typeof json?.data === "string" ? json.data : null);
+        if (!taskId) throw new Error("上游未返回任务ID");
+      } catch (e: any) {
+        throw new Error(e?.message ?? "提交任务失败");
       }
+    }
 
-
-     const { data: rpcRes, error: rpcErr } = await supabase.rpc("consume_credits_for_generation", {
-        _model_key: data.modelKey,
-        _prompt: data.prompt,
-      });
-      if (rpcErr) throw new Error(rpcErr.message);
-      const row: any = Array.isArray(rpcRes) ? rpcRes?.[0] : rpcRes;
-      if (!row?.success) throw new Error(row?.message ?? "扣费失败");
-
-      const safeCost = Number(row?.cost ?? 0) || 0;
-      const safeCredits = Number(row?.credits ?? 0) || 0;
-
-      return {
-        success: true,
-        imageUrl,
-        cost: safeCost,
-        credits: safeCredits,
-      };
+    // 任务已成功提交，立即扣费记账
+    const { data: rpcRes, error: rpcErr } = await supabase.rpc("consume_credits_for_generation", {
+      _model_key: data.modelKey,
+      _prompt: data.prompt,
     });
+    if (rpcErr) throw new Error(rpcErr.message);
+    const row: any = Array.isArray(rpcRes) ? rpcRes?.[0] : rpcRes;
+    if (!row?.success) throw new Error(row?.message ?? "扣费失败");
+
+    const safeCost = Number(row?.cost ?? 0) || 0;
+    const safeCredits = Number(row?.credits ?? 0) || 0;
+
+    return {
+      success: true,
+      imageUrl,            // sync 模型直接返回，async 模型为 null
+      taskId,              // async 模型返回 taskId 供前端轮询
+      cost: safeCost,
+      credits: safeCredits,
+    };
+  });
+
+// 前端主动轮询的任务状态查询。运行在浏览器侧，不受 Worker 单次请求超时限制。
+export const checkImageStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ taskId: z.string().min(1).max(128) }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const { global_api_key } = await loadGlobalConfig();
+    const pureApiKey = normalizeUpstreamApiKey(global_api_key);
+    if (!pureApiKey) throw new Error("尚未配置全局 API Key，请联系管理员");
+
+    const fetchResultUrl = "https://api.wuyinkeji.com/api/async/fetch_result";
+    const r = await fetch(fetchResultUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: pureApiKey, id: data.taskId }),
+    });
+    const t = await r.text();
+    const j = parseUpstreamResponse(t);
+
+    if (!r.ok) {
+      return { status: "pending" as const, imageUrl: null as string | null, message: `HTTP ${r.status}` };
+    }
+    const code = Number(j?.code);
+    if (code >= 400) {
+      return { status: "failed" as const, imageUrl: null as string | null, message: j?.msg ?? "上游查询失败" };
+    }
+    const taskStatus = Number(j?.data?.status);
+    if (taskStatus === 3) {
+      return { status: "failed" as const, imageUrl: null as string | null, message: j?.data?.message ?? j?.msg ?? "生成失败" };
+    }
+    if (taskStatus === 2) {
+      const url = extractImageUrl(j?.data) ?? extractImageUrl(j);
+      if (url) return { status: "success" as const, imageUrl: url, message: null as string | null };
+      return { status: "pending" as const, imageUrl: null as string | null, message: "成功但URL未就绪" };
+    }
+    return { status: "pending" as const, imageUrl: null as string | null, message: `处理中 status=${j?.data?.status ?? "?"}` };
+  });
 
 // --- Role check ---
 export const checkIsAdmin = createServerFn({ method: "POST" })

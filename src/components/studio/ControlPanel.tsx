@@ -7,7 +7,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { useServerFn } from "@tanstack/react-start";
-import { listModelsConfig, generateImage } from "@/lib/admin.functions";
+import { listModelsConfig, generateImage, checkImageStatus } from "@/lib/admin.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 
@@ -32,6 +32,7 @@ type Props = {
 export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Props) {
   const fetchModels = useServerFn(listModelsConfig);
   const generate = useServerFn(generateImage);
+  const checkStatus = useServerFn(checkImageStatus);
   const { refreshProfile, session } = useAuth();
 
   const [models, setModels] = useState<ModelCfg[]>([]);
@@ -77,9 +78,39 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
         aspectRatio: ratio,
         referenceImages: httpRefs.length ? httpRefs : undefined,
       }});
-      toast.success(`生成成功 · 扣除 ${r.cost} 点，剩余 ${r.credits}`);
+      toast.success(`已提交 · 扣除 ${r.cost} 点，剩余 ${r.credits}`);
       await refreshProfile();
-      onGenerateDone(r.imageUrl);
+
+      // 同步模型：直接拿到图片
+      if (r.imageUrl) {
+        onGenerateDone(r.imageUrl);
+        return;
+      }
+
+      // 异步模型：前端轮询直到拿到结果（不受 Worker 超时限制）
+      if (!r.taskId) throw new Error("未获取到任务ID");
+      const taskId = r.taskId;
+      const POLL_INTERVAL = 5000;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        await new Promise((res) => setTimeout(res, POLL_INTERVAL));
+        try {
+          const s = await checkStatus({ data: { taskId } });
+          if (s.status === "success" && s.imageUrl) {
+            onGenerateDone(s.imageUrl);
+            return;
+          }
+          if (s.status === "failed") {
+            throw new Error(s.message ?? "生成失败");
+          }
+          // pending — 继续轮询
+        } catch (pollErr: any) {
+          // 真正的失败抛出；瞬时网络错误继续重试
+          if (pollErr?.message && !/network|fetch|timeout/i.test(pollErr.message)) {
+            throw pollErr;
+          }
+        }
+      }
     } catch (e: any) {
       // 兼容 TanStack serverFn 错误包装：可能是 Error、字符串、或 { message } / { error } JSON
       let msg = "生成失败，请稍后再试";
