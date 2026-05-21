@@ -81,7 +81,23 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
       await refreshProfile();
       onGenerateDone(r.imageUrl);
     } catch (e: any) {
-      toast.error(e.message ?? "生成失败");
+      // 兼容 TanStack serverFn 错误包装：可能是 Error、字符串、或 { message } / { error } JSON
+      let msg = "生成失败，请稍后再试";
+      try {
+        const raw = e?.message ?? e?.error ?? e?.toString?.() ?? "";
+        const text = typeof raw === "string" ? raw : JSON.stringify(raw);
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          msg = parsed?.message || parsed?.error || parsed?.msg || text;
+        } else if (text) {
+          msg = text;
+        }
+      } catch {
+        msg = String(e?.message ?? e ?? "生成失败");
+      }
+      toast.error(msg, { duration: 6000 });
+      // 关键：无论失败原因，强制解除 Loading，恢复按钮可点击
       onGenerateDone(null);
     }
   };
