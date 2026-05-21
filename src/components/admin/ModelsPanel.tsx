@@ -70,6 +70,9 @@ export function ModelsPanel() {
     id: r.id, name: r.name, model_key: r.model_key,
     description: r.description ?? "", cost: String(r.cost),
     api_url: r.api_url ?? "", api_key: r.api_key ?? "",
+    request_format: (r.request_format ?? "async_id") as "async_id" | "sync_url",
+    prompt_key: r.prompt_key ?? "prompt",
+    fetch_url: r.fetch_url ?? "",
   });
 
   const save = async () => {
