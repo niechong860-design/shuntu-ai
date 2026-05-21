@@ -10,7 +10,8 @@ import {
   adminListCoupons, adminGenerateCoupons,
 } from "@/lib/admin.functions";
 import { toast } from "sonner";
-import { Shield, KeyRound, Coins, Copy, Plus, RefreshCw, Users, Ticket } from "lucide-react";
+import { Shield, KeyRound, Coins, Copy, Plus, RefreshCw, Users, Ticket, LayoutDashboard } from "lucide-react";
+import { AnalyticsPanel } from "./AnalyticsPanel";
 
 type UserRow = { id: string; email: string | null; display_name: string | null; credits: number; created_at: string };
 type Coupon = {
@@ -27,11 +28,13 @@ export function AdminDashboard({ open, onOpenChange }: { open: boolean; onOpenCh
             <Shield className="h-4 w-4 text-primary" /> 系统管理后台
           </DialogTitle>
         </DialogHeader>
-        <Tabs defaultValue="users" className="px-6 pb-6 pt-4">
+        <Tabs defaultValue="analytics" className="px-6 pb-6 pt-4">
           <TabsList className="bg-white/[0.04]">
+            <TabsTrigger value="analytics" className="gap-1.5"><LayoutDashboard className="h-3.5 w-3.5" />数据仪表盘</TabsTrigger>
             <TabsTrigger value="users" className="gap-1.5"><Users className="h-3.5 w-3.5" />用户管理</TabsTrigger>
             <TabsTrigger value="coupons" className="gap-1.5"><Ticket className="h-3.5 w-3.5" />卡密管理</TabsTrigger>
           </TabsList>
+          <TabsContent value="analytics" className="mt-4 max-h-[70vh] overflow-auto pr-1"><AnalyticsPanel /></TabsContent>
           <TabsContent value="users" className="mt-4"><UsersPanel /></TabsContent>
           <TabsContent value="coupons" className="mt-4"><CouponsPanel /></TabsContent>
         </Tabs>

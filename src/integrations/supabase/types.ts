@@ -50,6 +50,33 @@ export type Database = {
         }
         Relationships: []
       }
+      generation_history: {
+        Row: {
+          cost: number
+          created_at: string
+          id: string
+          model: string
+          prompt: string | null
+          user_id: string
+        }
+        Insert: {
+          cost?: number
+          created_at?: string
+          id?: string
+          model: string
+          prompt?: string | null
+          user_id: string
+        }
+        Update: {
+          cost?: number
+          created_at?: string
+          id?: string
+          model?: string
+          prompt?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
