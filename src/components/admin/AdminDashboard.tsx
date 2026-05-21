@@ -172,6 +172,7 @@ function AdjustForm({ onSubmit }: { onSubmit: (delta: number) => Promise<void> }
 function CouponsPanel() {
   const list = useServerFn(adminListCoupons);
   const gen = useServerFn(adminGenerateCoupons);
+  const del = useServerFn(adminDeleteCoupon);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [count, setCount] = useState("10");
   const [amount, setAmount] = useState("200");
