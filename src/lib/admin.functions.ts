@@ -604,7 +604,6 @@ export const checkImageStatus = createServerFn({ method: "POST" })
     }
     return { status: "pending" as const, imageUrl: null as string | null, message: `处理中 status=${j?.data?.status ?? "?"}` };
   });
-    });
 
 // --- Role check ---
 export const checkIsAdmin = createServerFn({ method: "POST" })
