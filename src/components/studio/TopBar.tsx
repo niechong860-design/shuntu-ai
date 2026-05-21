@@ -29,11 +29,7 @@ export function TopBar({ credits, onOpenHistory, onSwitchAccount }: Props) {
             <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-primary" />
           </span>
         </IconBtn>
-        <div className="relative h-8 w-8 overflow-hidden rounded-full ring-1 ring-border">
-          <div className="h-full w-full bg-gradient-to-br from-primary/40 via-accent to-secondary" />
-          <div className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold">Y</div>
-          <span className="absolute -bottom-0 -right-0 h-2 w-2 rounded-full border-2 border-card bg-primary" />
-        </div>
+        <UserMenu onSwitchAccount={onSwitchAccount} />
         <div className="mx-1 h-6 w-px bg-border" />
         <div className="flex items-center gap-2 rounded-full border border-border bg-white/[0.03] px-3 py-1.5">
           <Zap className="h-3.5 w-3.5 text-primary" fill="currentColor" />
