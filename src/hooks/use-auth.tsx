@@ -65,8 +65,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
+const FALLBACK: AuthCtx = {
+  session: null,
+  user: null,
+  profile: null,
+  loading: true,
+  refreshProfile: async () => {},
+  signOut: async () => {},
+};
+
 export function useAuth() {
   const v = useContext(Ctx);
-  if (!v) throw new Error("useAuth must be inside AuthProvider");
-  return v;
+  return v ?? FALLBACK;
 }
