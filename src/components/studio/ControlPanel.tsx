@@ -121,21 +121,15 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
     onGenerateStart();
     try {
       const httpRefs = refs.filter((u) => /^https?:\/\//i.test(u));
-      const style = STYLE_TEMPLATES.find((s) => s.id === styleId);
-      // 风格模板只拼接「风格/灯光/氛围」prompt，不包含任何比例/分辨率/尺寸字眼
-      const finalPrompt = [
-        prompt.trim(),
-        style?.prompt?.trim(),
-        PRODUCT_PROTECTION_PROMPT,
-      ].filter(Boolean).join("\n\n");
+      // 风格模板的 prompt 与后台固定提示词由服务端拼接，不在客户端修改用户原始输入
       const payload = {
         modelKey: activeModel.model_key,
-        prompt: finalPrompt,
-        aspectRatio: ratio, // 用户选择优先级最高
-        size,               // 用户选择优先级最高
+        prompt: prompt.trim(),
+        aspectRatio: ratio,
+        size,
         referenceImages: httpRefs.length ? httpRefs : undefined,
+        styleId,
       };
-      // 调试：打印最终发送给 serverFn 的 JSON Body（serverFn 会再透传给上游 API）
       console.log("[generate click] payload →", JSON.stringify(payload, null, 2));
       const r = await generate({ data: payload });
 
