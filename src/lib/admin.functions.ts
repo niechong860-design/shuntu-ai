@@ -388,13 +388,20 @@ function extractImageUrl(payload: any): string | null {
    return `${base}${path}`;
  }
 
- // Upstream (wuyinkeji) authenticates via `Authorization: Bearer <key>` header ONLY.
-// Do NOT append `?key=` to the URL — upstream treats query `key` as authoritative
-// and rejects with "请求密钥KEY不正确" when both are set or query is empty/encoded.
+ // Upstream (wuyinkeji) authenticates with the raw platform key in Authorization.
+// Do NOT append `?key=` to the URL and do NOT prefix the upstream key with Bearer;
+// this provider rejects `Authorization: Bearer <key>` as "请求密钥KEY不正确".
 
   function normalizeUpstreamApiKey(value: unknown): string {
     if (typeof value !== "string") return "";
     return value.trim().replace(/^Bearer\s+/i, "").replace(/^['\"]|['\"]$/g, "").trim();
+  }
+
+  function buildUpstreamHeaders(finalApiKey: string): Record<string, string> {
+    return {
+      "Content-Type": "application/json",
+      Authorization: finalApiKey,
+    };
   }
 
  export const generateImage = createServerFn({ method: "POST" })
@@ -436,10 +443,7 @@ function extractImageUrl(payload: any): string | null {
         throw new Error("该模型或全局接口设置尚未配置 API Key，请联系管理员");
       }
 
-     const headers: Record<string, string> = {
-       "Content-Type": "application/json",
-        "Authorization": `Bearer ${finalApiKey}`,
-     };
+      const headers = buildUpstreamHeaders(finalApiKey);
 
      const submitUrl = resolveUrl(base_url, model.api_url);
 
