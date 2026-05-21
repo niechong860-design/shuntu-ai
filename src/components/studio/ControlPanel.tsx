@@ -372,7 +372,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
                         return (
                           <button
                             key={s}
-                            onClick={() => setSize(s)}
+                            onClick={() => { setSize(s); setSizeOpen(false); }}
                             className={`flex flex-col items-center gap-1 rounded-lg border px-3 py-2 transition-all ${
                               active
                                 ? "border-primary/50 bg-primary/10 text-primary"
