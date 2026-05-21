@@ -195,7 +195,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
         }
         await new Promise((res) => setTimeout(res, POLL_INTERVAL));
         try {
-          const s = await checkStatus({ data: { taskId } });
+          const s = await checkStatus({ data: { taskId, modelName: activeModel.name ?? activeModel.model_key } });
           if (s.status === "success" && s.imageUrl) {
             onGenerateDone(s.imageUrl);
             return;
