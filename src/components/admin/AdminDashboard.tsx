@@ -10,7 +10,8 @@ import {
   adminListCoupons, adminGenerateCoupons,
 } from "@/lib/admin.functions";
 import { toast } from "sonner";
-import { Shield, KeyRound, Coins, Copy, Plus, RefreshCw, Users, Ticket } from "lucide-react";
+import { Shield, KeyRound, Coins, Copy, Plus, RefreshCw, Users, Ticket, LayoutDashboard } from "lucide-react";
+import { AnalyticsPanel } from "./AnalyticsPanel";
 
 type UserRow = { id: string; email: string | null; display_name: string | null; credits: number; created_at: string };
 type Coupon = {
