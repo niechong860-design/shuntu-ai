@@ -75,6 +75,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
   const [sizeOpen, setSizeOpen] = useState(false);
   const [refs, setRefs] = useState<string[]>([]);
   const [prompt, setPrompt] = useState("");
+  const [styleId, setStyleId] = useState<string>("none");
   const [cfg, setCfg] = useState([7.5]);
   const [steps, setSteps] = useState([32]);
 
