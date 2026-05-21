@@ -517,7 +517,6 @@ function extractImageUrl(payload: any): string | null {
         if (!rawFetchUrl || rawFetchUrl.includes("api.example.com")) {
           rawFetchUrl = "https://api.wuyinkeji.com/api/async/fetch_result";
         }
-         const finalFetchUrl = appendApiKeyToUrl(rawFetchUrl, finalApiKey);
         const start = Date.now();
        const TIMEOUT_MS = 60_000;
        const INTERVAL_MS = 3000;
