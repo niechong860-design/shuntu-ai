@@ -72,12 +72,16 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
     onGenerateStart();
     try {
       const httpRefs = refs.filter((u) => /^https?:\/\//i.test(u));
-      const r = await generate({ data: {
+      const payload = {
         modelKey: activeModel.model_key,
         prompt,
         aspectRatio: ratio,
         referenceImages: httpRefs.length ? httpRefs : undefined,
-      }});
+      };
+      // 调试：打印最终发送给 serverFn 的 JSON Body（serverFn 会再透传给上游 API）
+      console.log("[generate click] payload →", JSON.stringify(payload, null, 2));
+      const r = await generate({ data: payload });
+
       toast.success(`已提交 · 扣除 ${r.cost} 点，剩余 ${r.credits}`);
       await refreshProfile();
 
