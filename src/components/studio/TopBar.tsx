@@ -24,6 +24,11 @@ export function TopBar({ credits, onOpenHistory, onSwitchAccount }: Props) {
       </div>
 
       {/* Right: actions */}
+      <div className="ml-auto flex items-center gap-1 pr-3">
+        <NavLink>在线生成</NavLink>
+        <NavLink>使用案例</NavLink>
+        <NavLink>联系客服</NavLink>
+      </div>
       <div className="flex items-center gap-2">
         <IconBtn title="历史记录" onClick={onOpenHistory}><History className="h-4 w-4" /></IconBtn>
         <IconBtn title="通知">
@@ -57,6 +62,17 @@ function IconBtn({ children, ...rest }: React.ButtonHTMLAttributes<HTMLButtonEle
     <button
       {...rest}
       className="flex h-9 w-9 items-center justify-center rounded-lg border border-transparent text-muted-foreground transition-all hover:border-border hover:bg-white/[0.05] hover:text-foreground"
+    >
+      {children}
+    </button>
+  );
+}
+
+function NavLink({ children, ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      {...rest}
+      className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-white/[0.05] hover:text-foreground"
     >
       {children}
     </button>
