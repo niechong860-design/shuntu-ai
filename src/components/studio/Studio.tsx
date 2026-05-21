@@ -22,7 +22,7 @@ export function Studio() {
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
       <TopBar credits={credits} onOpenHistory={() => setHistoryOpen(true)} />
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[30%_1fr]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2">
         <ControlPanel onGenerate={handleGenerate} generating={generating} />
         <Canvas
           generating={generating}
