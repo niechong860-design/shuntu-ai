@@ -268,7 +268,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={3}
-              placeholder="描述你想要生成的画面…"
+              placeholder="让您的想法，创造无限可能"
               className="block w-full resize-none rounded-2xl bg-transparent px-4 py-3.5 text-sm font-light leading-relaxed placeholder:text-muted-foreground/50 focus:outline-none"
             />
             <div className="flex items-center justify-between gap-2 border-t border-border/50 px-2.5 py-2">
