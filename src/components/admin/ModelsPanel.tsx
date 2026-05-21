@@ -17,6 +17,9 @@ import { toast } from "sonner";
 type ModelCfg = {
   id: string; model_key: string; name: string; description: string | null;
   cost: number; api_url: string | null; api_key: string | null;
+  request_format: "async_id" | "sync_url" | null;
+  prompt_key: string | null;
+  fetch_url: string | null;
   sort_order?: number; updated_at: string;
 };
 
@@ -28,10 +31,14 @@ type EditState = {
   cost: string;
   api_url: string;
   api_key: string;
+  request_format: "async_id" | "sync_url";
+  prompt_key: string;
+  fetch_url: string;
 };
 
 const empty = (): EditState => ({
-  id: "", name: "", model_key: "", description: "", cost: "1", api_url: "", api_key: "",
+  id: "", name: "", model_key: "", description: "", cost: "1",
+  api_url: "", api_key: "", request_format: "async_id", prompt_key: "prompt", fetch_url: "",
 });
 
 const maskKey = (k: string | null) => {
@@ -63,6 +70,9 @@ export function ModelsPanel() {
     id: r.id, name: r.name, model_key: r.model_key,
     description: r.description ?? "", cost: String(r.cost),
     api_url: r.api_url ?? "", api_key: r.api_key ?? "",
+    request_format: (r.request_format ?? "async_id") as "async_id" | "sync_url",
+    prompt_key: r.prompt_key ?? "prompt",
+    fetch_url: r.fetch_url ?? "",
   });
 
   const save = async () => {
@@ -81,6 +91,9 @@ export function ModelsPanel() {
         cost: n,
         api_url: editing.api_url.trim() || null,
         api_key: editing.api_key.trim() || null,
+        request_format: editing.request_format,
+        prompt_key: editing.prompt_key.trim() || "prompt",
+        fetch_url: editing.fetch_url.trim() || null,
       }});
       toast.success("模型已更新");
       setEditing(null);
@@ -104,6 +117,9 @@ export function ModelsPanel() {
         cost: n,
         api_url: creating.api_url.trim() || undefined,
         api_key: creating.api_key.trim() || undefined,
+        request_format: creating.request_format,
+        prompt_key: creating.prompt_key.trim() || "prompt",
+        fetch_url: creating.fetch_url.trim() || undefined,
       }});
       toast.success("模型添加成功");
       setCreating(null);
@@ -139,6 +155,7 @@ export function ModelsPanel() {
             <TableRow>
               <TableHead>模型</TableHead>
               <TableHead>Key</TableHead>
+              <TableHead>模式</TableHead>
               <TableHead>API 接口地址</TableHead>
               <TableHead>API Key</TableHead>
               <TableHead className="text-right">费率</TableHead>
@@ -160,6 +177,15 @@ export function ModelsPanel() {
                   </div>
                 </TableCell>
                 <TableCell className="font-mono text-[11px] text-muted-foreground">{r.model_key}</TableCell>
+                <TableCell>
+                  <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium ${
+                    r.request_format === "sync_url"
+                      ? "bg-emerald-500/10 text-emerald-400"
+                      : "bg-primary/10 text-primary"
+                  }`}>
+                    {r.request_format === "sync_url" ? "同步直出" : "异步轮询"}
+                  </span>
+                </TableCell>
                 <TableCell className="max-w-[240px] truncate font-mono text-[11px] text-muted-foreground" title={r.api_url ?? ""}>
                   {r.api_url ? (
                     <span className="inline-flex items-center gap-1"><LinkIcon className="h-3 w-3 text-primary/80" />{r.api_url}</span>
@@ -195,7 +221,7 @@ export function ModelsPanel() {
               </TableRow>
             ))}
             {rows.length === 0 && !loading && (
-              <TableRow><TableCell colSpan={6} className="text-center text-xs text-muted-foreground">暂无模型</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center text-xs text-muted-foreground">暂无模型</TableCell></TableRow>
             )}
           </TableBody>
         </Table>
@@ -254,6 +280,34 @@ function ModelFormDialog({
               <label className="text-[11px] text-muted-foreground">单次出图消耗点数</label>
               <Input type="number" min={0} step="0.1" value={state.cost} onChange={(e) => setState({ ...state, cost: e.target.value })} placeholder="2" />
             </div>
+
+            <div className="border-t border-border/40 pt-3">
+              <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">动态接口适配</div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">返回格式</label>
+                  <select
+                    value={state.request_format}
+                    onChange={(e) => setState({ ...state, request_format: e.target.value as "async_id" | "sync_url" })}
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-xs"
+                  >
+                    <option value="async_id">异步轮询（返回任务ID）</option>
+                    <option value="sync_url">同步直出（直接返回URL）</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">提示词参数名</label>
+                  <Input value={state.prompt_key} onChange={(e) => setState({ ...state, prompt_key: e.target.value })} placeholder="prompt" />
+                </div>
+              </div>
+              {state.request_format === "async_id" && (
+                <div className="mt-3 space-y-1">
+                  <label className="text-[11px] text-muted-foreground">查询结果接口（选填，留空将自动派生 /fetch_result）</label>
+                  <Input value={state.fetch_url} onChange={(e) => setState({ ...state, fetch_url: e.target.value })} placeholder="https://api.example.com/api/async/fetch_result" />
+                </div>
+              )}
+            </div>
+
             <Button className="w-full" onClick={onSubmit} disabled={busy}>保存</Button>
           </div>
         )}

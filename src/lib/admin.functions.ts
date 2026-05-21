@@ -153,14 +153,14 @@ export const listModelsConfig = createServerFn({ method: "POST" })
     return data ?? [];
   });
 
-// Admin variant: includes api_url & api_key
+// Admin variant: includes api_url & api_key + dynamic adapter fields
 export const adminListModelsConfig = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
     const { data, error } = await supabaseAdmin
       .from("models_config")
-      .select("id, model_key, name, description, cost, api_url, api_key, sort_order, updated_at")
+      .select("id, model_key, name, description, cost, api_url, api_key, request_format, prompt_key, fetch_url, sort_order, updated_at")
       .order("sort_order", { ascending: true });
     if (error) throw new Error(error.message);
     return data ?? [];
@@ -192,6 +192,9 @@ export const adminUpdateModel = createServerFn({ method: "POST" })
       cost: z.number().min(0).max(100000).optional(),
       api_url: z.string().url().max(500).nullable().optional(),
       api_key: z.string().max(500).nullable().optional(),
+      request_format: z.enum(["async_id", "sync_url"]).optional(),
+      prompt_key: z.string().min(1).max(64).optional(),
+      fetch_url: z.string().url().max(500).nullable().optional(),
       sort_order: z.number().int().min(0).max(10000).optional(),
     }).parse(d),
   )
@@ -214,6 +217,9 @@ export const adminCreateModel = createServerFn({ method: "POST" })
       cost: z.number().min(0).max(100000).default(1),
       api_url: z.string().url().max(500).optional(),
       api_key: z.string().max(500).optional(),
+      request_format: z.enum(["async_id", "sync_url"]).default("async_id"),
+      prompt_key: z.string().min(1).max(64).default("prompt"),
+      fetch_url: z.string().url().max(500).optional(),
       sort_order: z.number().int().min(0).max(10000).optional(),
     }).parse(d),
   )
@@ -228,6 +234,9 @@ export const adminCreateModel = createServerFn({ method: "POST" })
         cost: data.cost,
         api_url: data.api_url ?? null,
         api_key: data.api_key ?? null,
+        request_format: data.request_format,
+        prompt_key: data.prompt_key,
+        fetch_url: data.fetch_url ?? null,
         sort_order: data.sort_order ?? 999,
       })
       .select("id")
@@ -344,22 +353,19 @@ function extractImageUrl(payload: any): string | null {
    .handler(async ({ data, context }) => {
      const { supabase, userId } = context;
 
-     // 1. Look up model config (admin client to read api_key)
+     // 1. Look up model config (admin client to read api_key + adapter fields)
      const { data: model, error: mErr } = await supabaseAdmin
        .from("models_config")
-       .select("id, model_key, name, cost, api_url, api_key")
+       .select("id, model_key, name, cost, api_url, api_key, request_format, prompt_key, fetch_url")
        .eq("model_key", data.modelKey)
        .maybeSingle();
      if (mErr) throw new Error(mErr.message);
      if (!model) throw new Error("模型不存在");
      if (!model.api_url) throw new Error("该模型尚未配置 API 接口地址，请联系管理员");
 
-     // 2. Pre-check balance (RLS-scoped read as user) — actual deduction only on success
+     // 2. Pre-check balance — actual deduction only after a real image URL is obtained
      const { data: prof, error: pErr } = await supabase
-       .from("profiles")
-       .select("credits")
-       .eq("id", userId)
-       .maybeSingle();
+       .from("profiles").select("credits").eq("id", userId).maybeSingle();
      if (pErr) throw new Error(pErr.message);
      if (!prof || Number(prof.credits) < Number(model.cost)) {
        throw new Error("您的算力余额不足，请联系老板兑换充值卡密");
@@ -370,67 +376,82 @@ function extractImageUrl(payload: any): string | null {
 
      const size = VALID_SIZES.has(data.aspectRatio) ? data.aspectRatio : "auto";
      const httpRefs = (data.referenceImages ?? []).filter((u) => /^https?:\/\//i.test(u));
+     const promptKey = (model as any).prompt_key || "prompt";
+     const requestFormat = (model as any).request_format || "async_id";
 
-     // 3. Step 1 — Submit async task
-     const submitBody: Record<string, unknown> = { prompt: data.prompt, size };
-     if (httpRefs.length > 0) submitBody.urls = httpRefs;
+     // Dynamic body — prompt parameter name comes from admin config
+     const body: Record<string, unknown> = { [promptKey]: data.prompt, size };
+     if (httpRefs.length > 0) body.urls = httpRefs;
 
-     let taskId: string | null = null;
-     try {
-       const res = await fetch(model.api_url, {
-         method: "POST",
-         headers,
-         body: JSON.stringify(submitBody),
-       });
-       const text = await res.text();
-       let json: any = null;
-       try { json = JSON.parse(text); } catch { /* not json */ }
-       if (!res.ok) {
-         throw new Error(`上游提交失败 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
-       }
-       if (json?.code && Number(json.code) !== 200) {
-         throw new Error(`上游提交失败: ${json?.msg ?? "未知错误"}`);
-       }
-       taskId = json?.data?.id ?? json?.id ?? null;
-       if (!taskId) throw new Error("上游未返回任务ID");
-     } catch (e: any) {
-       throw new Error(e?.message ?? "提交任务失败");
-     }
-
-     // 4. Step 2 — Poll fetch_result every 2.5s, up to 60s
-     const fetchUrl = deriveFetchResultUrl(model.api_url);
-     const start = Date.now();
-     const TIMEOUT_MS = 60_000;
-     const INTERVAL_MS = 2500;
      let imageUrl: string | null = null;
 
-     while (Date.now() - start < TIMEOUT_MS) {
-       await new Promise((r) => setTimeout(r, INTERVAL_MS));
+     if (requestFormat === "sync_url") {
+       // --- Branch B: Synchronous — upstream returns image URL directly ---
+       let res: Response;
        try {
-         const qUrl = `${fetchUrl}${fetchUrl.includes("?") ? "&" : "?"}id=${encodeURIComponent(taskId)}`;
-         const r = await fetch(qUrl, { method: "GET", headers });
-         const t = await r.text();
-         let j: any = null;
-         try { j = JSON.parse(t); } catch { /* */ }
-         if (!r.ok) continue;
-         // Some providers return status fields; ignore explicit "failed"
-         const status = j?.data?.status ?? j?.status;
-         if (typeof status === "string" && /fail|error/i.test(status)) {
-           throw new Error(`上游生成失败: ${j?.msg ?? j?.data?.message ?? status}`);
-         }
-         const url = extractImageUrl(j);
-         if (url) { imageUrl = url; break; }
+         res = await fetch(model.api_url, { method: "POST", headers, body: JSON.stringify(body) });
        } catch (e: any) {
-         // Re-throw only explicit upstream failures; transient errors -> keep polling
-         if (e?.message?.startsWith("上游生成失败")) throw e;
+         throw new Error(`请求上游失败: ${e?.message ?? "网络错误"}`);
        }
+       const text = await res.text();
+       let json: any = null;
+       try { json = JSON.parse(text); } catch { /* */ }
+       if (!res.ok) {
+         throw new Error(`上游接口返回 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
+       }
+       if (json?.code && Number(json.code) !== 200) {
+         throw new Error(`上游接口失败: ${json?.msg ?? "未知错误"}`);
+       }
+       imageUrl = extractImageUrl(json ?? text);
+       if (!imageUrl) throw new Error("上游未返回图片地址");
+     } else {
+       // --- Branch A: Async — submit task, then poll for result ---
+       let taskId: string | null = null;
+       try {
+         const res = await fetch(model.api_url, { method: "POST", headers, body: JSON.stringify(body) });
+         const text = await res.text();
+         let json: any = null;
+         try { json = JSON.parse(text); } catch { /* */ }
+         if (!res.ok) {
+           throw new Error(`上游提交失败 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
+         }
+         if (json?.code && Number(json.code) !== 200) {
+           throw new Error(`上游提交失败: ${json?.msg ?? "未知错误"}`);
+         }
+         taskId = json?.data?.id ?? json?.id ?? json?.task_id ?? null;
+         if (!taskId) throw new Error("上游未返回任务ID");
+       } catch (e: any) {
+         throw new Error(e?.message ?? "提交任务失败");
+       }
+
+       const fetchUrl = (model as any).fetch_url || deriveFetchResultUrl(model.api_url);
+       const start = Date.now();
+       const TIMEOUT_MS = 60_000;
+       const INTERVAL_MS = 2500;
+
+       while (Date.now() - start < TIMEOUT_MS) {
+         await new Promise((r) => setTimeout(r, INTERVAL_MS));
+         try {
+           const qUrl = `${fetchUrl}${fetchUrl.includes("?") ? "&" : "?"}id=${encodeURIComponent(taskId)}`;
+           const r = await fetch(qUrl, { method: "GET", headers });
+           const t = await r.text();
+           let j: any = null;
+           try { j = JSON.parse(t); } catch { /* */ }
+           if (!r.ok) continue;
+           const status = j?.data?.status ?? j?.status;
+           if (typeof status === "string" && /fail|error/i.test(status)) {
+             throw new Error(`上游生成失败: ${j?.msg ?? j?.data?.message ?? status}`);
+           }
+           const url = extractImageUrl(j);
+           if (url) { imageUrl = url; break; }
+         } catch (e: any) {
+           if (e?.message?.startsWith("上游生成失败")) throw e;
+         }
+       }
+       if (!imageUrl) throw new Error("上游生成超时，请重试");
      }
 
-     if (!imageUrl) {
-       throw new Error("上游生成超时，请重试");
-     }
-
-     // 5. Deduct + log (atomic via RPC) — only on success
+     // 3. Only deduct credits after a real image URL was obtained
      const { data: rpcRes, error: rpcErr } = await supabase.rpc("consume_credits_for_generation", {
        _model_key: data.modelKey,
        _prompt: data.prompt,
