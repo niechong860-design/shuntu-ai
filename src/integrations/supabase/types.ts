@@ -196,6 +196,7 @@ export type Database = {
           cost: number
           created_at: string
           id: string
+          image_url: string | null
           model: string
           prompt: string | null
           user_id: string
@@ -204,6 +205,7 @@ export type Database = {
           cost?: number
           created_at?: string
           id?: string
+          image_url?: string | null
           model: string
           prompt?: string | null
           user_id: string
@@ -212,6 +214,7 @@ export type Database = {
           cost?: number
           created_at?: string
           id?: string
+          image_url?: string | null
           model?: string
           prompt?: string | null
           user_id?: string
@@ -465,6 +468,10 @@ export type Database = {
           message: string
           success: boolean
         }[]
+      }
+      set_latest_history_image: {
+        Args: { _image_url: string; _model: string }
+        Returns: undefined
       }
     }
     Enums: {
