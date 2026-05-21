@@ -432,7 +432,7 @@ function extractImageUrl(payload: any): string | null {
        "Authorization": `Bearer ${apiKey}`,
      };
 
-     const submitUrl = withKeyParam(resolveUrl(base_url, model.api_url), apiKey);
+     const submitUrl = resolveUrl(base_url, model.api_url);
 
      const size = VALID_SIZES.has(data.aspectRatio) ? data.aspectRatio : "auto";
      const httpRefs = (data.referenceImages ?? []).filter((u) => /^https?:\/\//i.test(u));
