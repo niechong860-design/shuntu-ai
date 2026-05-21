@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { Settings, RefreshCw, LogOut, Zap, Shield } from "lucide-react";
+import { Settings, RefreshCw, LogOut, Zap, Shield, Crown } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { SettingsDialog } from "./SettingsDialog";
 import { AdminDashboard } from "@/components/admin/AdminDashboard";
@@ -13,11 +13,15 @@ export function UserMenu({ onSwitchAccount }: { onSwitchAccount: () => void }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isFounder, setIsFounder] = useState(false);
   const check = useServerFn(checkIsAdmin);
 
   useEffect(() => {
-    if (!session) { setIsAdmin(false); return; }
-    check({}).then((r) => setIsAdmin(!!r?.isAdmin)).catch(() => setIsAdmin(false));
+    if (!session) { setIsAdmin(false); setIsFounder(false); return; }
+    check({}).then((r: any) => {
+      setIsAdmin(!!r?.isAdmin);
+      setIsFounder(!!r?.isFounder);
+    }).catch(() => { setIsAdmin(false); setIsFounder(false); });
   }, [session, check]);
 
   const initial = (profile?.display_name || profile?.email || user?.email || "U")[0].toUpperCase();

@@ -10,11 +10,12 @@ import {
   adminListCoupons, adminGenerateCoupons, adminDeleteCoupon,
 } from "@/lib/admin.functions";
 import { toast } from "sonner";
-import { Shield, KeyRound, Coins, Copy, Plus, RefreshCw, Users, Ticket, LayoutDashboard, Trash2, Sparkles, Megaphone } from "lucide-react";
+import { Shield, KeyRound, Coins, Copy, Plus, RefreshCw, Users, Ticket, LayoutDashboard, Trash2, Sparkles, Megaphone, Crown } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { AnalyticsPanel } from "./AnalyticsPanel";
 import { ModelsPanel } from "./ModelsPanel";
 import { AdsPanel } from "./AdsPanel";
+import { AdminsPanel } from "./AdminsPanel";
 
 type UserRow = { id: string; email: string | null; display_name: string | null; credits: number; created_at: string; total_spent: number };
 type Coupon = {
@@ -22,13 +23,14 @@ type Coupon = {
   used_by_email: string | null; used_at: string | null; created_at: string;
 };
 
-export function AdminDashboard({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+export function AdminDashboard({ open, onOpenChange, isFounder = false }: { open: boolean; onOpenChange: (v: boolean) => void; isFounder?: boolean }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl border-border/70 bg-card/80 p-0 backdrop-blur-2xl">
         <DialogHeader className="border-b border-border/60 px-6 py-4">
           <DialogTitle className="flex items-center gap-2">
-            <Shield className="h-4 w-4 text-primary" /> 系统管理后台
+            {isFounder ? <Crown className="h-4 w-4 text-primary" /> : <Shield className="h-4 w-4 text-primary" />}
+            {isFounder ? "创始人后台" : "系统管理后台"}
           </DialogTitle>
         </DialogHeader>
         <Tabs defaultValue="analytics" className="px-6 pb-6 pt-4">
@@ -38,12 +40,16 @@ export function AdminDashboard({ open, onOpenChange }: { open: boolean; onOpenCh
             <TabsTrigger value="coupons" className="gap-1.5"><Ticket className="h-3.5 w-3.5" />卡密管理</TabsTrigger>
             <TabsTrigger value="models" className="gap-1.5"><Sparkles className="h-3.5 w-3.5" />模型点数价格控制</TabsTrigger>
             <TabsTrigger value="ads" className="gap-1.5"><Megaphone className="h-3.5 w-3.5" />广告管理</TabsTrigger>
+            {isFounder && (
+              <TabsTrigger value="admins" className="gap-1.5"><Crown className="h-3.5 w-3.5" />管理员管理</TabsTrigger>
+            )}
           </TabsList>
           <TabsContent value="analytics" className="mt-4 max-h-[70vh] overflow-auto pr-1"><AnalyticsPanel /></TabsContent>
           <TabsContent value="users" className="mt-4"><UsersPanel /></TabsContent>
           <TabsContent value="coupons" className="mt-4"><CouponsPanel /></TabsContent>
           <TabsContent value="models" className="mt-4"><ModelsPanel /></TabsContent>
           <TabsContent value="ads" className="mt-4"><AdsPanel /></TabsContent>
+          {isFounder && <TabsContent value="admins" className="mt-4"><AdminsPanel /></TabsContent>}
         </Tabs>
       </DialogContent>
     </Dialog>
