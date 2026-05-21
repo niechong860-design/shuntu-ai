@@ -447,14 +447,18 @@ function extractImageUrl(payload: any): string | null {
 
   function parseUpstreamResponse(text: string): any {
     const parsed = parseUpstreamJson(text);
-    if (!parsed || typeof parsed !== "object") return parsed;
-    for (const key of ["data", "result", "output"]) {
-      const value = parsed[key];
+    const normalizeNested = (value: any): any => {
       if (typeof value === "string" && /^[\[{]/.test(value.trim())) {
-        try { parsed[key] = parseUpstreamResponse(value); } catch { /* keep original */ }
+        const nested = parseUpstreamJson(value);
+        return nested == null ? value : normalizeNested(nested);
       }
-    }
-    return parsed;
+      if (Array.isArray(value)) return value.map(normalizeNested);
+      if (value && typeof value === "object") {
+        for (const key of Object.keys(value)) value[key] = normalizeNested(value[key]);
+      }
+      return value;
+    };
+    return normalizeNested(parsed);
   }
 
  export const generateImage = createServerFn({ method: "POST" })
