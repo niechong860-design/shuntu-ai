@@ -292,6 +292,45 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
           </div>
         </section>
 
+        {/* Style templates — horizontal scroll */}
+        <section>
+          <div className="mb-2 flex items-center justify-between">
+            <Label>风格模板</Label>
+            <span className="text-[10px] font-light text-muted-foreground">仅影响视觉风格，不改变比例/尺寸</span>
+          </div>
+          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-thin">
+            {STYLE_TEMPLATES.map((s) => {
+              const active = s.id === styleId;
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => setStyleId(s.id)}
+                  className={`group relative flex w-[112px] shrink-0 flex-col gap-1.5 rounded-xl border p-2 text-left transition-all ${
+                    active
+                      ? "border-primary/60 bg-primary/10 shadow-glow"
+                      : "border-border bg-white/[0.02] hover:border-primary/40 hover:bg-white/5"
+                  }`}
+                >
+                  <div className={`flex h-16 w-full items-center justify-center rounded-lg text-2xl ${
+                    active ? "bg-gradient-aurora text-primary-foreground" : "bg-white/5 text-muted-foreground"
+                  }`}>
+                    {s.emoji}
+                  </div>
+                  <div className={`text-[11px] font-medium leading-tight ${active ? "text-primary" : ""}`}>
+                    {s.name}
+                  </div>
+                  <div className="text-[9px] font-light leading-tight text-muted-foreground line-clamp-2">
+                    {s.desc}
+                  </div>
+                  {active && (
+                    <Check className="absolute right-1.5 top-1.5 h-3 w-3 text-primary" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
         {/* Prompt core */}
         <section>
           <Label>提示词</Label>
