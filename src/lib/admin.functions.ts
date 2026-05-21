@@ -516,7 +516,13 @@ export const generateImage = createServerFn({ method: "POST" })
       [promptKey]: data.prompt,
       size,
     };
-    if (httpRefs.length > 0) body.urls = httpRefs;
+    if (Array.isArray(httpRefs) && httpRefs.length > 0) {
+      body.urls = httpRefs;
+      // 开启垫图权重，部分模型不传此参数会忽略参考图
+      body.image_weight = 0.6;
+    }
+    console.log("[generateImage] submit body →", JSON.stringify({ url: submitUrl, body }, null, 2));
+
 
     let imageUrl: string | null = null;
     let taskId: string | null = null;
