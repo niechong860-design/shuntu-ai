@@ -153,14 +153,14 @@ export const listModelsConfig = createServerFn({ method: "POST" })
     return data ?? [];
   });
 
-// Admin variant: includes api_url & api_key
+// Admin variant: includes api_url & api_key + dynamic adapter fields
 export const adminListModelsConfig = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
     const { data, error } = await supabaseAdmin
       .from("models_config")
-      .select("id, model_key, name, description, cost, api_url, api_key, sort_order, updated_at")
+      .select("id, model_key, name, description, cost, api_url, api_key, request_format, prompt_key, fetch_url, sort_order, updated_at")
       .order("sort_order", { ascending: true });
     if (error) throw new Error(error.message);
     return data ?? [];
@@ -192,6 +192,9 @@ export const adminUpdateModel = createServerFn({ method: "POST" })
       cost: z.number().min(0).max(100000).optional(),
       api_url: z.string().url().max(500).nullable().optional(),
       api_key: z.string().max(500).nullable().optional(),
+      request_format: z.enum(["async_id", "sync_url"]).optional(),
+      prompt_key: z.string().min(1).max(64).optional(),
+      fetch_url: z.string().url().max(500).nullable().optional(),
       sort_order: z.number().int().min(0).max(10000).optional(),
     }).parse(d),
   )
@@ -214,6 +217,9 @@ export const adminCreateModel = createServerFn({ method: "POST" })
       cost: z.number().min(0).max(100000).default(1),
       api_url: z.string().url().max(500).optional(),
       api_key: z.string().max(500).optional(),
+      request_format: z.enum(["async_id", "sync_url"]).default("async_id"),
+      prompt_key: z.string().min(1).max(64).default("prompt"),
+      fetch_url: z.string().url().max(500).optional(),
       sort_order: z.number().int().min(0).max(10000).optional(),
     }).parse(d),
   )
@@ -228,6 +234,9 @@ export const adminCreateModel = createServerFn({ method: "POST" })
         cost: data.cost,
         api_url: data.api_url ?? null,
         api_key: data.api_key ?? null,
+        request_format: data.request_format,
+        prompt_key: data.prompt_key,
+        fetch_url: data.fetch_url ?? null,
         sort_order: data.sort_order ?? 999,
       })
       .select("id")
