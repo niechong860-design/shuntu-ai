@@ -177,6 +177,15 @@ export function ModelsPanel() {
                   </div>
                 </TableCell>
                 <TableCell className="font-mono text-[11px] text-muted-foreground">{r.model_key}</TableCell>
+                <TableCell>
+                  <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium ${
+                    r.request_format === "sync_url"
+                      ? "bg-emerald-500/10 text-emerald-400"
+                      : "bg-primary/10 text-primary"
+                  }`}>
+                    {r.request_format === "sync_url" ? "同步直出" : "异步轮询"}
+                  </span>
+                </TableCell>
                 <TableCell className="max-w-[240px] truncate font-mono text-[11px] text-muted-foreground" title={r.api_url ?? ""}>
                   {r.api_url ? (
                     <span className="inline-flex items-center gap-1"><LinkIcon className="h-3 w-3 text-primary/80" />{r.api_url}</span>
