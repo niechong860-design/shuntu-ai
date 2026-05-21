@@ -14,7 +14,7 @@ import { Shield, KeyRound, Coins, Copy, Plus, RefreshCw, Users, Ticket, LayoutDa
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { AnalyticsPanel } from "./AnalyticsPanel";
 
-type UserRow = { id: string; email: string | null; display_name: string | null; credits: number; created_at: string };
+type UserRow = { id: string; email: string | null; display_name: string | null; credits: number; created_at: string; total_spent: number };
 type Coupon = {
   id: string; code: string; amount: number; is_used: boolean;
   used_by_email: string | null; used_at: string | null; created_at: string;
@@ -52,6 +52,7 @@ function UsersPanel() {
   const [loading, setLoading] = useState(false);
   const [pwOpen, setPwOpen] = useState<UserRow | null>(null);
   const [creditOpen, setCreditOpen] = useState<UserRow | null>(null);
+  const [search, setSearch] = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -60,10 +61,23 @@ function UsersPanel() {
   };
   useEffect(() => { load(); }, []);
 
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? users.filter(u => (u.email ?? "").toLowerCase().includes(q) || u.id.toLowerCase().includes(q))
+    : users;
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">共 {users.length} 个用户</p>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Input
+            placeholder="搜索邮箱 / 用户ID"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-9 w-64"
+          />
+          <p className="text-xs text-muted-foreground">共 {filtered.length} / {users.length} 个用户</p>
+        </div>
         <Button variant="outline" size="sm" onClick={load} disabled={loading}>
           <RefreshCw className="mr-1.5 h-3.5 w-3.5" />刷新
         </Button>
@@ -76,16 +90,18 @@ function UsersPanel() {
               <TableHead>用户ID</TableHead>
               <TableHead>注册时间</TableHead>
               <TableHead className="text-right">算力余额</TableHead>
+              <TableHead className="text-right">累计消耗</TableHead>
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {users.map(u => (
+            {filtered.map(u => (
               <TableRow key={u.id}>
                 <TableCell className="font-medium">{u.email ?? "—"}</TableCell>
                 <TableCell className="font-mono text-[11px] text-muted-foreground">{u.id.slice(0, 8)}…</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{new Date(u.created_at).toLocaleString()}</TableCell>
                 <TableCell className="text-right font-mono tabular-nums">{u.credits.toLocaleString()}</TableCell>
+                <TableCell className="text-right font-mono tabular-nums text-primary">{Number(u.total_spent ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
                 <TableCell className="text-right">
                   <Button variant="ghost" size="sm" onClick={() => setPwOpen(u)}>
                     <KeyRound className="mr-1 h-3.5 w-3.5" />重置密码
@@ -96,6 +112,9 @@ function UsersPanel() {
                 </TableCell>
               </TableRow>
             ))}
+            {filtered.length === 0 && (
+              <TableRow><TableCell colSpan={6} className="text-center text-xs text-muted-foreground">无匹配用户</TableCell></TableRow>
+            )}
           </TableBody>
         </Table>
       </div>
