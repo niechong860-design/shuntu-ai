@@ -1,11 +1,13 @@
 import { Sparkles, Zap, Plus, Bell, History } from "lucide-react";
+import { UserMenu } from "@/components/auth/UserMenu";
 
 type Props = {
   credits: number;
   onOpenHistory: () => void;
+  onSwitchAccount: () => void;
 };
 
-export function TopBar({ credits, onOpenHistory }: Props) {
+export function TopBar({ credits, onOpenHistory, onSwitchAccount }: Props) {
   return (
     <header className="flex h-14 w-full shrink-0 items-center justify-between border-b border-border/60 bg-card/70 px-4 backdrop-blur-2xl">
       {/* Left: Logo */}

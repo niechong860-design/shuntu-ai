@@ -1,37 +1,49 @@
-import { useState } from "react";
 import { ControlPanel } from "./ControlPanel";
 import { Canvas } from "./Canvas";
 import { TopBar } from "./TopBar";
+import { AuthModal } from "@/components/auth/AuthModal";
+import { useAuth } from "@/hooks/use-auth";
+import { useState } from "react";
 
 export function Studio() {
-  const [credits, setCredits] = useState(7847);
+  const { session, profile, loading } = useAuth();
   const [generating, setGenerating] = useState(false);
   const [heroIndex, setHeroIndex] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [forceAuth, setForceAuth] = useState(false);
 
   const handleGenerate = () => {
-    if (generating || credits < 2) return;
+    if (generating) return;
     setGenerating(true);
-    setCredits((c) => c - 2);
     setTimeout(() => {
       setGenerating(false);
       setHeroIndex((i) => (i + 1) % 6);
     }, 3000);
   };
 
+  const showAuth = !loading && (!session || forceAuth);
+  const credits = profile?.credits ?? 0;
+
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
-      <TopBar credits={credits} onOpenHistory={() => setHistoryOpen(true)} />
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2">
-        <ControlPanel onGenerate={handleGenerate} generating={generating} />
-        <Canvas
-          generating={generating}
-          heroIndex={heroIndex}
-          historyOpen={historyOpen}
-          onHistoryOpenChange={setHistoryOpen}
-          onSelectHistory={setHeroIndex}
+      <div className={showAuth ? "pointer-events-none select-none blur-sm" : ""}>
+        <TopBar
+          credits={credits}
+          onOpenHistory={() => setHistoryOpen(true)}
+          onSwitchAccount={() => setForceAuth(true)}
         />
+        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2" style={{ height: "calc(100vh - 56px)" }}>
+          <ControlPanel onGenerate={handleGenerate} generating={generating} />
+          <Canvas
+            generating={generating}
+            heroIndex={heroIndex}
+            historyOpen={historyOpen}
+            onHistoryOpenChange={setHistoryOpen}
+            onSelectHistory={setHeroIndex}
+          />
+        </div>
       </div>
+      {showAuth && <AuthModal onSuccess={() => setForceAuth(false)} />}
     </div>
   );
 }
