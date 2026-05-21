@@ -5,13 +5,15 @@ import {
   adminUpdateModel,
   adminCreateModel,
   adminDeleteModel,
+  adminGetGlobalConfig,
+  adminUpdateGlobalConfig,
 } from "@/lib/admin.functions";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
-import { Pencil, RefreshCw, Sparkles, Plus, Trash2, KeyRound, Link as LinkIcon } from "lucide-react";
+import { Pencil, RefreshCw, Sparkles, Plus, Trash2, KeyRound, Link as LinkIcon, Globe, Save } from "lucide-react";
 import { toast } from "sonner";
 
 type ModelCfg = {
@@ -138,8 +140,9 @@ export function ModelsPanel() {
 
   return (
     <div className="space-y-3">
+      <GlobalConfigCard />
       <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">每个模型可配置独立的 API 接口地址、密钥与扣点费率</p>
+        <p className="text-xs text-muted-foreground">每个模型可配置独立的 API 接口地址、密钥与扣点费率（留空则使用全局 API Key）</p>
         <div className="flex items-center gap-2">
           <Button size="sm" onClick={() => setCreating(empty())} className="bg-gradient-aurora text-primary-foreground">
             <Plus className="mr-1.5 h-3.5 w-3.5" />添加模型
@@ -313,5 +316,61 @@ function ModelFormDialog({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function GlobalConfigCard() {
+  const getCfg = useServerFn(adminGetGlobalConfig);
+  const setCfg = useServerFn(adminUpdateGlobalConfig);
+  const [baseUrl, setBaseUrl] = useState("https://api.wuyinkeji.com");
+  const [apiKey, setApiKey] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const r = (await getCfg({})) as { base_url: string; global_api_key: string | null };
+        setBaseUrl(r.base_url || "https://api.wuyinkeji.com");
+        setApiKey(r.global_api_key ?? "");
+      } catch (e: any) { toast.error(e.message); }
+      finally { setLoading(false); }
+    })();
+  }, []);
+
+  const save = async () => {
+    if (!/^https?:\/\//i.test(baseUrl.trim())) return toast.error("请填写合法的 Base URL");
+    setSaving(true);
+    try {
+      await setCfg({ data: { base_url: baseUrl.trim(), global_api_key: apiKey.trim() || null } });
+      toast.success("全局接口配置已保存");
+    } catch (e: any) { toast.error(e.message); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="rounded-lg border border-border/60 bg-white/[0.03] p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <Globe className="h-4 w-4 text-primary" />
+        <h3 className="text-sm font-medium">全局接口设置</h3>
+        <span className="text-[10px] text-muted-foreground">所有模型默认使用此 Base URL 与 API Key</span>
+      </div>
+      <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+        <div className="space-y-1">
+          <label className="text-[11px] text-muted-foreground">上游总域名 (Base URL)</label>
+          <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.wuyinkeji.com" disabled={loading} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-[11px] text-muted-foreground">全局中转 API Key</label>
+          <Input value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-..." type="password" disabled={loading} />
+        </div>
+        <div className="flex items-end">
+          <Button onClick={save} disabled={saving || loading} className="bg-gradient-aurora text-primary-foreground">
+            <Save className="mr-1.5 h-3.5 w-3.5" />保存
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }

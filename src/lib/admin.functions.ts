@@ -190,11 +190,11 @@ export const adminUpdateModel = createServerFn({ method: "POST" })
       model_key: z.string().min(1).max(64).regex(/^[a-zA-Z0-9_\-.]+$/).optional(),
       description: z.string().max(200).nullable().optional(),
       cost: z.number().min(0).max(100000).optional(),
-      api_url: z.string().url().max(500).nullable().optional(),
+      api_url: z.string().min(1).max(500).nullable().optional(),
       api_key: z.string().max(500).nullable().optional(),
       request_format: z.enum(["async_id", "sync_url"]).optional(),
       prompt_key: z.string().min(1).max(64).optional(),
-      fetch_url: z.string().url().max(500).nullable().optional(),
+      fetch_url: z.string().min(1).max(500).nullable().optional(),
       sort_order: z.number().int().min(0).max(10000).optional(),
     }).parse(d),
   )
@@ -215,11 +215,11 @@ export const adminCreateModel = createServerFn({ method: "POST" })
       model_key: z.string().min(1).max(64).regex(/^[a-zA-Z0-9_\-.]+$/),
       description: z.string().max(200).optional(),
       cost: z.number().min(0).max(100000).default(1),
-      api_url: z.string().url().max(500).optional(),
+      api_url: z.string().min(1).max(500).optional(),
       api_key: z.string().max(500).optional(),
       request_format: z.enum(["async_id", "sync_url"]).default("async_id"),
       prompt_key: z.string().min(1).max(64).default("prompt"),
-      fetch_url: z.string().url().max(500).optional(),
+      fetch_url: z.string().min(1).max(500).optional(),
       sort_order: z.number().int().min(0).max(10000).optional(),
     }).parse(d),
   )
@@ -340,6 +340,65 @@ function extractImageUrl(payload: any): string | null {
 
  const VALID_SIZES = new Set(["auto","1:1","2:3","16:9","9:16","4:3","3:4","21:9","9:21","1:3","3:1","1:2"]);
 
+ // --- Global upstream config (Base URL + global API key) ---
+ async function loadGlobalConfig(): Promise<{ base_url: string; global_api_key: string | null }> {
+   const { data } = await supabaseAdmin
+     .from("global_config")
+     .select("base_url, global_api_key")
+     .eq("id", 1)
+     .maybeSingle();
+   return {
+     base_url: (data?.base_url || "https://api.wuyinkeji.com").replace(/\/+$/, ""),
+     global_api_key: data?.global_api_key ?? null,
+   };
+ }
+
+ export const adminGetGlobalConfig = createServerFn({ method: "POST" })
+   .middleware([requireSupabaseAuth])
+   .handler(async ({ context }) => {
+     await assertAdmin(context.userId);
+     return await loadGlobalConfig();
+   });
+
+ export const adminUpdateGlobalConfig = createServerFn({ method: "POST" })
+   .middleware([requireSupabaseAuth])
+   .inputValidator((d) =>
+     z.object({
+       base_url: z.string().url().max(500),
+       global_api_key: z.string().max(500).nullable().optional(),
+     }).parse(d),
+   )
+   .handler(async ({ data, context }) => {
+     await assertAdmin(context.userId);
+     const { error } = await supabaseAdmin
+       .from("global_config")
+       .upsert({
+         id: 1,
+         base_url: data.base_url.replace(/\/+$/, ""),
+         global_api_key: data.global_api_key ?? null,
+         updated_at: new Date().toISOString(),
+       });
+     if (error) throw new Error(error.message);
+     return { ok: true };
+   });
+
+ function resolveUrl(base: string, endpoint: string): string {
+   if (/^https?:\/\//i.test(endpoint)) return endpoint;
+   const path = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+   return `${base}${path}`;
+ }
+
+ function withKeyParam(url: string, key: string | null | undefined): string {
+   if (!key) return url;
+   try {
+     const u = new URL(url);
+     if (!u.searchParams.has("key")) u.searchParams.set("key", key);
+     return u.toString();
+   } catch {
+     return `${url}${url.includes("?") ? "&" : "?"}key=${encodeURIComponent(key)}`;
+   }
+ }
+
  export const generateImage = createServerFn({ method: "POST" })
    .middleware([requireSupabaseAuth])
    .inputValidator((d) =>
@@ -353,7 +412,8 @@ function extractImageUrl(payload: any): string | null {
    .handler(async ({ data, context }) => {
      const { supabase, userId } = context;
 
-     // 1. Look up model config (admin client to read api_key + adapter fields)
+     const { base_url, global_api_key } = await loadGlobalConfig();
+
      const { data: model, error: mErr } = await supabaseAdmin
        .from("models_config")
        .select("id, model_key, name, cost, api_url, api_key, request_format, prompt_key, fetch_url")
@@ -363,7 +423,6 @@ function extractImageUrl(payload: any): string | null {
      if (!model) throw new Error("模型不存在");
      if (!model.api_url) throw new Error("该模型尚未配置 API 接口地址，请联系管理员");
 
-     // 2. Pre-check balance — actual deduction only after a real image URL is obtained
      const { data: prof, error: pErr } = await supabase
        .from("profiles").select("credits").eq("id", userId).maybeSingle();
      if (pErr) throw new Error(pErr.message);
@@ -371,25 +430,31 @@ function extractImageUrl(payload: any): string | null {
        throw new Error("您的算力余额不足，请联系老板兑换充值卡密");
      }
 
-     const headers: Record<string, string> = { "Content-Type": "application/json" };
-     if (model.api_key) headers["Authorization"] = `Bearer ${model.api_key}`;
+     // Model-specific key overrides; otherwise use global key
+     const apiKey = (model.api_key && model.api_key.trim()) || global_api_key;
+     if (!apiKey) throw new Error("未配置上游 API Key，请联系管理员在后台填写“全局中转 API Key”");
+
+     const headers: Record<string, string> = {
+       "Content-Type": "application/json",
+       "Authorization": `Bearer ${apiKey}`,
+     };
+
+     const submitUrl = withKeyParam(resolveUrl(base_url, model.api_url), apiKey);
 
      const size = VALID_SIZES.has(data.aspectRatio) ? data.aspectRatio : "auto";
      const httpRefs = (data.referenceImages ?? []).filter((u) => /^https?:\/\//i.test(u));
      const promptKey = (model as any).prompt_key || "prompt";
      const requestFormat = (model as any).request_format || "async_id";
 
-     // Dynamic body — prompt parameter name comes from admin config
      const body: Record<string, unknown> = { [promptKey]: data.prompt, size };
      if (httpRefs.length > 0) body.urls = httpRefs;
 
      let imageUrl: string | null = null;
 
      if (requestFormat === "sync_url") {
-       // --- Branch B: Synchronous — upstream returns image URL directly ---
        let res: Response;
        try {
-         res = await fetch(model.api_url, { method: "POST", headers, body: JSON.stringify(body) });
+         res = await fetch(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
        } catch (e: any) {
          throw new Error(`请求上游失败: ${e?.message ?? "网络错误"}`);
        }
@@ -405,10 +470,9 @@ function extractImageUrl(payload: any): string | null {
        imageUrl = extractImageUrl(json ?? text);
        if (!imageUrl) throw new Error("上游未返回图片地址");
      } else {
-       // --- Branch A: Async — submit task, then poll for result ---
        let taskId: string | null = null;
        try {
-         const res = await fetch(model.api_url, { method: "POST", headers, body: JSON.stringify(body) });
+         const res = await fetch(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
          const text = await res.text();
          let json: any = null;
          try { json = JSON.parse(text); } catch { /* */ }
@@ -424,7 +488,9 @@ function extractImageUrl(payload: any): string | null {
          throw new Error(e?.message ?? "提交任务失败");
        }
 
-       const fetchUrl = (model as any).fetch_url || deriveFetchResultUrl(model.api_url);
+       const rawFetchUrl = (model as any).fetch_url
+         ? resolveUrl(base_url, (model as any).fetch_url)
+         : `${base_url}/api/async/fetch_result`;
        const start = Date.now();
        const TIMEOUT_MS = 60_000;
        const INTERVAL_MS = 2500;
@@ -432,7 +498,8 @@ function extractImageUrl(payload: any): string | null {
        while (Date.now() - start < TIMEOUT_MS) {
          await new Promise((r) => setTimeout(r, INTERVAL_MS));
          try {
-           const qUrl = `${fetchUrl}${fetchUrl.includes("?") ? "&" : "?"}id=${encodeURIComponent(taskId)}`;
+           const baseQ = `${rawFetchUrl}${rawFetchUrl.includes("?") ? "&" : "?"}id=${encodeURIComponent(taskId)}`;
+           const qUrl = withKeyParam(baseQ, apiKey);
            const r = await fetch(qUrl, { method: "GET", headers });
            const t = await r.text();
            let j: any = null;
@@ -451,7 +518,6 @@ function extractImageUrl(payload: any): string | null {
        if (!imageUrl) throw new Error("上游生成超时，请重试");
      }
 
-     // 3. Only deduct credits after a real image URL was obtained
      const { data: rpcRes, error: rpcErr } = await supabase.rpc("consume_credits_for_generation", {
        _model_key: data.modelKey,
        _prompt: data.prompt,

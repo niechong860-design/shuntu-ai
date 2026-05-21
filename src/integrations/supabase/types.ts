@@ -77,6 +77,27 @@ export type Database = {
         }
         Relationships: []
       }
+      global_config: {
+        Row: {
+          base_url: string
+          global_api_key: string | null
+          id: number
+          updated_at: string
+        }
+        Insert: {
+          base_url?: string
+          global_api_key?: string | null
+          id?: number
+          updated_at?: string
+        }
+        Update: {
+          base_url?: string
+          global_api_key?: string | null
+          id?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       models_config: {
         Row: {
           api_key: string | null
