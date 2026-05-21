@@ -10,12 +10,16 @@ export function Studio() {
   const [generating, setGenerating] = useState(false);
   const [heroIndex, setHeroIndex] = useState(0);
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
+  const [currentPrompt, setCurrentPrompt] = useState<string>("");
+  const [currentModel, setCurrentModel] = useState<string>("");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [forceAuth, setForceAuth] = useState(false);
 
-  const handleGenerateStart = () => {
+  const handleGenerateStart = (info: { prompt: string; modelName: string }) => {
     setGenerating(true);
     setGeneratedUrl(null);
+    setCurrentPrompt(info.prompt);
+    setCurrentModel(info.modelName);
   };
   const handleGenerateDone = (url: string | null) => {
     setGenerating(false);
@@ -43,6 +47,8 @@ export function Studio() {
             generating={generating}
             heroIndex={heroIndex}
             generatedUrl={generatedUrl}
+            currentPrompt={currentPrompt}
+            currentModel={currentModel}
             historyOpen={historyOpen}
             onHistoryOpenChange={setHistoryOpen}
             onSelectHistory={(i) => { setHeroIndex(i); setGeneratedUrl(null); }}

@@ -35,8 +35,8 @@ const RATIOS = [
 type StyleTpl = { id: string; name: string; image_url: string | null; sort_order: number };
 
 type Props = {
-  onGenerateStart: () => void;
-  onGenerateDone: (imageUrl: string | null) => void;
+ onGenerateStart: (info: { prompt: string; modelName: string }) => void;
+ onGenerateDone: (imageUrl: string | null) => void;
   generating: boolean;
 };
 
@@ -148,7 +148,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
 
   const handleGenerate = async () => {
     if (generating || !activeModel) return;
-    onGenerateStart();
+    onGenerateStart({ prompt: prompt.trim(), modelName: activeModel.name ?? activeModel.model_key });
     try {
       const httpRefs = refs.filter((u) => /^https?:\/\//i.test(u));
       // 风格模板的 prompt 与后台固定提示词由服务端拼接，不在客户端修改用户原始输入
