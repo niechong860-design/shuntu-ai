@@ -14,7 +14,7 @@ import {
   toggleCaseLike, toggleCaseFavorite, addCaseComment, publishCase,
   type CaseRow,
 } from "@/lib/inspiration.functions";
-import { listStyleTemplates } from "@/lib/admin.functions";
+import { listStyleTemplates, listModelsConfig } from "@/lib/admin.functions";
 import { setStudioPrefill } from "@/lib/studio-prefill";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
