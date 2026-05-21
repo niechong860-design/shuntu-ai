@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Sparkles, Zap, Plus, Bell, History } from "lucide-react";
+import { Zap, Plus, Bell, History } from "lucide-react";
+import shuntuLogo from "@/assets/shuntu-logo.png";
 import { Link } from "@tanstack/react-router";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { RedeemDialog } from "@/components/auth/RedeemDialog";
@@ -20,12 +21,7 @@ export function TopBar({ credits, onOpenHistory, onSwitchAccount }: Props) {
     <header className="flex h-14 w-full shrink-0 items-center justify-between border-b border-border/60 bg-card/70 px-4 backdrop-blur-2xl">
       {/* Left: Logo */}
       <div className="flex items-center gap-2.5">
-        <div className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-aurora shadow-glow">
-          <Sparkles className="h-4 w-4 text-primary-foreground" strokeWidth={2.5} />
-        </div>
-        <div className="font-display text-[15px] font-semibold tracking-tight" translate="no">
-          ShunTu
-        </div>
+        <img src={shuntuLogo} alt="ShunTu" className="h-9 w-auto object-contain" />
       </div>
 
       {/* Middle: Ad banner */}
