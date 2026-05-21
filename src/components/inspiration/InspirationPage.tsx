@@ -180,7 +180,7 @@ export function InspirationPage() {
         open={publishOpen}
         onOpenChange={setPublishOpen}
         styles={styles}
-        models={facets.models}
+        models={allModels.length > 0 ? allModels : facets.models}
         onPublished={() => {
           // refresh
           setSearch((v) => v);
