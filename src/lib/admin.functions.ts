@@ -523,7 +523,7 @@ function extractImageUrl(payload: any): string | null {
        if (!res.ok) {
          throw new Error(`上游接口返回 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
        }
-       if (json?.code && Number(json.code) !== 200) {
+        if (Number(json?.code) >= 400) {
          throw new Error(`上游接口失败: ${json?.msg ?? "未知错误"}`);
        }
        imageUrl = extractImageUrl(json ?? text);
@@ -537,7 +537,7 @@ function extractImageUrl(payload: any): string | null {
          if (!res.ok) {
            throw new Error(`上游提交失败 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
          }
-         if (json?.code && Number(json.code) !== 200) {
+          if (Number(json?.code) >= 400) {
            throw new Error(`上游提交失败: ${json?.msg ?? "未知错误"}`);
          }
           taskId = json?.data?.id ?? json?.id ?? json?.task_id ?? (typeof json?.data === "string" ? json.data : null);
