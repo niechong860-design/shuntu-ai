@@ -388,16 +388,9 @@ function extractImageUrl(payload: any): string | null {
    return `${base}${path}`;
  }
 
- function withKeyParam(url: string, key: string | null | undefined): string {
-   if (!key) return url;
-   try {
-     const u = new URL(url);
-     if (!u.searchParams.has("key")) u.searchParams.set("key", key);
-     return u.toString();
-   } catch {
-     return `${url}${url.includes("?") ? "&" : "?"}key=${encodeURIComponent(key)}`;
-   }
- }
+// Upstream (wuyinkeji) authenticates via `Authorization: Bearer <key>` header ONLY.
+// Do NOT append `?key=` to the URL — upstream treats query `key` as authoritative
+// and rejects with "请求密钥KEY不正确" when both are set or query is empty/encoded.
 
  export const generateImage = createServerFn({ method: "POST" })
    .middleware([requireSupabaseAuth])
@@ -439,7 +432,7 @@ function extractImageUrl(payload: any): string | null {
        "Authorization": `Bearer ${apiKey}`,
      };
 
-     const submitUrl = withKeyParam(resolveUrl(base_url, model.api_url), apiKey);
+     const submitUrl = resolveUrl(base_url, model.api_url);
 
      const size = VALID_SIZES.has(data.aspectRatio) ? data.aspectRatio : "auto";
      const httpRefs = (data.referenceImages ?? []).filter((u) => /^https?:\/\//i.test(u));
@@ -498,9 +491,8 @@ function extractImageUrl(payload: any): string | null {
        while (Date.now() - start < TIMEOUT_MS) {
          await new Promise((r) => setTimeout(r, INTERVAL_MS));
          try {
-           const baseQ = `${rawFetchUrl}${rawFetchUrl.includes("?") ? "&" : "?"}id=${encodeURIComponent(taskId)}`;
-           const qUrl = withKeyParam(baseQ, apiKey);
-           const r = await fetch(qUrl, { method: "GET", headers });
+            const qUrl = `${rawFetchUrl}${rawFetchUrl.includes("?") ? "&" : "?"}id=${encodeURIComponent(taskId)}`;
+            const r = await fetch(qUrl, { method: "GET", headers });
            const t = await r.text();
            let j: any = null;
            try { j = JSON.parse(t); } catch { /* */ }
