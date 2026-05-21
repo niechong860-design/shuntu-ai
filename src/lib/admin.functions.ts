@@ -286,6 +286,23 @@ export const consumeGeneration = createServerFn({ method: "POST" })
     return row as { success: boolean; message: string; credits: number; cost: number };
   });
 
+// --- 获取当前用户最近 100 条生成历史（仅含图片） ---
+export const getMyGenerationHistory = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase } = context;
+    const { data, error } = await supabase
+      .from("generation_history")
+      .select("id, model, prompt, image_url, created_at, cost")
+      .not("image_url", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as Array<{
+      id: string; model: string; prompt: string | null; image_url: string; created_at: string; cost: number;
+    }>;
+  });
+
 // --- NEW: Dynamic upstream image generation (per-model API routing) ---
 function extractImageUrl(payload: any): string | null {
   if (!payload) return null;
