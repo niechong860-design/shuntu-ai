@@ -1,13 +1,24 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { Settings, RefreshCw, LogOut, Zap } from "lucide-react";
+import { Settings, RefreshCw, LogOut, Zap, Shield } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { SettingsDialog } from "./SettingsDialog";
+import { AdminDashboard } from "@/components/admin/AdminDashboard";
+import { useServerFn } from "@tanstack/react-start";
+import { checkIsAdmin } from "@/lib/admin.functions";
 import { toast } from "sonner";
 
 export function UserMenu({ onSwitchAccount }: { onSwitchAccount: () => void }) {
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, signOut, session } = useAuth();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const check = useServerFn(checkIsAdmin);
+
+  useEffect(() => {
+    if (!session) { setIsAdmin(false); return; }
+    check({}).then((r) => setIsAdmin(!!r?.isAdmin)).catch(() => setIsAdmin(false));
+  }, [session, check]);
 
   const initial = (profile?.display_name || profile?.email || user?.email || "U")[0].toUpperCase();
   const avatar = profile?.avatar_url;
@@ -34,7 +45,6 @@ export function UserMenu({ onSwitchAccount }: { onSwitchAccount: () => void }) {
           sideOffset={8}
           className="w-72 border-border/70 bg-card/70 p-0 backdrop-blur-2xl shadow-elevated"
         >
-          {/* Header */}
           <div className="relative overflow-hidden p-4">
             <div className="pointer-events-none absolute -top-12 left-1/2 h-32 w-48 -translate-x-1/2 rounded-full bg-gradient-aurora opacity-15 blur-3xl" />
             <div className="relative flex items-center gap-3">
@@ -69,6 +79,11 @@ export function UserMenu({ onSwitchAccount }: { onSwitchAccount: () => void }) {
             <DropdownMenuItem onSelect={() => setSettingsOpen(true)} className="cursor-pointer gap-2.5 rounded-md px-2.5 py-2 text-xs">
               <Settings className="h-3.5 w-3.5" /> 个人设置
             </DropdownMenuItem>
+            {isAdmin && (
+              <DropdownMenuItem onSelect={() => setAdminOpen(true)} className="cursor-pointer gap-2.5 rounded-md px-2.5 py-2 text-xs text-primary focus:bg-primary/10">
+                <Shield className="h-3.5 w-3.5" /> 管理员后台
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               onSelect={async () => {
                 await signOut();
@@ -95,6 +110,7 @@ export function UserMenu({ onSwitchAccount }: { onSwitchAccount: () => void }) {
       </DropdownMenu>
 
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      {isAdmin && <AdminDashboard open={adminOpen} onOpenChange={setAdminOpen} />}
     </>
   );
 }
