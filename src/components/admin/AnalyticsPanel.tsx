@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { adminGetAnalytics } from "@/lib/admin.functions";
-import { TrendingUp, Users, Zap, Ticket, Sparkles, ArrowUpRight, RefreshCw } from "lucide-react";
+import { TrendingUp, Users, Zap, Ticket, Sparkles, ArrowUpRight, RefreshCw, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
@@ -25,6 +25,9 @@ export function AnalyticsPanel() {
 
   const m = data?.metrics;
   const totalModelCount = (data?.models ?? []).reduce((s, r) => s + r.totalCount, 0) || 1;
+  const COST_PER_IMAGE_CNY = 0.05; // 上游中转 API 每张图实际成本（￥）
+  const todayImageCount = (data?.models ?? []).reduce((s, r) => s + r.todayCount, 0);
+  const todayCostCNY = todayImageCount * COST_PER_IMAGE_CNY;
 
   return (
     <div className="space-y-5">
@@ -36,9 +39,10 @@ export function AnalyticsPanel() {
       </div>
 
       {/* Metric cards */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <MetricCard icon={<Users className="h-4 w-4" />} label="今日注册用户" value={m?.todayUsers ?? 0} trend />
         <MetricCard icon={<Zap className="h-4 w-4" />} label="今日总消耗算力" value={(m?.todayCost ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} trend />
+        <MetricCard icon={<Wallet className="h-4 w-4" />} label="今日总消耗金额 (￥)" value={`￥${todayCostCNY.toFixed(2)}`} trend />
         <MetricCard icon={<Sparkles className="h-4 w-4" />} label="历史注册总用户" value={m?.totalUsers ?? 0} />
         <MetricCard icon={<Ticket className="h-4 w-4" />} label="剩余有效卡密" value={m?.unusedCoupons ?? 0} />
       </div>
