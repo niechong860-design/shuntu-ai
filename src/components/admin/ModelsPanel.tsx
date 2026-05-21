@@ -22,6 +22,7 @@ type ModelCfg = {
   request_format: "async_id" | "sync_url" | null;
   prompt_key: string | null;
   fetch_url: string | null;
+  extra_params?: Record<string, unknown> | null;
   sort_order?: number; updated_at: string;
 };
 
@@ -36,11 +37,13 @@ type EditState = {
   request_format: "async_id" | "sync_url";
   prompt_key: string;
   fetch_url: string;
+  extra_params: string; // raw JSON string in textarea
 };
 
 const empty = (): EditState => ({
   id: "", name: "", model_key: "", description: "", cost: "1",
   api_url: "", api_key: "", request_format: "async_id", prompt_key: "prompt", fetch_url: "",
+  extra_params: "{}",
 });
 
 const maskKey = (k: string | null) => {
