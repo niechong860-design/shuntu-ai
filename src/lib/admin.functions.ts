@@ -160,7 +160,7 @@ export const adminListModelsConfig = createServerFn({ method: "POST" })
     await assertAdmin(context.userId);
     const { data, error } = await supabaseAdmin
       .from("models_config")
-      .select("id, model_key, name, description, cost, api_url, api_key, request_format, prompt_key, fetch_url, sort_order, updated_at")
+      .select("id, model_key, name, description, cost, api_url, api_key, request_format, prompt_key, fetch_url, extra_params, sort_order, updated_at")
       .order("sort_order", { ascending: true });
     if (error) throw new Error(error.message);
     return data ?? [];
@@ -195,6 +195,7 @@ export const adminUpdateModel = createServerFn({ method: "POST" })
       request_format: z.enum(["async_id", "sync_url"]).optional(),
       prompt_key: z.string().min(1).max(64).optional(),
       fetch_url: z.string().min(1).max(500).nullable().optional(),
+      extra_params: z.record(z.string(), z.any()).optional(),
       sort_order: z.number().int().min(0).max(10000).optional(),
     }).parse(d),
   )
@@ -220,6 +221,7 @@ export const adminCreateModel = createServerFn({ method: "POST" })
       request_format: z.enum(["async_id", "sync_url"]).default("async_id"),
       prompt_key: z.string().min(1).max(64).default("prompt"),
       fetch_url: z.string().min(1).max(500).optional(),
+      extra_params: z.record(z.string(), z.any()).optional(),
       sort_order: z.number().int().min(0).max(10000).optional(),
     }).parse(d),
   )
@@ -237,6 +239,7 @@ export const adminCreateModel = createServerFn({ method: "POST" })
         request_format: data.request_format,
         prompt_key: data.prompt_key,
         fetch_url: data.fetch_url ?? null,
+        extra_params: data.extra_params ?? {},
         sort_order: data.sort_order ?? 999,
       })
       .select("id")
@@ -480,7 +483,7 @@ export const generateImage = createServerFn({ method: "POST" })
 
     const { data: model, error: mErr } = await supabaseAdmin
       .from("models_config")
-      .select("id, model_key, name, cost, api_url, api_key, request_format, prompt_key, fetch_url")
+      .select("id, model_key, name, cost, api_url, api_key, request_format, prompt_key, fetch_url, extra_params")
       .eq("model_key", data.modelKey)
       .maybeSingle();
     if (mErr) throw new Error(mErr.message);
@@ -500,7 +503,6 @@ export const generateImage = createServerFn({ method: "POST" })
       throw new Error("该模型或全局接口设置尚未配置 API Key，请联系管理员");
     }
 
-    // 按官方文档：Authorization Header 鉴权 + JSON Body 仅含 prompt/size/urls
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "Authorization": pureApiKey,
@@ -512,9 +514,26 @@ export const generateImage = createServerFn({ method: "POST" })
     const promptKey = (model as any).prompt_key || "prompt";
     const requestFormat = (model as any).request_format || "async_id";
 
+    // 支持 extra_params 中的占位符替换：{{aspect}} / {{prompt}}
+    const substitute = (v: any): any => {
+      if (typeof v === "string") {
+        return v
+          .replace(/\{\{\s*aspect\s*\}\}/g, size)
+          .replace(/\{\{\s*prompt\s*\}\}/g, data.prompt);
+      }
+      if (Array.isArray(v)) return v.map(substitute);
+      if (v && typeof v === "object") {
+        const o: Record<string, any> = {};
+        for (const k of Object.keys(v)) o[k] = substitute(v[k]);
+        return o;
+      }
+      return v;
+    };
+    const extra = substitute((model as any).extra_params ?? {}) as Record<string, unknown>;
+
     const body: Record<string, unknown> = {
       [promptKey]: data.prompt,
-      size,
+      ...extra, // 每个模型自定义参数（如 size、image_weight、num_inference_steps 等）
     };
     if (Array.isArray(httpRefs) && httpRefs.length > 0) {
       body.urls = httpRefs;

@@ -22,6 +22,7 @@ type ModelCfg = {
   request_format: "async_id" | "sync_url" | null;
   prompt_key: string | null;
   fetch_url: string | null;
+  extra_params?: Record<string, unknown> | null;
   sort_order?: number; updated_at: string;
 };
 
@@ -36,11 +37,13 @@ type EditState = {
   request_format: "async_id" | "sync_url";
   prompt_key: string;
   fetch_url: string;
+  extra_params: string; // raw JSON string in textarea
 };
 
 const empty = (): EditState => ({
   id: "", name: "", model_key: "", description: "", cost: "1",
   api_url: "", api_key: "", request_format: "async_id", prompt_key: "prompt", fetch_url: "",
+  extra_params: "{}",
 });
 
 const maskKey = (k: string | null) => {
@@ -75,7 +78,18 @@ export function ModelsPanel() {
     request_format: (r.request_format ?? "async_id") as "async_id" | "sync_url",
     prompt_key: r.prompt_key ?? "prompt",
     fetch_url: r.fetch_url ?? "",
+    extra_params: JSON.stringify(r.extra_params ?? {}, null, 2),
   });
+
+  const parseExtra = (s: string): Record<string, unknown> | null => {
+    const t = s.trim();
+    if (!t) return {};
+    try {
+      const v = JSON.parse(t);
+      if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+      return v as Record<string, unknown>;
+    } catch { return null; }
+  };
 
   const save = async () => {
     if (!editing) return;
@@ -83,6 +97,8 @@ export function ModelsPanel() {
     if (!editing.name.trim() || !editing.model_key.trim()) return toast.error("名称和 Key 不能为空");
     if (!Number.isFinite(n) || n < 0) return toast.error("请输入有效的点数");
     if (editing.api_url && !/^https?:\/\//i.test(editing.api_url)) return toast.error("API 接口地址必须是 http(s) URL");
+    const extra = parseExtra(editing.extra_params);
+    if (extra === null) return toast.error("额外请求参数必须是合法的 JSON 对象");
     setBusy(true);
     try {
       await update({ data: {
@@ -96,6 +112,7 @@ export function ModelsPanel() {
         request_format: editing.request_format,
         prompt_key: editing.prompt_key.trim() || "prompt",
         fetch_url: editing.fetch_url.trim() || null,
+        extra_params: extra,
       }});
       toast.success("模型已更新");
       setEditing(null);
@@ -110,6 +127,8 @@ export function ModelsPanel() {
     if (!creating.name.trim() || !creating.model_key.trim()) return toast.error("名称和 Key 不能为空");
     if (!Number.isFinite(n) || n < 0) return toast.error("请输入有效的点数");
     if (creating.api_url && !/^https?:\/\//i.test(creating.api_url)) return toast.error("API 接口地址必须是 http(s) URL");
+    const extra = parseExtra(creating.extra_params);
+    if (extra === null) return toast.error("额外请求参数必须是合法的 JSON 对象");
     setBusy(true);
     try {
       await create({ data: {
@@ -122,6 +141,7 @@ export function ModelsPanel() {
         request_format: creating.request_format,
         prompt_key: creating.prompt_key.trim() || "prompt",
         fetch_url: creating.fetch_url.trim() || undefined,
+        extra_params: extra,
       }});
       toast.success("模型添加成功");
       setCreating(null);
@@ -309,6 +329,25 @@ function ModelFormDialog({
                   <Input value={state.fetch_url} onChange={(e) => setState({ ...state, fetch_url: e.target.value })} placeholder="选填，留空将自动生成 wuyinkeji 的查询地址" />
                 </div>
               )}
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] text-muted-foreground">
+                额外请求参数（JSON 对象，按该模型上游 API 文档填写）
+              </label>
+              <textarea
+                value={state.extra_params}
+                onChange={(e) => setState({ ...state, extra_params: e.target.value })}
+                className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-[11px] shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                placeholder={`{\n  "size": "{{aspect}}",\n  "image_weight": 0.6,\n  "num_inference_steps": 30\n}`}
+                spellCheck={false}
+              />
+              <p className="text-[10px] text-muted-foreground/80">
+                这些参数会与 prompt / urls 一起合并进上游请求体。支持占位符：
+                <code className="mx-1 rounded bg-white/5 px-1">{"{{aspect}}"}</code>（比例如 1:1）、
+                <code className="mx-1 rounded bg-white/5 px-1">{"{{prompt}}"}</code>。
+                留空则不发送任何额外字段。
+              </p>
             </div>
 
             <Button className="w-full" onClick={onSubmit} disabled={busy}>保存</Button>
