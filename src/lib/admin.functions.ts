@@ -490,9 +490,13 @@ function extractImageUrl(payload: any): string | null {
          throw new Error(e?.message ?? "提交任务失败");
        }
 
-       const rawFetchUrl = (model as any).fetch_url
-         ? resolveUrl(base_url, (model as any).fetch_url)
-         : `${base_url}/api/async/fetch_result`;
+        let rawFetchUrl = (model as any).fetch_url
+          ? resolveUrl(base_url, (model as any).fetch_url)
+          : `${base_url}/api/async/fetch_result`;
+        // Defensive auto-correction: replace placeholder/example hosts with official endpoint
+        if (!rawFetchUrl || rawFetchUrl.includes("api.example.com")) {
+          rawFetchUrl = "https://api.wuyinkeji.com/api/async/fetch_result";
+        }
        const start = Date.now();
        const TIMEOUT_MS = 60_000;
        const INTERVAL_MS = 2500;

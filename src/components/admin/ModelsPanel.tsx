@@ -306,7 +306,7 @@ function ModelFormDialog({
               {state.request_format === "async_id" && (
                 <div className="mt-3 space-y-1">
                   <label className="text-[11px] text-muted-foreground">查询结果接口（选填，留空将自动派生 /fetch_result）</label>
-                  <Input value={state.fetch_url} onChange={(e) => setState({ ...state, fetch_url: e.target.value })} placeholder="https://api.example.com/api/async/fetch_result" />
+                  <Input value={state.fetch_url} onChange={(e) => setState({ ...state, fetch_url: e.target.value })} placeholder="选填，留空将自动生成 wuyinkeji 的查询地址" />
                 </div>
               )}
             </div>
