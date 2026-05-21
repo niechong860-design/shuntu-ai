@@ -555,8 +555,8 @@ function extractImageUrl(payload: any): string | null {
         // 返回 data.status: 0 初始化 / 1 进行中 / 2 成功 / 3 失败
         const detailUrl = "https://api.wuyinkeji.com/api/async/detail";
         const start = Date.now();
-        const TIMEOUT_MS = 60_000;
-        const INTERVAL_MS = 3000;
+        const TIMEOUT_MS = 240_000; // 4 分钟，给高精度渲染充足时间
+        const INTERVAL_MS = 4000;   // 每 4 秒轮询一次，最多 60 次
         let lastErr: string | null = null;
 
         while (Date.now() - start < TIMEOUT_MS) {
@@ -593,7 +593,7 @@ function extractImageUrl(payload: any): string | null {
             lastErr = e?.message ?? String(e);
           }
         }
-        if (!imageUrl) throw new Error(`上游生成超时，请重试${lastErr ? ` (${lastErr})` : ""}`);
+        if (!imageUrl) throw new Error("服务器生图排队人数较多，请稍后重新提交");
      }
 
      const { data: rpcRes, error: rpcErr } = await supabase.rpc("consume_credits_for_generation", {
