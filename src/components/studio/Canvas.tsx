@@ -35,8 +35,9 @@ type Props = {
   currentModel?: string;
   historyOpen: boolean;
   onHistoryOpenChange: (v: boolean) => void;
-  onSelectHistory: (i: number) => void;
+  onSelectHistory: (url: string, prompt: string, model: string) => void;
 };
+
 
 async function downloadImage(url: string, filename: string) {
   try {
