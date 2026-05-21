@@ -20,8 +20,8 @@ export function TopBar({ credits, onOpenHistory }: Props) {
 
       {/* Right: actions */}
       <div className="flex items-center gap-2">
-        <IconBtn title="History" onClick={onOpenHistory}><History className="h-4 w-4" /></IconBtn>
-        <IconBtn title="Notifications">
+        <IconBtn title="历史记录" onClick={onOpenHistory}><History className="h-4 w-4" /></IconBtn>
+        <IconBtn title="通知">
           <span className="relative">
             <Bell className="h-4 w-4" />
             <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-primary" />
@@ -36,7 +36,7 @@ export function TopBar({ credits, onOpenHistory }: Props) {
         <div className="flex items-center gap-2 rounded-full border border-border bg-white/[0.03] px-3 py-1.5">
           <Zap className="h-3.5 w-3.5 text-primary" fill="currentColor" />
           <span className="font-mono text-xs font-semibold tabular-nums">{credits.toLocaleString()}</span>
-          <span className="text-[10px] font-light uppercase tracking-wider text-muted-foreground">pts</span>
+          <span className="text-[10px] font-light text-muted-foreground">点</span>
         </div>
         <button className="flex items-center gap-1.5 rounded-full bg-gradient-aurora px-3.5 py-1.5 text-xs font-semibold text-primary-foreground shadow-glow transition-transform hover:scale-[1.03]">
           <Plus className="h-3.5 w-3.5" strokeWidth={3} />

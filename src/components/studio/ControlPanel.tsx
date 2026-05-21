@@ -8,17 +8,17 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Slider } from "@/components/ui/slider";
 
 const MODELS = [
-  { id: "flux", name: "Flux.1 Pro", desc: "Photoreal · Cinematic", tag: "HOT" },
-  { id: "mj6", name: "Midjourney V6", desc: "Artistic · Stylized", tag: "VIP" },
-  { id: "sdxl", name: "SDXL Turbo", desc: "Realtime · 1s", tag: "Fast" },
-  { id: "nano", name: "Nano Banana", desc: "Lite drafts", tag: null },
+  { id: "flux", name: "Flux.1 Pro", desc: "写实 · 电影感", tag: "热门" },
+  { id: "mj6", name: "Midjourney V6", desc: "艺术 · 风格化", tag: "会员" },
+  { id: "sdxl", name: "SDXL Turbo", desc: "实时 · 1秒", tag: "极速" },
+  { id: "nano", name: "Nano Banana", desc: "轻量草图", tag: null },
 ];
 const RATIOS = [
-  { id: "1:1", icon: Square, label: "Square" },
-  { id: "16:9", icon: RectangleHorizontal, label: "Landscape" },
-  { id: "9:16", icon: RectangleVertical, label: "Portrait" },
-  { id: "3:4", icon: RectangleVertical, label: "Photo" },
-  { id: "4:3", icon: Monitor, label: "Classic" },
+  { id: "1:1", icon: Square, label: "方形" },
+  { id: "16:9", icon: RectangleHorizontal, label: "横屏" },
+  { id: "9:16", icon: RectangleVertical, label: "竖屏" },
+  { id: "3:4", icon: RectangleVertical, label: "照片" },
+  { id: "4:3", icon: Monitor, label: "经典" },
 ];
 
 type Props = { onGenerate: () => void; generating: boolean };
@@ -28,7 +28,7 @@ export function ControlPanel({ onGenerate, generating }: Props) {
   const [ratio, setRatio] = useState("1:1");
   const [refs, setRefs] = useState<string[]>([]);
   const [prompt, setPrompt] = useState(
-    "Surreal cyberpunk garden at dusk, bioluminescent flora pulsing with emerald light, cinematic wide angle, ultra-detailed",
+    "黄昏时分的超现实赛博朋克花园，生物荧光植物散发翠绿光芒，电影级广角，超精细细节",
   );
   const [cfg, setCfg] = useState([7.5]);
   const [steps, setSteps] = useState([32]);
@@ -51,7 +51,7 @@ export function ControlPanel({ onGenerate, generating }: Props) {
         {/* Reference images — top */}
         <section>
           <div className="mb-2 flex items-center justify-between">
-            <Label>References · img2img</Label>
+            <Label>参考图 · 图生图</Label>
             <span className="text-[10px] font-light text-muted-foreground">
               {refs.length}/5
             </span>
@@ -79,13 +79,13 @@ export function ControlPanel({ onGenerate, generating }: Props) {
 
         {/* Prompt core */}
         <section>
-          <Label>Prompt</Label>
+          <Label>提示词</Label>
           <div className="group rounded-2xl border border-border bg-input/40 transition-all focus-within:border-primary/50 focus-within:shadow-glow">
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={3}
-              placeholder="Describe the image you want to create…"
+              placeholder="描述你想要生成的画面…"
               className="block w-full resize-none rounded-2xl bg-transparent px-4 py-3.5 text-sm font-light leading-relaxed placeholder:text-muted-foreground/50 focus:outline-none"
             />
             <div className="flex items-center justify-between gap-2 border-t border-border/50 px-2.5 py-2">
@@ -101,7 +101,7 @@ export function ControlPanel({ onGenerate, generating }: Props) {
                   </PopoverTrigger>
                   <PopoverContent align="start" className="w-64 border-border bg-popover/95 p-1.5 backdrop-blur-xl">
                     <div className="px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                      Choose model
+                      选择模型
                     </div>
                     {MODELS.map((m) => {
                       const active = m.id === model;
@@ -122,9 +122,9 @@ export function ControlPanel({ onGenerate, generating }: Props) {
                             <div className="flex items-center gap-1.5">
                               <span className={`text-xs font-medium ${active ? "text-primary" : ""}`}>{m.name}</span>
                               {m.tag && (
-                                <span className={`rounded px-1 py-px text-[8px] font-bold uppercase ${
-                                  m.tag === "VIP" ? "bg-gradient-aurora text-primary-foreground"
-                                  : m.tag === "HOT" ? "bg-destructive/80 text-white"
+                                <span className={`rounded px-1 py-px text-[8px] font-bold ${
+                                  m.tag === "会员" ? "bg-gradient-aurora text-primary-foreground"
+                                  : m.tag === "热门" ? "bg-destructive/80 text-white"
                                   : "bg-white/10 text-foreground/70"
                                 }`}>{m.tag}</span>
                               )}
@@ -149,7 +149,7 @@ export function ControlPanel({ onGenerate, generating }: Props) {
                   </PopoverTrigger>
                   <PopoverContent align="start" className="w-auto border-border bg-popover/95 p-2 backdrop-blur-xl">
                     <div className="mb-1.5 px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                      Aspect ratio
+                      画面比例
                     </div>
                     <div className="grid grid-cols-5 gap-1.5">
                       {RATIOS.map((r) => {
@@ -178,8 +178,8 @@ export function ControlPanel({ onGenerate, generating }: Props) {
                 <span className="px-1 font-mono text-[10px] font-light text-muted-foreground">
                   {prompt.length}
                 </span>
-                <IconBtn onClick={() => setPrompt("")} title="Clear"><Eraser className="h-3.5 w-3.5" /></IconBtn>
-                <IconBtn title="Inspire"><Dices className="h-3.5 w-3.5 text-primary" /></IconBtn>
+                <IconBtn onClick={() => setPrompt("")} title="清空"><Eraser className="h-3.5 w-3.5" /></IconBtn>
+                <IconBtn title="灵感"><Dices className="h-3.5 w-3.5 text-primary" /></IconBtn>
               </div>
             </div>
           </div>
@@ -187,9 +187,9 @@ export function ControlPanel({ onGenerate, generating }: Props) {
 
         {/* Advanced sliders */}
         <section className="space-y-3.5">
-          <Label>Advanced</Label>
-          <SliderRow label="CFG Scale" value={cfg[0]} onChange={setCfg} min={1} max={20} step={0.5} hint="Prompt adherence" />
-          <SliderRow label="Steps" value={steps[0]} onChange={setSteps} min={10} max={80} step={1} hint="Render quality" />
+          <Label>高级参数</Label>
+          <SliderRow label="CFG 引导强度" value={cfg[0]} onChange={setCfg} min={1} max={20} step={0.5} hint="提示词贴合度" />
+          <SliderRow label="采样步数" value={steps[0]} onChange={setSteps} min={10} max={80} step={1} hint="渲染质量" />
         </section>
       </div>
 
@@ -204,17 +204,17 @@ export function ControlPanel({ onGenerate, generating }: Props) {
             {generating ? (
               <>
                 <Sparkles className="h-4 w-4 animate-spin" />
-                Generating…
+                生成中…
               </>
             ) : (
               <>
                 <Wand2 className="h-4 w-4" strokeWidth={2.5} />
-                Generate now
+                立即生成
               </>
             )}
           </div>
           <span className="flex items-center gap-1 rounded-lg bg-black/25 px-2 py-1 font-mono text-[10px]">
-            <Zap className="h-2.5 w-2.5" fill="currentColor" /> 2 pts
+            <Zap className="h-2.5 w-2.5" fill="currentColor" /> 消耗 2 点
           </span>
         </button>
       </div>

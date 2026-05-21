@@ -10,12 +10,12 @@ import img6 from "@/assets/gen-6.jpg";
 
 const IMAGES = [img1, img2, img3, img4, img5, img6];
 const META = [
-  { model: "Flux.1 Pro", prompt: "Surreal aurora over dark mountains, ethereal mist", time: "now" },
-  { model: "MJ V6", prompt: "Cyberpunk portrait with holographic green visor", time: "6m ago" },
-  { model: "Flux.1 Pro", prompt: "Brutalist concrete architecture, stormy sky", time: "14m ago" },
-  { model: "SDXL Turbo", prompt: "Liquid metal sculpture, iridescent chrome", time: "1h ago" },
-  { model: "MJ V6", prompt: "Bioluminescent jellyfish, deep ocean emerald", time: "2h ago" },
-  { model: "Nano Banana", prompt: "Vintage analog synthesizer, dark photography", time: "3h ago" },
+  { model: "Flux.1 Pro", prompt: "黑暗山脉上空的超现实极光，缥缈薄雾", time: "刚刚" },
+  { model: "MJ V6", prompt: "戴全息绿色护目镜的赛博朋克人像", time: "6 分钟前" },
+  { model: "Flux.1 Pro", prompt: "粗野主义混凝土建筑，风暴天空", time: "14 分钟前" },
+  { model: "SDXL Turbo", prompt: "液态金属雕塑，虹彩铬合金", time: "1 小时前" },
+  { model: "MJ V6", prompt: "生物荧光水母，深海翠绿", time: "2 小时前" },
+  { model: "Nano Banana", prompt: "复古模拟合成器，暗调摄影", time: "3 小时前" },
 ];
 
 type Props = {
@@ -49,10 +49,10 @@ export function Canvas({ generating, heroIndex, historyOpen, onHistoryOpenChange
             <div>
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4 text-primary" />
-                <h2 className="font-display text-base font-semibold tracking-tight">History</h2>
+                <h2 className="font-display text-base font-semibold tracking-tight">历史记录</h2>
               </div>
               <p className="mt-0.5 text-[11px] font-light text-muted-foreground">
-                248 creations · session #042
+                共 248 张作品 · 会话 #042
               </p>
             </div>
             <button
@@ -126,8 +126,8 @@ function SkeletonShimmer() {
         <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-aurora shadow-glow">
           <Sparkles className="h-7 w-7 animate-pulse text-primary-foreground" />
         </div>
-        <div className="text-sm font-medium text-foreground/90">Rendering your vision…</div>
-        <div className="text-[11px] font-light text-muted-foreground">Diffusion model is hard at work</div>
+        <div className="text-sm font-medium text-foreground/90">正在渲染你的灵感…</div>
+        <div className="text-[11px] font-light text-muted-foreground">扩散模型正在全力工作</div>
         <div className="mt-1 h-1 w-48 overflow-hidden rounded-full bg-white/5">
           <div className="h-full w-1/2 animate-[shimmer_2s_infinite] rounded-full bg-gradient-aurora shadow-glow" />
         </div>
@@ -145,18 +145,18 @@ function Lightbox({ idx, onClose }: { idx: number; onClose: () => void }) {
           <img src={IMAGES[idx]} alt={meta.prompt} className="h-full w-full object-contain" />
         </div>
         <div className="flex w-72 flex-col p-4">
-          <span className="self-start rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-primary">{meta.model}</span>
-          <div className="mt-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Prompt</div>
+          <span className="self-start rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-semibold tracking-wider text-primary">{meta.model}</span>
+          <div className="mt-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">提示词</div>
           <p className="mt-2 text-sm font-light leading-relaxed">{meta.prompt}</p>
           <div className="mt-auto flex flex-col gap-2 pt-4">
             <button className="flex items-center justify-center gap-2 rounded-lg bg-gradient-aurora px-3 py-2.5 text-xs font-semibold text-primary-foreground shadow-glow">
-              <Download className="h-3.5 w-3.5" /> Download
+              <Download className="h-3.5 w-3.5" /> 下载
             </button>
             <button className="flex items-center justify-center gap-2 rounded-lg border border-border bg-white/[0.03] px-3 py-2.5 text-xs font-medium hover:bg-white/[0.06]">
-              <Copy className="h-3.5 w-3.5" /> Copy prompt
+              <Copy className="h-3.5 w-3.5" /> 复制提示词
             </button>
             <button className="flex items-center justify-center gap-2 rounded-lg border border-border bg-white/[0.03] px-3 py-2.5 text-xs font-medium hover:bg-white/[0.06]">
-              <ArrowUpRight className="h-3.5 w-3.5" /> Upscale
+              <ArrowUpRight className="h-3.5 w-3.5" /> 放大重绘
             </button>
           </div>
         </div>
