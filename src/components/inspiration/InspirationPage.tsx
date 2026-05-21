@@ -14,7 +14,7 @@ import {
   toggleCaseLike, toggleCaseFavorite, addCaseComment, publishCase,
   type CaseRow,
 } from "@/lib/inspiration.functions";
-import { listStyleTemplates } from "@/lib/admin.functions";
+import { listStyleTemplates, listModelsConfig } from "@/lib/admin.functions";
 import { setStudioPrefill } from "@/lib/studio-prefill";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
@@ -28,6 +28,8 @@ export function InspirationPage() {
   const fetchFacets = useServerFn(listCaseFacets);
   const fetchStyles = useServerFn(listStyleTemplates);
 
+  const fetchModels = useServerFn(listModelsConfig);
+
   const [items, setItems] = useState<CaseItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
@@ -37,6 +39,7 @@ export function InspirationPage() {
   const [modelKey, setModelKey] = useState("");
   const [sort, setSort] = useState<"latest" | "hot" | "views">("latest");
   const [styles, setStyles] = useState<StyleTpl[]>([]);
+  const [allModels, setAllModels] = useState<{ key: string; name: string }[]>([]);
   const [facets, setFacets] = useState<{ hotTags: { name: string; count: number }[]; models: { key: string; name: string }[] }>({ hotTags: [], models: [] });
   const [openId, setOpenId] = useState<string | null>(null);
   const [publishOpen, setPublishOpen] = useState(false);
@@ -45,6 +48,10 @@ export function InspirationPage() {
     if (!session) return;
     fetchStyles({}).then((d) => setStyles((d ?? []) as StyleTpl[])).catch(() => {});
     fetchFacets({}).then((d) => setFacets(d as any)).catch(() => {});
+    fetchModels({}).then((d) => {
+      const list = (d ?? []) as { model_key: string; name: string }[];
+      setAllModels(list.map((m) => ({ key: m.model_key, name: m.name })));
+    }).catch(() => {});
   }, [session]);
 
   useEffect(() => {
@@ -127,10 +134,10 @@ export function InspirationPage() {
             onChange={setStyleId}
           />
           {/* Model chips */}
-          {facets.models.length > 0 && (
+          {(allModels.length > 0 || facets.models.length > 0) && (
             <ChipRow
               label="模型"
-              items={[{ id: "", name: "全部" }, ...facets.models.map((m) => ({ id: m.key, name: m.name }))]}
+              items={[{ id: "", name: "全部" }, ...(allModels.length > 0 ? allModels : facets.models).map((m) => ({ id: m.key, name: m.name }))]}
               value={modelKey}
               onChange={setModelKey}
             />
@@ -173,7 +180,7 @@ export function InspirationPage() {
         open={publishOpen}
         onOpenChange={setPublishOpen}
         styles={styles}
-        models={facets.models}
+        models={allModels.length > 0 ? allModels : facets.models}
         onPublished={() => {
           // refresh
           setSearch((v) => v);
