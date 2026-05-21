@@ -35,8 +35,8 @@ const RATIOS = [
 type StyleTpl = { id: string; name: string; image_url: string | null; sort_order: number };
 
 type Props = {
-  onGenerateStart: () => void;
-  onGenerateDone: (imageUrl: string | null) => void;
+ onGenerateStart: (info: { prompt: string; modelName: string }) => void;
+ onGenerateDone: (imageUrl: string | null) => void;
   generating: boolean;
 };
 
