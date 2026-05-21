@@ -312,6 +312,7 @@ export type Database = {
           extra_params: Json
           fetch_url: string | null
           id: string
+          is_enabled: boolean
           model_key: string
           name: string
           prompt_key: string
@@ -328,6 +329,7 @@ export type Database = {
           extra_params?: Json
           fetch_url?: string | null
           id?: string
+          is_enabled?: boolean
           model_key: string
           name: string
           prompt_key?: string
@@ -344,6 +346,7 @@ export type Database = {
           extra_params?: Json
           fetch_url?: string | null
           id?: string
+          is_enabled?: boolean
           model_key?: string
           name?: string
           prompt_key?: string

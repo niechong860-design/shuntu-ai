@@ -159,6 +159,7 @@ export const listModelsConfig = createServerFn({ method: "POST" })
     const { data, error } = await supabase
       .from("models_config")
       .select("id, model_key, name, description, cost, sort_order, updated_at")
+      .eq("is_enabled", true)
       .order("sort_order", { ascending: true });
     if (error) throw new Error(error.message);
     return data ?? [];
@@ -171,7 +172,7 @@ export const adminListModelsConfig = createServerFn({ method: "POST" })
     await assertAdmin(context.userId);
     const { data, error } = await supabaseAdmin
       .from("models_config")
-      .select("id, model_key, name, description, cost, api_url, api_key, request_format, prompt_key, fetch_url, extra_params, sort_order, updated_at")
+      .select("id, model_key, name, description, cost, api_url, api_key, request_format, prompt_key, fetch_url, extra_params, is_enabled, sort_order, updated_at")
       .order("sort_order", { ascending: true });
     if (error) throw new Error(error.message);
     return data ?? [];
@@ -207,6 +208,7 @@ export const adminUpdateModel = createServerFn({ method: "POST" })
       prompt_key: z.string().min(1).max(64).optional(),
       fetch_url: z.string().min(1).max(500).nullable().optional(),
       extra_params: z.record(z.string(), z.any()).optional(),
+      is_enabled: z.boolean().optional(),
       sort_order: z.number().int().min(0).max(10000).optional(),
     }).parse(d),
   )
@@ -514,11 +516,12 @@ export const generateImage = createServerFn({ method: "POST" })
 
     const { data: model, error: mErr } = await supabaseAdmin
       .from("models_config")
-      .select("id, model_key, name, cost, api_url, api_key, request_format, prompt_key, fetch_url, extra_params")
+      .select("id, model_key, name, cost, api_url, api_key, request_format, prompt_key, fetch_url, extra_params, is_enabled")
       .eq("model_key", data.modelKey)
       .maybeSingle();
     if (mErr) throw new Error(mErr.message);
     if (!model) throw new Error("模型不存在");
+    if (model.is_enabled === false) throw new Error("该模型已被管理员停用");
     if (!model.api_url) throw new Error("该模型尚未配置 API 接口地址，请联系管理员");
 
     const { data: prof, error: pErr } = await supabase

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
 import { Pencil, RefreshCw, Sparkles, Plus, Trash2, KeyRound, Link as LinkIcon, Globe, Save } from "lucide-react";
 import { toast } from "sonner";
 
@@ -23,6 +24,7 @@ type ModelCfg = {
   prompt_key: string | null;
   fetch_url: string | null;
   extra_params?: Record<string, unknown> | null;
+  is_enabled?: boolean;
   sort_order?: number; updated_at: string;
 };
 
@@ -158,6 +160,17 @@ export function ModelsPanel() {
     } catch (e: any) { toast.error(e.message); load(); }
   };
 
+  const toggleEnabled = async (r: ModelCfg, next: boolean) => {
+    setRows(prev => prev.map(x => x.id === r.id ? { ...x, is_enabled: next } : x));
+    try {
+      await update({ data: { id: r.id, is_enabled: next } });
+      toast.success(next ? `已启用「${r.name}」` : `已停用「${r.name}」`);
+    } catch (e: any) {
+      toast.error(e.message);
+      setRows(prev => prev.map(x => x.id === r.id ? { ...x, is_enabled: !next } : x));
+    }
+  };
+
   return (
     <div className="space-y-3">
       <GlobalConfigCard />
@@ -182,6 +195,7 @@ export function ModelsPanel() {
               <TableHead>API 接口地址</TableHead>
               <TableHead>API Key</TableHead>
               <TableHead className="text-right">费率</TableHead>
+              <TableHead className="text-center">启用</TableHead>
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
@@ -220,6 +234,17 @@ export function ModelsPanel() {
                   ) : <span className="text-muted-foreground/60">—</span>}
                 </TableCell>
                 <TableCell className="text-right font-mono tabular-nums text-primary">{Number(r.cost)} 点</TableCell>
+                <TableCell className="text-center">
+                  <div className="flex items-center justify-center gap-2">
+                    <Switch
+                      checked={r.is_enabled !== false}
+                      onCheckedChange={(v) => toggleEnabled(r, v)}
+                    />
+                    <span className={`text-[10px] ${r.is_enabled !== false ? "text-emerald-400" : "text-muted-foreground"}`}>
+                      {r.is_enabled !== false ? "启用" : "停用"}
+                    </span>
+                  </div>
+                </TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button variant="ghost" size="sm" onClick={() => openEdit(r)}>
@@ -244,7 +269,7 @@ export function ModelsPanel() {
               </TableRow>
             ))}
             {rows.length === 0 && !loading && (
-              <TableRow><TableCell colSpan={7} className="text-center text-xs text-muted-foreground">暂无模型</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center text-xs text-muted-foreground">暂无模型</TableCell></TableRow>
             )}
           </TableBody>
         </Table>
