@@ -277,109 +277,175 @@ function extractImageUrl(payload: any): string | null {
     payload?.image_url,
     payload?.image,
     payload?.output?.[0],
-    payload?.images?.[0]?.url,
-    payload?.images?.[0],
-    payload?.result?.url,
-    payload?.result?.image,
-    payload?.data?.url,
-    payload?.data?.image_url,
-  ];
-  for (const c of candidates) {
-    if (typeof c === "string" && c.length > 0) return c;
-  }
-  return null;
-}
+     payload?.images?.[0]?.url,
+     payload?.images?.[0],
+     payload?.result?.url,
+     payload?.result?.image,
+     payload?.data?.url,
+     payload?.data?.image_url,
+     payload?.data?.image,
+     payload?.data?.images?.[0]?.url,
+     payload?.data?.images?.[0],
+     payload?.data?.result?.url,
+     payload?.data?.urls?.[0],
+     payload?.urls?.[0],
+   ];
+   for (const c of candidates) {
+     if (typeof c === "string" && /^https?:\/\//i.test(c)) return c;
+   }
+   // Deep scan for any http(s) url string within payload
+   try {
+     const seen = new Set<any>();
+     const stack: any[] = [payload];
+     while (stack.length) {
+       const v = stack.pop();
+       if (!v || seen.has(v)) continue;
+       if (typeof v === "string") {
+         if (/^https?:\/\/\S+\.(png|jpe?g|webp|gif|bmp)/i.test(v)) return v;
+         continue;
+       }
+       if (typeof v === "object") {
+         seen.add(v);
+         for (const k of Object.keys(v)) stack.push((v as any)[k]);
+       }
+     }
+   } catch { /* ignore */ }
+   return null;
+ }
 
-export const generateImage = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z.object({
-      modelKey: z.string().min(1).max(64),
-      prompt: z.string().min(1).max(4000),
-      aspectRatio: z.string().min(1).max(16).default("1:1"),
-      referenceImages: z.array(z.string().url().or(z.string().startsWith("data:"))).max(5).optional(),
-    }).parse(d),
-  )
-  .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
+ // Derive the async fetch_result endpoint from the configured submit URL.
+ // e.g. https://api.wuyinkeji.com/api/async/image_gpt -> https://api.wuyinkeji.com/api/async/fetch_result
+ function deriveFetchResultUrl(submitUrl: string): string {
+   try {
+     const u = new URL(submitUrl);
+     const parts = u.pathname.split("/").filter(Boolean);
+     if (parts.length > 0) parts[parts.length - 1] = "fetch_result";
+     else parts.push("fetch_result");
+     u.pathname = "/" + parts.join("/");
+     u.search = "";
+     return u.toString();
+   } catch {
+     return submitUrl.replace(/\/[^/]*$/, "/fetch_result");
+   }
+ }
 
-    // 1. Look up model config (admin client to read api_key)
-    const { data: model, error: mErr } = await supabaseAdmin
-      .from("models_config")
-      .select("id, model_key, name, cost, api_url, api_key")
-      .eq("model_key", data.modelKey)
-      .maybeSingle();
-    if (mErr) throw new Error(mErr.message);
-    if (!model) throw new Error("模型不存在");
-    if (!model.api_url) throw new Error("该模型尚未配置 API 接口地址，请联系管理员");
+ const VALID_SIZES = new Set(["auto","1:1","2:3","16:9","9:16","4:3","3:4","21:9","9:21","1:3","3:1","1:2"]);
 
-    // 2. Pre-check balance (RLS-scoped read as user)
-    const { data: prof, error: pErr } = await supabase
-      .from("profiles")
-      .select("credits")
-      .eq("id", userId)
-      .maybeSingle();
-    if (pErr) throw new Error(pErr.message);
-    if (!prof || Number(prof.credits) < Number(model.cost)) {
-      throw new Error("您的算力余额不足，请联系老板兑换充值卡密");
-    }
+ export const generateImage = createServerFn({ method: "POST" })
+   .middleware([requireSupabaseAuth])
+   .inputValidator((d) =>
+     z.object({
+       modelKey: z.string().min(1).max(64),
+       prompt: z.string().min(1).max(4000),
+       aspectRatio: z.string().min(1).max(16).default("1:1"),
+       referenceImages: z.array(z.string().url().or(z.string().startsWith("data:"))).max(5).optional(),
+     }).parse(d),
+   )
+   .handler(async ({ data, context }) => {
+     const { supabase, userId } = context;
 
-    // 3. Call upstream API
-    let imageUrl: string | null = null;
-    let upstreamError: string | null = null;
-    try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (model.api_key) headers["Authorization"] = `Bearer ${model.api_key}`;
-      const body = {
-        model: model.model_key,
-        prompt: data.prompt,
-        aspect_ratio: data.aspectRatio,
-        size: data.aspectRatio,
-        n: 1,
-        reference_images: data.referenceImages ?? [],
-      };
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 60_000);
-      const res = await fetch(model.api_url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal: ctrl.signal,
-      });
-      clearTimeout(timer);
-      const text = await res.text();
-      let json: any = null;
-      try { json = JSON.parse(text); } catch { /* not json */ }
-      if (!res.ok) {
-        upstreamError = `上游接口返回 ${res.status}: ${(json?.error?.message ?? text).slice(0, 200)}`;
-      } else {
-        imageUrl = extractImageUrl(json ?? text);
-        if (!imageUrl) upstreamError = "上游返回未识别到图片地址";
-      }
-    } catch (e: any) {
-      upstreamError = e?.name === "AbortError" ? "上游接口超时" : `请求上游失败: ${e?.message ?? "未知错误"}`;
-    }
+     // 1. Look up model config (admin client to read api_key)
+     const { data: model, error: mErr } = await supabaseAdmin
+       .from("models_config")
+       .select("id, model_key, name, cost, api_url, api_key")
+       .eq("model_key", data.modelKey)
+       .maybeSingle();
+     if (mErr) throw new Error(mErr.message);
+     if (!model) throw new Error("模型不存在");
+     if (!model.api_url) throw new Error("该模型尚未配置 API 接口地址，请联系管理员");
 
-    if (!imageUrl) {
-      throw new Error(upstreamError ?? "生成失败");
-    }
+     // 2. Pre-check balance (RLS-scoped read as user) — actual deduction only on success
+     const { data: prof, error: pErr } = await supabase
+       .from("profiles")
+       .select("credits")
+       .eq("id", userId)
+       .maybeSingle();
+     if (pErr) throw new Error(pErr.message);
+     if (!prof || Number(prof.credits) < Number(model.cost)) {
+       throw new Error("您的算力余额不足，请联系老板兑换充值卡密");
+     }
 
-    // 4. Deduct + log (atomic via RPC) — only on success
-    const { data: rpcRes, error: rpcErr } = await supabase.rpc("consume_credits_for_generation", {
-      _model_key: data.modelKey,
-      _prompt: data.prompt,
-    });
-    if (rpcErr) throw new Error(rpcErr.message);
-    const row = Array.isArray(rpcRes) ? rpcRes[0] : rpcRes;
-    if (!row?.success) throw new Error(row?.message ?? "扣费失败");
+     const headers: Record<string, string> = { "Content-Type": "application/json" };
+     if (model.api_key) headers["Authorization"] = `Bearer ${model.api_key}`;
 
-    return {
-      success: true,
-      imageUrl,
-      cost: Number(row.cost),
-      credits: Number(row.credits),
-    };
-  });
+     const size = VALID_SIZES.has(data.aspectRatio) ? data.aspectRatio : "auto";
+     const httpRefs = (data.referenceImages ?? []).filter((u) => /^https?:\/\//i.test(u));
+
+     // 3. Step 1 — Submit async task
+     const submitBody: Record<string, unknown> = { prompt: data.prompt, size };
+     if (httpRefs.length > 0) submitBody.urls = httpRefs;
+
+     let taskId: string | null = null;
+     try {
+       const res = await fetch(model.api_url, {
+         method: "POST",
+         headers,
+         body: JSON.stringify(submitBody),
+       });
+       const text = await res.text();
+       let json: any = null;
+       try { json = JSON.parse(text); } catch { /* not json */ }
+       if (!res.ok) {
+         throw new Error(`上游提交失败 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
+       }
+       if (json?.code && Number(json.code) !== 200) {
+         throw new Error(`上游提交失败: ${json?.msg ?? "未知错误"}`);
+       }
+       taskId = json?.data?.id ?? json?.id ?? null;
+       if (!taskId) throw new Error("上游未返回任务ID");
+     } catch (e: any) {
+       throw new Error(e?.message ?? "提交任务失败");
+     }
+
+     // 4. Step 2 — Poll fetch_result every 2.5s, up to 60s
+     const fetchUrl = deriveFetchResultUrl(model.api_url);
+     const start = Date.now();
+     const TIMEOUT_MS = 60_000;
+     const INTERVAL_MS = 2500;
+     let imageUrl: string | null = null;
+
+     while (Date.now() - start < TIMEOUT_MS) {
+       await new Promise((r) => setTimeout(r, INTERVAL_MS));
+       try {
+         const qUrl = `${fetchUrl}${fetchUrl.includes("?") ? "&" : "?"}id=${encodeURIComponent(taskId)}`;
+         const r = await fetch(qUrl, { method: "GET", headers });
+         const t = await r.text();
+         let j: any = null;
+         try { j = JSON.parse(t); } catch { /* */ }
+         if (!r.ok) continue;
+         // Some providers return status fields; ignore explicit "failed"
+         const status = j?.data?.status ?? j?.status;
+         if (typeof status === "string" && /fail|error/i.test(status)) {
+           throw new Error(`上游生成失败: ${j?.msg ?? j?.data?.message ?? status}`);
+         }
+         const url = extractImageUrl(j);
+         if (url) { imageUrl = url; break; }
+       } catch (e: any) {
+         // Re-throw only explicit upstream failures; transient errors -> keep polling
+         if (e?.message?.startsWith("上游生成失败")) throw e;
+       }
+     }
+
+     if (!imageUrl) {
+       throw new Error("上游生成超时，请重试");
+     }
+
+     // 5. Deduct + log (atomic via RPC) — only on success
+     const { data: rpcRes, error: rpcErr } = await supabase.rpc("consume_credits_for_generation", {
+       _model_key: data.modelKey,
+       _prompt: data.prompt,
+     });
+     if (rpcErr) throw new Error(rpcErr.message);
+     const row = Array.isArray(rpcRes) ? rpcRes[0] : rpcRes;
+     if (!row?.success) throw new Error(row?.message ?? "扣费失败");
+
+     return {
+       success: true,
+       imageUrl,
+       cost: Number(row.cost),
+       credits: Number(row.credits),
+     };
+   });
 
 // --- Role check ---
 export const checkIsAdmin = createServerFn({ method: "POST" })
