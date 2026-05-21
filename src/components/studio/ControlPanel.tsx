@@ -30,29 +30,7 @@ const RATIOS = [
   { id: "4:5", icon: RectangleVertical, label: "竖版" },
 ];
 
-// 风格模板：只控制 灯光 / 背景 / 氛围 / 质感 / 色调 / 广告风格
-// 严禁出现：比例 / 分辨率 / 尺寸 / 像素 / --ar / 16:9 / 4K 等字眼
-const STYLE_TEMPLATES: { id: string; name: string; desc: string; emoji: string; prompt: string }[] = [
-  { id: "none", name: "无风格", desc: "仅按提示词生成", emoji: "✖", prompt: "" },
-  { id: "premium_ecom", name: "高级电商", desc: "柔光 · 高级商业大片", emoji: "🛍", prompt: "high-end e-commerce commercial photography, soft cinematic studio lighting, clean composition, premium glossy product feel, refined color grading, luxury advertising aesthetic" },
-  { id: "xhs", name: "小红书", desc: "清新文艺日系氛围", emoji: "📔", prompt: "Xiaohongshu lifestyle photography, soft natural daylight, fresh airy atmosphere, pastel warm tones, cozy aesthetic background, instagrammable lifestyle styling" },
-  { id: "ins_minimal", name: "INS极简", desc: "极简留白 · 性冷淡", emoji: "◻", prompt: "minimalist instagram aesthetic, lots of negative space, neutral muted palette, soft diffused lighting, clean geometric composition, editorial calm mood" },
-  { id: "white_ecom", name: "白底电商", desc: "纯白棚拍商业图", emoji: "⬜", prompt: "pure white seamless studio background, even soft box lighting, crisp clean shadows, commercial catalog product photography, sharp clear details" },
-  { id: "tech", name: "科技质感", desc: "冷色调 · 未来科技", emoji: "🛰", prompt: "futuristic tech product photography, cool cyan and blue tones, sleek dark gradient background, sharp rim lighting, glowing accent highlights, premium hi-tech mood" },
-  { id: "trend_ad", name: "潮流广告", desc: "撞色潮酷海报感", emoji: "🎨", prompt: "trendy streetwear advertising poster, bold contrasting colors, dynamic playful composition, punchy saturated palette, modern editorial energy" },
-  { id: "jewelry", name: "珠宝高级感", desc: "深色丝绒 · 璀璨反射", emoji: "💎", prompt: "luxury jewelry photography, dark velvet backdrop, sparkling specular highlights, precise focused lighting, refined reflections, opulent premium mood" },
-  { id: "beauty", name: "美妆海报", desc: "柔光质感美妆大片", emoji: "💄", prompt: "high-end beauty cosmetics poster, soft glowing skin-friendly lighting, silky smooth gradient background, elegant pastel or rose tones, dewy luxurious atmosphere" },
-  { id: "food", name: "食品广告", desc: "诱人质感 · 食欲色调", emoji: "🍔", prompt: "appetizing food commercial photography, warm golden lighting, rich appetizing colors, mouthwatering textures, steam and freshness, premium culinary mood" },
-  { id: "shoes", name: "鞋靴高级感", desc: "动感光影 · 潮鞋大片", emoji: "👟", prompt: "premium footwear advertising, dramatic directional lighting, dynamic shadow play, textured concrete or stone surface, hype sneaker editorial mood" },
-  { id: "outdoor", name: "户外露营", desc: "自然光 · 山野氛围", emoji: "🏕", prompt: "outdoor camping lifestyle scene, natural golden hour sunlight, rugged mountain or forest environment, earthy organic tones, adventurous warm atmosphere" },
-  { id: "luxury_stage", name: "奢侈品展台", desc: "石材展台 · 博物馆光", emoji: "🏛", prompt: "luxury product display stage, marble or stone pedestal, museum-grade spotlight lighting, elegant deep background, sophisticated high-end gallery atmosphere" },
-  { id: "white_studio", name: "极简白棚", desc: "纯净光影 · 极简棚拍", emoji: "🔳", prompt: "minimal white studio set, soft wraparound lighting, gentle natural shadows, pure clean backdrop, refined minimalist product mood" },
-  { id: "dark_premium", name: "暗黑高级感", desc: "暗色调 · 戏剧光影", emoji: "🖤", prompt: "dark moody premium product photography, deep black background, dramatic chiaroscuro lighting, rich shadows, cinematic luxurious atmosphere" },
-];
-
-// 商品保护：固定追加，保证商品本体不被改动
-const PRODUCT_PROTECTION_PROMPT =
-  "Preserve the exact original product. Do not redesign or replace the product. Keep the exact shape, logo, material, stitching, structure, proportions and colors unchanged. Only optimize lighting, shadows, background and composition.";
+type StyleTpl = { id: string; name: string; image_url: string | null; sort_order: number };
 
 type Props = {
   onGenerateStart: () => void;
