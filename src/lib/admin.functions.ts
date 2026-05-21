@@ -580,14 +580,13 @@ export const checkImageStatus = createServerFn({ method: "POST" })
     const pureApiKey = normalizeUpstreamApiKey(global_api_key);
     if (!pureApiKey) throw new Error("尚未配置全局 API Key，请联系管理员");
 
-    const fetchResultUrl = "https://api.wuyinkeji.com/api/async/fetch_result";
-    const r = await fetch(fetchResultUrl, {
-      method: "POST",
+    const detailUrl = `https://api.wuyinkeji.com/api/async/detail?id=${encodeURIComponent(data.taskId)}`;
+    const r = await fetch(detailUrl, {
+      method: "GET",
       headers: {
         "Content-Type": "application/json",
         "Authorization": pureApiKey,
       },
-      body: JSON.stringify({ id: data.taskId }),
     });
     const t = await r.text();
     const j = parseUpstreamResponse(t);
