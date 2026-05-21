@@ -84,9 +84,12 @@ export type Database = {
           cost: number
           created_at: string
           description: string | null
+          fetch_url: string | null
           id: string
           model_key: string
           name: string
+          prompt_key: string
+          request_format: string
           sort_order: number
           updated_at: string
         }
@@ -96,9 +99,12 @@ export type Database = {
           cost?: number
           created_at?: string
           description?: string | null
+          fetch_url?: string | null
           id?: string
           model_key: string
           name: string
+          prompt_key?: string
+          request_format?: string
           sort_order?: number
           updated_at?: string
         }
@@ -108,9 +114,12 @@ export type Database = {
           cost?: number
           created_at?: string
           description?: string | null
+          fetch_url?: string | null
           id?: string
           model_key?: string
           name?: string
+          prompt_key?: string
+          request_format?: string
           sort_order?: number
           updated_at?: string
         }
