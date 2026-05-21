@@ -155,6 +155,7 @@ export function ModelsPanel() {
             <TableRow>
               <TableHead>模型</TableHead>
               <TableHead>Key</TableHead>
+              <TableHead>模式</TableHead>
               <TableHead>API 接口地址</TableHead>
               <TableHead>API Key</TableHead>
               <TableHead className="text-right">费率</TableHead>
