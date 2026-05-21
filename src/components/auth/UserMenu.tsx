@@ -85,7 +85,8 @@ export function UserMenu({ onSwitchAccount }: { onSwitchAccount: () => void }) {
             </DropdownMenuItem>
             {isAdmin && (
               <DropdownMenuItem onSelect={() => setAdminOpen(true)} className="cursor-pointer gap-2.5 rounded-md px-2.5 py-2 text-xs text-primary focus:bg-primary/10">
-                <Shield className="h-3.5 w-3.5" /> 管理员后台
+                {isFounder ? <Crown className="h-3.5 w-3.5" /> : <Shield className="h-3.5 w-3.5" />}
+                {isFounder ? "创始人后台" : "管理员后台"}
               </DropdownMenuItem>
             )}
             <DropdownMenuItem
@@ -114,7 +115,7 @@ export function UserMenu({ onSwitchAccount }: { onSwitchAccount: () => void }) {
       </DropdownMenu>
 
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
-      {isAdmin && <AdminDashboard open={adminOpen} onOpenChange={setAdminOpen} />}
+      {isAdmin && <AdminDashboard open={adminOpen} onOpenChange={setAdminOpen} isFounder={isFounder} />}
     </>
   );
 }
