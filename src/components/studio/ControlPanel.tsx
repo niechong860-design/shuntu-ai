@@ -83,8 +83,14 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
     if (typeof p.prompt === "string") setPrompt(p.prompt);
     if (p.aspectRatio) setRatio(p.aspectRatio);
     if (p.size) setSize(p.size);
-    if (p.styleId) setStyleId(p.styleId);
     if (p.modelKey) setModelKey(p.modelKey);
+    if (p.fromInspiration) {
+      // 灵感广场优先：清空风格模板，避免提示词冲突
+      setStyleId("");
+      setInspirationMode(true);
+    } else if (p.styleId) {
+      setStyleId(p.styleId);
+    }
     toast.success("已载入案例参数，可直接生成");
   }, []);
 
