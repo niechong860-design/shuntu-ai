@@ -33,41 +33,41 @@
   --color-aurora-glow: var(--aurora-glow);
   --color-surface: var(--surface);
   --color-surface-elevated: var(--surface-elevated);
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Space Grotesk", "Inter", sans-serif;
+  --font-sans: "Urbanist", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", "Urbanist", sans-serif;
 }
 
 :root {
-  --radius: 0.75rem;
-  /* Dark by default — this is a dark-only app */
-  --background: oklch(0.14 0.005 240);
+  --radius: 0.875rem;
+  /* Deep ink background */
+  --background: oklch(0.10 0.003 260);
   --foreground: oklch(0.97 0.005 240);
 
-  --surface: oklch(0.18 0.006 240);
-  --surface-elevated: oklch(0.22 0.008 240);
+  --surface: oklch(0.155 0.004 260);
+  --surface-elevated: oklch(0.19 0.005 260);
 
-  --card: oklch(0.19 0.006 240 / 0.6);
+  --card: oklch(0.155 0.004 260);
   --card-foreground: oklch(0.97 0.005 240);
-  --popover: oklch(0.18 0.006 240);
+  --popover: oklch(0.16 0.004 260);
   --popover-foreground: oklch(0.97 0.005 240);
 
   --primary: oklch(0.86 0.21 155);
   --primary-foreground: oklch(0.15 0.02 160);
 
-  --secondary: oklch(0.24 0.008 240);
+  --secondary: oklch(0.22 0.006 260);
   --secondary-foreground: oklch(0.96 0.005 240);
 
-  --muted: oklch(0.22 0.006 240);
-  --muted-foreground: oklch(0.65 0.01 240);
+  --muted: oklch(0.20 0.005 260);
+  --muted-foreground: oklch(0.62 0.01 240);
 
-  --accent: oklch(0.28 0.02 160);
+  --accent: oklch(0.26 0.02 160);
   --accent-foreground: oklch(0.97 0.005 240);
 
   --destructive: oklch(0.62 0.22 22);
   --destructive-foreground: oklch(0.98 0.005 240);
 
-  --border: oklch(1 0 0 / 0.08);
-  --input: oklch(1 0 0 / 0.06);
+  --border: oklch(1 0 0 / 0.07);
+  --input: oklch(1 0 0 / 0.05);
   --ring: oklch(0.86 0.21 155 / 0.6);
 
   --aurora: oklch(0.86 0.21 155);
