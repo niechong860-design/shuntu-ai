@@ -27,8 +27,73 @@ type Tpl = {
 export function StyleTemplatesPanel() {
   return (
     <div className="space-y-6">
+      <ContactInfoCard />
       <SystemPromptCard />
       <TemplatesGrid />
+    </div>
+  );
+}
+
+function ContactInfoCard() {
+  const getFn = useServerFn(adminGetContactInfo);
+  const setFn = useServerFn(adminSetContactInfo);
+  const [wechat, setWechat] = useState("");
+  const [qq, setQq] = useState("");
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = async () => {
+    try {
+      const r: any = await getFn({});
+      setWechat(r.wechat ?? "");
+      setQq(r.qq ?? "");
+      setUpdatedAt(r.updated_at ?? null);
+    } catch (e: any) { toast.error(e.message); }
+  };
+  useEffect(() => { load(); }, []);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await setFn({ data: { wechat, qq } });
+      toast.success("已保存联系方式");
+      load();
+    } catch (e: any) { toast.error(e.message); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="rounded-lg border border-border/60 bg-white/[0.03] p-4 space-y-3">
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <Headphones className="h-4 w-4 text-primary" />
+        客服联系方式
+      </div>
+      <p className="text-xs text-muted-foreground">
+        用户点击顶部「联系客服」时展示。留空则该项不显示。
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1">
+          <label className="text-[11px] text-muted-foreground">微信 (WX)</label>
+          <Input value={wechat} onChange={(e) => setWechat(e.target.value)} placeholder="例如：shuntu_service" />
+        </div>
+        <div className="space-y-1">
+          <label className="text-[11px] text-muted-foreground">QQ</label>
+          <Input value={qq} onChange={(e) => setQq(e.target.value)} placeholder="例如：123456789" />
+        </div>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] text-muted-foreground">
+          {updatedAt ? `最后更新：${new Date(updatedAt).toLocaleString()}` : ""}
+        </span>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={load}>
+            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />刷新
+          </Button>
+          <Button size="sm" onClick={save} disabled={busy}>
+            <Save className="mr-1.5 h-3.5 w-3.5" />保存
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
