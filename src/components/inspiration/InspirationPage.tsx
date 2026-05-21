@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Heart, Bookmark, Eye, Search, Sparkles, X, Copy, Wand2,
-  MessageSquare, Send, Plus,
+  MessageSquare, Send, Plus, Upload, Image as ImageIcon, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -17,6 +17,7 @@ import {
 import { listStyleTemplates } from "@/lib/admin.functions";
 import { setStudioPrefill } from "@/lib/studio-prefill";
 import { useAuth } from "@/hooks/use-auth";
+import { supabase } from "@/integrations/supabase/client";
 
 type StyleTpl = { id: string; name: string; image_url: string | null };
 type CaseItem = CaseRow;
