@@ -77,6 +77,39 @@ export type Database = {
         }
         Relationships: []
       }
+      models_config: {
+        Row: {
+          cost: number
+          created_at: string
+          description: string | null
+          id: string
+          model_key: string
+          name: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          cost?: number
+          created_at?: string
+          description?: string | null
+          id?: string
+          model_key: string
+          name: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          cost?: number
+          created_at?: string
+          description?: string | null
+          id?: string
+          model_key?: string
+          name?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -133,6 +166,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      consume_credits_for_generation: {
+        Args: { _model_key: string; _prompt: string }
+        Returns: {
+          cost: number
+          credits: number
+          message: string
+          success: boolean
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

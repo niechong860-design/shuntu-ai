@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Wand2, Eraser, Sparkles, Plus, X, Dices, Zap,
   ChevronDown, Square, RectangleHorizontal, RectangleVertical, Monitor,
@@ -6,13 +6,15 @@ import {
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
+import { useServerFn } from "@tanstack/react-start";
+import { listModelsConfig, consumeGeneration } from "@/lib/admin.functions";
+import { useAuth } from "@/hooks/use-auth";
+import { toast } from "sonner";
 
-const MODELS = [
-  { id: "flux", name: "Flux.1 Pro", desc: "写实 · 电影感", tag: "热门" },
-  { id: "mj6", name: "Midjourney V6", desc: "艺术 · 风格化", tag: "会员" },
-  { id: "sdxl", name: "SDXL Turbo", desc: "实时 · 1秒", tag: "极速" },
-  { id: "nano", name: "Nano Banana", desc: "轻量草图", tag: null },
-];
+type ModelCfg = {
+  id: string; model_key: string; name: string; description: string | null; cost: number;
+};
+
 const RATIOS = [
   { id: "1:1", icon: Square, label: "方形" },
   { id: "16:9", icon: RectangleHorizontal, label: "横屏" },
@@ -24,7 +26,12 @@ const RATIOS = [
 type Props = { onGenerate: () => void; generating: boolean };
 
 export function ControlPanel({ onGenerate, generating }: Props) {
-  const [model, setModel] = useState("flux");
+  const fetchModels = useServerFn(listModelsConfig);
+  const consume = useServerFn(consumeGeneration);
+  const { refreshProfile, session } = useAuth();
+
+  const [models, setModels] = useState<ModelCfg[]>([]);
+  const [modelKey, setModelKey] = useState<string>("");
   const [ratio, setRatio] = useState("1:1");
   const [refs, setRefs] = useState<string[]>([]);
   const [prompt, setPrompt] = useState(
@@ -33,9 +40,20 @@ export function ControlPanel({ onGenerate, generating }: Props) {
   const [cfg, setCfg] = useState([7.5]);
   const [steps, setSteps] = useState([32]);
 
-  const activeModel = MODELS.find((m) => m.id === model)!;
+  useEffect(() => {
+    if (!session) return;
+    fetchModels({}).then((data) => {
+      const list = (data ?? []) as ModelCfg[];
+      setModels(list);
+      if (list[0] && !modelKey) setModelKey(list[0].model_key);
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
+
+  const activeModel = models.find((m) => m.model_key === modelKey);
   const activeRatio = RATIOS.find((r) => r.id === ratio)!;
   const ActiveRatioIcon = activeRatio.icon;
+  const activeCost = Number(activeModel?.cost ?? 0);
 
   const addRef = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -43,6 +61,19 @@ export function ControlPanel({ onGenerate, generating }: Props) {
     e.target.value = "";
   };
   const removeRef = (i: number) => setRefs((arr) => arr.filter((_, idx) => idx !== i));
+
+  const handleGenerate = async () => {
+    if (generating || !activeModel) return;
+    try {
+      const r = await consume({ data: { modelKey: activeModel.model_key, prompt } });
+      if (!r.success) { toast.error(r.message); return; }
+      toast.success(`已扣除 ${r.cost} 点，剩余 ${r.credits}`);
+      await refreshProfile();
+      onGenerate();
+    } catch (e: any) {
+      toast.error(e.message ?? "生成失败");
+    }
+  };
 
   return (
     <aside className="flex h-full min-h-0 flex-col overflow-hidden border-r border-border/60 bg-card/40">
@@ -95,20 +126,23 @@ export function ControlPanel({ onGenerate, generating }: Props) {
                   <PopoverTrigger asChild>
                     <button className="flex items-center gap-1.5 rounded-lg border border-border bg-white/[0.03] px-2.5 py-1.5 text-[11px] font-medium transition-colors hover:border-primary/40 hover:bg-primary/[0.05]">
                       <Sparkles className="h-3 w-3 text-primary" />
-                      {activeModel.name}
+                      {activeModel?.name ?? "选择模型"}
                       <ChevronDown className="h-3 w-3 text-muted-foreground" />
                     </button>
                   </PopoverTrigger>
-                  <PopoverContent align="start" className="w-64 border-border bg-popover/95 p-1.5 backdrop-blur-xl">
+                  <PopoverContent align="start" className="w-72 border-border bg-popover/95 p-1.5 backdrop-blur-xl">
                     <div className="px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                       选择模型
                     </div>
-                    {MODELS.map((m) => {
-                      const active = m.id === model;
+                    {models.length === 0 && (
+                      <div className="px-2 py-3 text-center text-[11px] text-muted-foreground">加载中…</div>
+                    )}
+                    {models.map((m) => {
+                      const active = m.model_key === modelKey;
                       return (
                         <button
                           key={m.id}
-                          onClick={() => setModel(m.id)}
+                          onClick={() => setModelKey(m.model_key)}
                           className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors ${
                             active ? "bg-primary/10" : "hover:bg-white/5"
                           }`}
@@ -121,15 +155,13 @@ export function ControlPanel({ onGenerate, generating }: Props) {
                           <div className="flex-1">
                             <div className="flex items-center gap-1.5">
                               <span className={`text-xs font-medium ${active ? "text-primary" : ""}`}>{m.name}</span>
-                              {m.tag && (
-                                <span className={`rounded px-1 py-px text-[8px] font-bold ${
-                                  m.tag === "会员" ? "bg-gradient-aurora text-primary-foreground"
-                                  : m.tag === "热门" ? "bg-destructive/80 text-white"
-                                  : "bg-white/10 text-foreground/70"
-                                }`}>{m.tag}</span>
-                              )}
+                              <span className="ml-auto rounded bg-white/5 px-1.5 py-px font-mono text-[9px] text-primary">
+                                {Number(m.cost)} 点
+                              </span>
                             </div>
-                            <div className="text-[10px] font-light text-muted-foreground">{m.desc}</div>
+                            {m.description && (
+                              <div className="text-[10px] font-light text-muted-foreground">{m.description}</div>
+                            )}
                           </div>
                           {active && <Check className="h-3.5 w-3.5 text-primary" />}
                         </button>
@@ -196,8 +228,8 @@ export function ControlPanel({ onGenerate, generating }: Props) {
       {/* Generate */}
       <div className="sticky bottom-0 mt-auto border-t border-border/60 bg-background/85 p-4 backdrop-blur-xl">
         <button
-          onClick={onGenerate}
-          disabled={generating}
+          onClick={handleGenerate}
+          disabled={generating || !activeModel}
           className="group relative flex w-full items-center justify-between gap-2 overflow-hidden rounded-2xl bg-gradient-aurora px-5 py-3.5 text-sm font-bold text-primary-foreground shadow-glow transition-all hover:brightness-110 active:scale-[0.99] disabled:opacity-70"
         >
           <div className="flex items-center gap-2">
@@ -214,7 +246,7 @@ export function ControlPanel({ onGenerate, generating }: Props) {
             )}
           </div>
           <span className="flex items-center gap-1 rounded-lg bg-black/25 px-2 py-1 font-mono text-[10px]">
-            <Zap className="h-2.5 w-2.5" fill="currentColor" /> 消耗 2 点
+            <Zap className="h-2.5 w-2.5" fill="currentColor" /> 消耗 {activeCost} 点
           </span>
         </button>
       </div>

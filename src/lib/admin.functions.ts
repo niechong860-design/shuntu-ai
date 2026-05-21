@@ -140,6 +140,51 @@ export const redeemCoupon = createServerFn({ method: "POST" })
     return row as { success: boolean; message: string; amount: number };
   });
 
+// --- Models config ---
+export const listModelsConfig = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase } = context;
+    const { data, error } = await supabase
+      .from("models_config")
+      .select("id, model_key, name, description, cost, sort_order, updated_at")
+      .order("sort_order", { ascending: true });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+
+export const adminUpdateModelPrice = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ id: z.string().uuid(), cost: z.number().min(0).max(100000) }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const { error } = await supabaseAdmin
+      .from("models_config")
+      .update({ cost: data.cost, updated_at: new Date().toISOString() })
+      .eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+// --- Generation: deduct credits + log history ---
+export const consumeGeneration = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ modelKey: z.string().min(1).max(64), prompt: z.string().max(4000).optional() }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { data: res, error } = await supabase.rpc("consume_credits_for_generation", {
+      _model_key: data.modelKey,
+      _prompt: data.prompt ?? "",
+    });
+    if (error) throw new Error(error.message);
+    const row = Array.isArray(res) ? res[0] : res;
+    return row as { success: boolean; message: string; credits: number; cost: number };
+  });
+
 // --- Role check ---
 export const checkIsAdmin = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
