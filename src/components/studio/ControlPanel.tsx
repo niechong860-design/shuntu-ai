@@ -54,8 +54,11 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
   const [refs, setRefs] = useState<string[]>([]);
   const [prompt, setPrompt] = useState("");
   const [styleId, setStyleId] = useState<string>("none");
+  const [styles, setStyles] = useState<StyleTpl[]>([]);
   const [cfg, setCfg] = useState([7.5]);
   const [steps, setSteps] = useState([32]);
+
+  const fetchStyles = useServerFn(listStyleTemplates);
 
   useEffect(() => {
     if (!session) return;
@@ -63,6 +66,9 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
       const list = (data ?? []) as ModelCfg[];
       setModels(list);
       if (list[0] && !modelKey) setModelKey(list[0].model_key);
+    }).catch(() => {});
+    fetchStyles({}).then((data) => {
+      setStyles((data ?? []) as StyleTpl[]);
     }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
