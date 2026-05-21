@@ -37,11 +37,13 @@ export function AdminDashboard({ open, onOpenChange }: { open: boolean; onOpenCh
             <TabsTrigger value="users" className="gap-1.5"><Users className="h-3.5 w-3.5" />用户管理</TabsTrigger>
             <TabsTrigger value="coupons" className="gap-1.5"><Ticket className="h-3.5 w-3.5" />卡密管理</TabsTrigger>
             <TabsTrigger value="models" className="gap-1.5"><Sparkles className="h-3.5 w-3.5" />模型点数价格控制</TabsTrigger>
+            <TabsTrigger value="ads" className="gap-1.5"><Megaphone className="h-3.5 w-3.5" />广告管理</TabsTrigger>
           </TabsList>
           <TabsContent value="analytics" className="mt-4 max-h-[70vh] overflow-auto pr-1"><AnalyticsPanel /></TabsContent>
           <TabsContent value="users" className="mt-4"><UsersPanel /></TabsContent>
           <TabsContent value="coupons" className="mt-4"><CouponsPanel /></TabsContent>
           <TabsContent value="models" className="mt-4"><ModelsPanel /></TabsContent>
+          <TabsContent value="ads" className="mt-4"><AdsPanel /></TabsContent>
         </Tabs>
       </DialogContent>
     </Dialog>
