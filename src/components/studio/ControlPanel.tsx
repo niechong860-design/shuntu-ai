@@ -46,7 +46,7 @@ export function ControlPanel({ onGenerate, generating }: Props) {
   };
 
   return (
-    <aside className="scrollbar-thin flex h-screen flex-col overflow-y-auto border-r border-border/60 bg-card/40">
+    <aside className="scrollbar-thin flex h-full min-h-0 flex-col overflow-y-auto border-r border-border/60 bg-card/40">
       <div className="flex flex-col gap-5 p-5 pt-6">
 
         {/* Reference images — top */}

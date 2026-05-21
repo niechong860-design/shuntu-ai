@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, Copy, Maximize2, Sparkles, ArrowUpRight, Heart, ZoomIn, RefreshCw, Image as ImageIcon, X, Clock } from "lucide-react";
+import { Download, Copy, Maximize2, Sparkles, ArrowUpRight, X, Clock } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import img1 from "@/assets/gen-1.jpg";
 import img2 from "@/assets/gen-2.jpg";
@@ -31,63 +31,61 @@ export function Canvas({ generating, heroIndex, historyOpen, onHistoryOpenChange
   const hero = IMAGES[heroIndex];
   const heroMeta = META[heroIndex];
 
-  return (
-    <main className="relative flex h-screen flex-col overflow-hidden bg-background p-4">
-      <div className="relative flex-1 min-h-0 overflow-hidden rounded-2xl border border-border bg-card">
-        {/* Status pill */}
-        <div className="absolute right-4 top-4 z-10">
-          <span className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-medium backdrop-blur ${
-            generating ? "border-primary/40 bg-primary/10 text-primary"
-            : "border-border bg-black/40 text-muted-foreground"
-          }`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${generating ? "animate-pulse bg-primary" : "bg-muted-foreground"}`} />
-            {generating ? "Rendering" : "Idle"}
-          </span>
-        </div>
+  // Build a longer history list (recent first = current hero)
+  const historyList = Array.from({ length: 12 }, (_, i) => (heroIndex + i) % IMAGES.length);
 
+  return (
+    <main className="flex h-full min-h-0 flex-col gap-3 overflow-hidden bg-background p-3">
+      {/* Main canvas — pure, no overlays. 75% */}
+      <div className="relative flex-1 min-h-0 overflow-hidden rounded-2xl border border-border bg-card">
         {generating ? (
           <SkeletonShimmer />
         ) : (
-          <>
-            <img src={hero} alt={heroMeta.prompt} className="h-full w-full object-cover animate-[fade-in_0.6s_ease-out]" />
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/30" />
-
-            {/* top-left meta */}
-            <div className="absolute left-4 top-4 flex items-center gap-2">
-              <div className="glass flex items-center gap-1.5 rounded-full px-2.5 py-1">
-                <Sparkles className="h-3 w-3 text-primary" />
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-primary">{heroMeta.model}</span>
-              </div>
-              <span className="glass rounded-full px-2.5 py-1 font-mono text-[10px] font-light text-foreground/80">2048 × 2048</span>
-              <span className="glass flex items-center gap-1 rounded-full px-2.5 py-1 font-mono text-[10px] font-light text-foreground/70">
-                <ImageIcon className="h-2.5 w-2.5" /> #042
-              </span>
-            </div>
-
-            {/* floating glass control bar */}
-            <div className="glass-elevated absolute left-1/2 top-4 flex -translate-x-1/2 items-center gap-0.5 rounded-full p-1">
-              <HeroAction title="Like"><Heart className="h-3.5 w-3.5" /></HeroAction>
-              <HeroAction title="Zoom"><ZoomIn className="h-3.5 w-3.5" /></HeroAction>
-              <HeroAction title="Upscale"><ArrowUpRight className="h-3.5 w-3.5" /></HeroAction>
-              <HeroAction title="Regenerate"><RefreshCw className="h-3.5 w-3.5" /></HeroAction>
-              <HeroAction title="Copy"><Copy className="h-3.5 w-3.5" /></HeroAction>
-              <HeroAction title="Download"><Download className="h-3.5 w-3.5" /></HeroAction>
-            </div>
-
-            {/* bottom prompt */}
-            <div className="absolute inset-x-4 bottom-4">
-              <div className="glass-elevated rounded-xl p-3.5">
-                <div className="flex items-center justify-between">
-                  <div className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">Prompt</div>
-                  <button className="text-[10px] font-light text-muted-foreground transition-colors hover:text-foreground">
-                    Copy
-                  </button>
-                </div>
-                <p className="mt-1.5 text-xs font-light leading-relaxed text-foreground/90">{heroMeta.prompt}</p>
-              </div>
-            </div>
-          </>
+          <img
+            src={hero}
+            alt={heroMeta.prompt}
+            className="h-full w-full object-cover animate-[fade-in_0.6s_ease-out]"
+          />
         )}
+      </div>
+
+      {/* History strip — 25% */}
+      <div className="h-[25%] min-h-0 shrink-0 rounded-2xl border border-border bg-card/60 p-2.5">
+        <div className="mb-1.5 flex items-center justify-between px-1">
+          <div className="flex items-center gap-1.5">
+            <Clock className="h-3 w-3 text-muted-foreground" />
+            <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              Recent
+            </span>
+          </div>
+          <button
+            onClick={() => onHistoryOpenChange(true)}
+            className="text-[10px] font-light text-muted-foreground transition-colors hover:text-primary"
+          >
+            View all →
+          </button>
+        </div>
+        <div className="scrollbar-thin flex h-[calc(100%-22px)] gap-2 overflow-x-auto overflow-y-hidden">
+          {historyList.map((idx, i) => (
+            <button
+              key={i}
+              onClick={() => onSelectHistory(idx)}
+              className={`group relative aspect-square h-full shrink-0 overflow-hidden rounded-xl border transition-all hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-glow ${
+                i === 0 ? "border-primary/60 shadow-glow" : "border-border"
+              }`}
+            >
+              <img src={IMAGES[idx]} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+              <span
+                role="button"
+                onClick={(e) => { e.stopPropagation(); setLightbox(idx); }}
+                className="absolute right-1.5 top-1.5 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md bg-black/60 text-foreground/90 opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 hover:bg-primary/30 hover:text-primary"
+              >
+                <Maximize2 className="h-2.5 w-2.5" />
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* History drawer */}
@@ -152,14 +150,6 @@ export function Canvas({ generating, heroIndex, historyOpen, onHistoryOpenChange
 
       {lightbox !== null && <Lightbox idx={lightbox} onClose={() => setLightbox(null)} />}
     </main>
-  );
-}
-
-function HeroAction({ children, ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button {...rest} className="flex h-8 w-8 items-center justify-center rounded-full text-foreground/90 transition-all hover:bg-primary/20 hover:text-primary">
-      {children}
-    </button>
   );
 }
 

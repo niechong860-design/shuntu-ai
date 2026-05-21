@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { ControlPanel } from "./ControlPanel";
 import { Canvas } from "./Canvas";
-import { RightRail } from "./RightRail";
+import { TopBar } from "./TopBar";
 
 export function Studio() {
-  const [credits, setCredits] = useState(520);
+  const [credits, setCredits] = useState(7847);
   const [generating, setGenerating] = useState(false);
   const [heroIndex, setHeroIndex] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -20,16 +20,18 @@ export function Studio() {
   };
 
   return (
-    <div className="grid h-screen w-screen grid-cols-1 overflow-hidden bg-background text-foreground lg:grid-cols-[30%_1fr_72px]">
-      <ControlPanel onGenerate={handleGenerate} generating={generating} />
-      <Canvas
-        generating={generating}
-        heroIndex={heroIndex}
-        historyOpen={historyOpen}
-        onHistoryOpenChange={setHistoryOpen}
-        onSelectHistory={setHeroIndex}
-      />
-      <RightRail credits={credits} onOpenHistory={() => setHistoryOpen(true)} />
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
+      <TopBar credits={credits} onOpenHistory={() => setHistoryOpen(true)} />
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[30%_1fr]">
+        <ControlPanel onGenerate={handleGenerate} generating={generating} />
+        <Canvas
+          generating={generating}
+          heroIndex={heroIndex}
+          historyOpen={historyOpen}
+          onHistoryOpenChange={setHistoryOpen}
+          onSelectHistory={setHeroIndex}
+        />
+      </div>
     </div>
   );
 }
