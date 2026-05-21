@@ -242,9 +242,45 @@ function CouponsPanel() {
                 <TableCell className="text-xs text-muted-foreground">{c.used_by_email ?? "—"}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{c.used_at ? new Date(c.used_at).toLocaleString() : "—"}</TableCell>
                 <TableCell className="text-right">
-                  <Button variant="ghost" size="sm" onClick={() => { navigator.clipboard.writeText(c.code); toast.success("已复制"); }}>
-                    <Copy className="h-3.5 w-3.5" />
-                  </Button>
+                  <div className="flex items-center justify-end gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => { navigator.clipboard.writeText(c.code); toast.success("已复制"); }}>
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={c.is_used}
+                          className="text-destructive hover:bg-destructive/10 hover:text-destructive disabled:opacity-30"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="end" className="w-64 border-border/70 bg-card/90 backdrop-blur-xl">
+                        <p className="text-xs text-foreground">确定要彻底删除该卡密吗？</p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">删除后用户将无法兑换。</p>
+                        <div className="mt-3 flex justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={async () => {
+                              setCoupons(prev => prev.filter(x => x.id !== c.id));
+                              try {
+                                await del({ data: { couponId: c.id } });
+                                toast.success("卡密删除成功");
+                              } catch (e: any) {
+                                toast.error(e.message);
+                                load();
+                              }
+                            }}
+                          >
+                            确认删除
+                          </Button>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
