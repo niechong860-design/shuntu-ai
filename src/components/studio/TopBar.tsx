@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { Sparkles, Zap, Plus, Bell, History } from "lucide-react";
 import { UserMenu } from "@/components/auth/UserMenu";
+import { RedeemDialog } from "@/components/auth/RedeemDialog";
 
 type Props = {
   credits: number;
@@ -8,6 +10,7 @@ type Props = {
 };
 
 export function TopBar({ credits, onOpenHistory, onSwitchAccount }: Props) {
+  const [redeemOpen, setRedeemOpen] = useState(false);
   return (
     <header className="flex h-14 w-full shrink-0 items-center justify-between border-b border-border/60 bg-card/70 px-4 backdrop-blur-2xl">
       {/* Left: Logo */}
@@ -36,11 +39,15 @@ export function TopBar({ credits, onOpenHistory, onSwitchAccount }: Props) {
           <span className="font-mono text-xs font-semibold tabular-nums">{credits.toLocaleString()}</span>
           <span className="text-[10px] font-light text-muted-foreground">点</span>
         </div>
-        <button className="flex items-center gap-1.5 rounded-full bg-gradient-aurora px-3.5 py-1.5 text-xs font-semibold text-primary-foreground shadow-glow transition-transform hover:scale-[1.03]">
+        <button
+          onClick={() => setRedeemOpen(true)}
+          className="flex items-center gap-1.5 rounded-full bg-gradient-aurora px-3.5 py-1.5 text-xs font-semibold text-primary-foreground shadow-glow transition-transform hover:scale-[1.03]"
+        >
           <Plus className="h-3.5 w-3.5" strokeWidth={3} />
           充值
         </button>
       </div>
+      <RedeemDialog open={redeemOpen} onOpenChange={setRedeemOpen} />
     </header>
   );
 }
