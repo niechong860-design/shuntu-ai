@@ -1,0 +1,1 @@
+UPDATE public.models_config SET extra_params = '{"size": "{{size}}", "aspectRatio": "{{aspect}}"}'::jsonb WHERE model_key = 'nanobanana2';

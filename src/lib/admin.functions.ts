@@ -473,6 +473,7 @@ export const generateImage = createServerFn({ method: "POST" })
       modelKey: z.string().min(1).max(64),
       prompt: z.string().min(1).max(4000),
       aspectRatio: z.string().min(1).max(16).default("1:1"),
+      size: z.enum(["1K", "2K", "4K"]).default("1K"),
       referenceImages: z.array(z.string().url().or(z.string().startsWith("data:"))).max(5).optional(),
     }).parse(d),
   )
@@ -533,6 +534,7 @@ export const generateImage = createServerFn({ method: "POST" })
         if (/^\{\{\s*urls\s*\}\}$/.test(trimmed)) return URLS_TOKEN;
         return v
           .replace(/\{\{\s*wan_size\s*\}\}/g, wanSize)
+          .replace(/\{\{\s*size\s*\}\}/g, data.size)
           .replace(/\{\{\s*aspect\s*\}\}/g, size)
           .replace(/\{\{\s*prompt\s*\}\}/g, data.prompt);
       }
