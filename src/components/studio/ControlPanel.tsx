@@ -338,7 +338,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
                         return (
                           <button
                             key={r.id}
-                            onClick={() => setRatio(r.id)}
+                            onClick={() => { setRatio(r.id); setRatioOpen(false); }}
                             className={`flex flex-col items-center gap-1 rounded-lg border px-2.5 py-2 transition-all ${
                               active ? "border-primary/50 bg-primary/10 text-primary"
                               : "border-border bg-white/[0.02] text-muted-foreground hover:bg-white/5"
