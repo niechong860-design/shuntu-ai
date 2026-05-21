@@ -1095,3 +1095,44 @@ export const adminSetContactInfo = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+// Generate a random creative prompt via Lovable AI Gateway
+export const generateRandomPrompt = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async () => {
+    const apiKey = process.env.LOVABLE_API_KEY;
+    if (!apiKey) throw new Error("AI 服务未配置");
+    const themes = [
+      "电商产品", "时尚人像", "未来科幻", "自然风光", "复古胶片",
+      "美食摄影", "极简静物", "建筑空间", "梦幻插画", "国风山水",
+      "赛博朋克", "ins 极简", "小红书风", "工业摄影", "宠物萌宠",
+    ];
+    const seed = themes[Math.floor(Math.random() * themes.length)];
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-lite",
+        messages: [
+          {
+            role: "system",
+            content:
+              "你是顶级 AI 绘画提示词专家。每次只输出一条中文提示词，描述具体场景、主体、光影、镜头、色调、氛围，60-120字，不要使用引号、序号、Markdown、解释，也不要写比例或分辨率。",
+          },
+          { role: "user", content: `请围绕「${seed}」随机生成一条全新的高质量绘画提示词。` },
+        ],
+        temperature: 1.1,
+      }),
+    });
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(`生成失败：${res.status} ${t.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    const text = (data?.choices?.[0]?.message?.content ?? "").toString().trim().replace(/^["「『]+|["」』]+$/g, "");
+    if (!text) throw new Error("AI 未返回内容");
+    return { prompt: text };
+  });

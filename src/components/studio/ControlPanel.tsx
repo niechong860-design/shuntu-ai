@@ -7,7 +7,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { useServerFn } from "@tanstack/react-start";
-import { listModelsConfig, generateImage, checkImageStatus, listStyleTemplates } from "@/lib/admin.functions";
+import { listModelsConfig, generateImage, checkImageStatus, listStyleTemplates, generateRandomPrompt } from "@/lib/admin.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { consumeStudioPrefill } from "@/lib/studio-prefill";
@@ -44,6 +44,8 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
   const fetchModels = useServerFn(listModelsConfig);
   const generate = useServerFn(generateImage);
   const checkStatus = useServerFn(checkImageStatus);
+  const randomPromptFn = useServerFn(generateRandomPrompt);
+  const [inspiring, setInspiring] = useState(false);
   const { refreshProfile, session } = useAuth();
 
   const [models, setModels] = useState<ModelCfg[]>([]);
@@ -435,7 +437,25 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
                   {prompt.length}
                 </span>
                 <IconBtn onClick={() => setPrompt("")} title="清空"><Eraser className="h-3.5 w-3.5" /></IconBtn>
-                <IconBtn title="灵感"><Dices className="h-3.5 w-3.5 text-primary" /></IconBtn>
+                <IconBtn
+                  title="灵感 · 点击随机生成提示词"
+                  disabled={inspiring}
+                  onClick={async () => {
+                    if (inspiring) return;
+                    setInspiring(true);
+                    setPrompt("");
+                    try {
+                      const r: any = await randomPromptFn({});
+                      if (r?.prompt) setPrompt(r.prompt);
+                    } catch (e: any) {
+                      toast.error(e?.message ?? "灵感生成失败");
+                    } finally {
+                      setInspiring(false);
+                    }
+                  }}
+                >
+                  <Dices className={`h-3.5 w-3.5 text-primary ${inspiring ? "animate-spin" : ""}`} />
+                </IconBtn>
               </div>
             </div>
           </div>
