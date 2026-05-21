@@ -67,3 +67,14 @@ function IconBtn({ children, ...rest }: React.ButtonHTMLAttributes<HTMLButtonEle
     </button>
   );
 }
+
+function NavLink({ children, ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      {...rest}
+      className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-white/[0.05] hover:text-foreground"
+    >
+      {children}
+    </button>
+  );
+}
