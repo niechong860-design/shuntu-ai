@@ -15,6 +15,7 @@ type Props = {
 
 export function TopBar({ credits, onOpenHistory, onSwitchAccount }: Props) {
   const [redeemOpen, setRedeemOpen] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
   return (
     <header className="flex h-14 w-full shrink-0 items-center justify-between border-b border-border/60 bg-card/70 px-4 backdrop-blur-2xl">
       {/* Left: Logo */}
