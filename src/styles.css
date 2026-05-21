@@ -137,3 +137,7 @@
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
+@keyframes breathe {
+  0%, 100% { box-shadow: 0 0 0 3px oklch(0.86 0.21 155 / 0.15); }
+  50% { box-shadow: 0 0 0 4px oklch(0.86 0.21 155 / 0.35); }
+}

@@ -1,11 +1,13 @@
 import { Sparkles, Zap, Plus, Bell, History } from "lucide-react";
+import { UserMenu } from "@/components/auth/UserMenu";
 
 type Props = {
   credits: number;
   onOpenHistory: () => void;
+  onSwitchAccount: () => void;
 };
 
-export function TopBar({ credits, onOpenHistory }: Props) {
+export function TopBar({ credits, onOpenHistory, onSwitchAccount }: Props) {
   return (
     <header className="flex h-14 w-full shrink-0 items-center justify-between border-b border-border/60 bg-card/70 px-4 backdrop-blur-2xl">
       {/* Left: Logo */}
@@ -27,11 +29,7 @@ export function TopBar({ credits, onOpenHistory }: Props) {
             <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-primary" />
           </span>
         </IconBtn>
-        <div className="relative h-8 w-8 overflow-hidden rounded-full ring-1 ring-border">
-          <div className="h-full w-full bg-gradient-to-br from-primary/40 via-accent to-secondary" />
-          <div className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold">Y</div>
-          <span className="absolute -bottom-0 -right-0 h-2 w-2 rounded-full border-2 border-card bg-primary" />
-        </div>
+        <UserMenu onSwitchAccount={onSwitchAccount} />
         <div className="mx-1 h-6 w-px bg-border" />
         <div className="flex items-center gap-2 rounded-full border border-border bg-white/[0.03] px-3 py-1.5">
           <Zap className="h-3.5 w-3.5 text-primary" fill="currentColor" />
