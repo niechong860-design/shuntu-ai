@@ -53,7 +53,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
   const [sizeOpen, setSizeOpen] = useState(false);
   const [refs, setRefs] = useState<string[]>([]);
   const [prompt, setPrompt] = useState("");
-  const [styleId, setStyleId] = useState<string>("none");
+  const [styleId, setStyleId] = useState<string>("");
   const [styles, setStyles] = useState<StyleTpl[]>([]);
   const [cfg, setCfg] = useState([7.5]);
   const [steps, setSteps] = useState([32]);
@@ -431,7 +431,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
               return (
                 <button
                   key={s.id}
-                  onClick={() => setStyleId(s.id)}
+                  onClick={() => setStyleId((prev) => (prev === s.id ? "" : s.id))}
                   title={s.name}
                   className={`group relative aspect-[9/16] w-[120px] shrink-0 overflow-hidden rounded-2xl border transition-all ${
                     active
