@@ -583,6 +583,16 @@ export const generateImage = createServerFn({ method: "POST" })
       "16:9": "1696*960",
     };
     const wanSize = WAN_SIZE_MAP[data.aspectRatio] ?? "1280*1280";
+    // grok_imagine 仅支持 2:3 / 3:2 / 1:1 / 16:9 / 9:16，其他比例需就近映射
+    const GROK_ALLOWED = new Set(["2:3", "3:2", "1:1", "16:9", "9:16"]);
+    const GROK_FALLBACK: Record<string, string> = {
+      "3:4": "2:3", "4:3": "3:2", "4:5": "2:3", "5:4": "3:2",
+      "9:21": "9:16", "21:9": "16:9", "1:2": "9:16", "2:1": "16:9",
+      "1:3": "9:16", "3:1": "16:9", "auto": "1:1",
+    };
+    const grokAspect = GROK_ALLOWED.has(data.aspectRatio)
+      ? data.aspectRatio
+      : (GROK_FALLBACK[data.aspectRatio] ?? "1:1");
     const rawExtra = (model as any).extra_params ?? {};
     const substitute = (v: any): any => {
       if (typeof v === "string") {
@@ -591,10 +601,12 @@ export const generateImage = createServerFn({ method: "POST" })
         if (/^\{\{\s*urls\s*\}\}$/.test(trimmed)) return URLS_TOKEN;
         return v
           .replace(/\{\{\s*wan_size\s*\}\}/g, wanSize)
+          .replace(/\{\{\s*grok_aspect\s*\}\}/g, grokAspect)
           .replace(/\{\{\s*size\s*\}\}/g, data.size)
           .replace(/\{\{\s*aspect\s*\}\}/g, size)
           .replace(/\{\{\s*prompt\s*\}\}/g, finalPrompt);
       }
+
       if (Array.isArray(v)) return v.map(substitute);
       if (v && typeof v === "object") {
         const o: Record<string, any> = {};
