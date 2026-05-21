@@ -388,9 +388,8 @@ function extractImageUrl(payload: any): string | null {
    return `${base}${path}`;
  }
 
- // Upstream (wuyinkeji) authenticates with the raw platform key in Authorization.
-// Do NOT append `?key=` to the URL and do NOT prefix the upstream key with Bearer;
-// this provider rejects `Authorization: Bearer <key>` as "请求密钥KEY不正确".
+ // Upstream (wuyinkeji) authenticates via the standard `Authorization: Bearer <key>` header.
+// Do NOT append `?key=` to the URL — both submission and polling must reuse this header.
 
   function normalizeUpstreamApiKey(value: unknown): string {
     if (typeof value !== "string") return "";
@@ -400,7 +399,7 @@ function extractImageUrl(payload: any): string | null {
   function buildUpstreamHeaders(finalApiKey: string): Record<string, string> {
     return {
       "Content-Type": "application/json",
-      Authorization: finalApiKey,
+      Authorization: `Bearer ${finalApiKey}`,
     };
   }
 
@@ -502,7 +501,7 @@ function extractImageUrl(payload: any): string | null {
         }
        const start = Date.now();
        const TIMEOUT_MS = 60_000;
-       const INTERVAL_MS = 2500;
+       const INTERVAL_MS = 3000;
 
        while (Date.now() - start < TIMEOUT_MS) {
          await new Promise((r) => setTimeout(r, INTERVAL_MS));
@@ -512,7 +511,12 @@ function extractImageUrl(payload: any): string | null {
            const t = await r.text();
            let j: any = null;
            try { j = JSON.parse(t); } catch { /* */ }
-           if (!r.ok) continue;
+            if (!r.ok) {
+              throw new Error(`上游查询失败 ${r.status}: ${(j?.msg ?? j?.error?.message ?? t).slice(0, 200)}`);
+            }
+            if (Number(j?.code) >= 400) {
+              throw new Error(`上游查询失败: ${j?.msg ?? j?.error?.message ?? "未知错误"}`);
+            }
            const status = j?.data?.status ?? j?.status;
            if (typeof status === "string" && /fail|error/i.test(status)) {
              throw new Error(`上游生成失败: ${j?.msg ?? j?.data?.message ?? status}`);
