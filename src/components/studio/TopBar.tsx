@@ -86,3 +86,16 @@ function NavLink({ children, ...rest }: React.ButtonHTMLAttributes<HTMLButtonEle
     </button>
   );
 }
+
+function NavLinkTo({ to, children }: { to: string; children: React.ReactNode }) {
+  return (
+    <Link
+      to={to}
+      className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-white/[0.05] hover:text-foreground"
+      activeProps={{ className: "rounded-md px-3 py-1.5 text-xs font-medium text-foreground bg-white/[0.05]" }}
+    >
+      {children}
+    </Link>
+  );
+}
+
