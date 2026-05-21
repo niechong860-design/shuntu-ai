@@ -194,7 +194,7 @@ export const adminUpdateModel = createServerFn({ method: "POST" })
       api_key: z.string().max(500).nullable().optional(),
       request_format: z.enum(["async_id", "sync_url"]).optional(),
       prompt_key: z.string().min(1).max(64).optional(),
-      fetch_url: z.string().url().max(500).nullable().optional(),
+      fetch_url: z.string().min(1).max(500).nullable().optional(),
       sort_order: z.number().int().min(0).max(10000).optional(),
     }).parse(d),
   )
