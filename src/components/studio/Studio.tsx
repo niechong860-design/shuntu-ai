@@ -8,7 +8,6 @@ import { useState } from "react";
 export function Studio() {
   const { session, profile, loading } = useAuth();
   const [generating, setGenerating] = useState(false);
-  const [heroIndex, setHeroIndex] = useState(0);
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
   const [currentPrompt, setCurrentPrompt] = useState<string>("");
   const [currentModel, setCurrentModel] = useState<string>("");
@@ -45,13 +44,17 @@ export function Studio() {
           />
           <Canvas
             generating={generating}
-            heroIndex={heroIndex}
+            heroIndex={0}
             generatedUrl={generatedUrl}
             currentPrompt={currentPrompt}
             currentModel={currentModel}
             historyOpen={historyOpen}
             onHistoryOpenChange={setHistoryOpen}
-            onSelectHistory={(i) => { setHeroIndex(i); setGeneratedUrl(null); }}
+            onSelectHistory={(url, prompt, model) => {
+              setGeneratedUrl(url);
+              setCurrentPrompt(prompt);
+              setCurrentModel(model);
+            }}
           />
         </div>
       </div>
@@ -59,3 +62,4 @@ export function Studio() {
     </div>
   );
 }
+

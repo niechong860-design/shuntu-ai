@@ -286,6 +286,23 @@ export const consumeGeneration = createServerFn({ method: "POST" })
     return row as { success: boolean; message: string; credits: number; cost: number };
   });
 
+// --- 获取当前用户最近 100 条生成历史（仅含图片） ---
+export const getMyGenerationHistory = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase } = context;
+    const { data, error } = await supabase
+      .from("generation_history")
+      .select("id, model, prompt, image_url, created_at, cost")
+      .not("image_url", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as Array<{
+      id: string; model: string; prompt: string | null; image_url: string; created_at: string; cost: number;
+    }>;
+  });
+
 // --- NEW: Dynamic upstream image generation (per-model API routing) ---
 function extractImageUrl(payload: any): string | null {
   if (!payload) return null;
@@ -658,22 +675,36 @@ export const generateImage = createServerFn({ method: "POST" })
     const safeCost = Number(row?.cost ?? 0) || 0;
     const safeCredits = Number(row?.credits ?? 0) || 0;
 
+    // sync 模型立即拿到图片 URL，直接回填到最新一条历史
+    if (imageUrl) {
+      await supabase.rpc("set_latest_history_image", {
+        _model: model.name,
+        _image_url: imageUrl,
+      });
+    }
+
     return {
       success: true,
       imageUrl,            // sync 模型直接返回，async 模型为 null
       taskId,              // async 模型返回 taskId 供前端轮询
       cost: safeCost,
       credits: safeCredits,
+      modelName: model.name,
     };
+
   });
 
 // 前端主动轮询的任务状态查询。运行在浏览器侧，不受 Worker 单次请求超时限制。
 export const checkImageStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
-    z.object({ taskId: z.string().min(1).max(128) }).parse(d),
+    z.object({
+      taskId: z.string().min(1).max(128),
+      modelName: z.string().max(128).optional(),
+    }).parse(d),
   )
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
     const { global_api_key } = await loadGlobalConfig();
     const pureApiKey = normalizeUpstreamApiKey(global_api_key);
     if (!pureApiKey) throw new Error("尚未配置全局 API Key，请联系管理员");
@@ -702,7 +733,6 @@ export const checkImageStatus = createServerFn({ method: "POST" })
     }
     if (taskStatus === 3) {
       const detailMsg: string = String(j?.data?.message ?? rawMsg ?? "");
-      // 优先识别"参考图/URL 下载失败"，避免被笼统归为"内容违规"
       const isRefUrlIssue = /参考图|垫图|图片.*(下载|读取|获取|无法|失败|超时)|url.*(download|fetch|timeout|not.*found|404)|download.*image|fetch.*image/i.test(detailMsg);
       if (isRefUrlIssue) {
         return { status: "failed" as const, reason: "ref_url" as const, imageUrl: null as string | null, message: detailMsg || "参考图读取失败，请检查链接是否为公开的 HTTPS 链接", code, taskStatus, rawMsg, debug: rawDebug };
@@ -712,11 +742,20 @@ export const checkImageStatus = createServerFn({ method: "POST" })
 
     if (taskStatus === 2) {
       const url = extractImageUrl(j?.data) ?? extractImageUrl(j);
-      if (url) return { status: "success" as const, reason: null as null, imageUrl: url, message: null as string | null, code, taskStatus, rawMsg, debug: rawDebug };
+      if (url) {
+        if (data.modelName) {
+          await supabase.rpc("set_latest_history_image", {
+            _model: data.modelName,
+            _image_url: url,
+          });
+        }
+        return { status: "success" as const, reason: null as null, imageUrl: url, message: null as string | null, code, taskStatus, rawMsg, debug: rawDebug };
+      }
       return { status: "pending" as const, reason: null as null, imageUrl: null as string | null, message: "成功但URL未就绪", code, taskStatus, rawMsg, debug: rawDebug };
     }
     return { status: "pending" as const, reason: null as null, imageUrl: null as string | null, message: `处理中 status=${j?.data?.status ?? "?"}`, code, taskStatus, rawMsg, debug: rawDebug };
   });
+
 
 // --- Role check ---
 export const checkIsAdmin = createServerFn({ method: "POST" })

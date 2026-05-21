@@ -1,34 +1,43 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Download, Copy, Maximize2, Sparkles, ArrowUpRight, X, Clock, ImageIcon } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
-import img1 from "@/assets/gen-1.jpg";
-import img2 from "@/assets/gen-2.jpg";
-import img3 from "@/assets/gen-3.jpg";
-import img4 from "@/assets/gen-4.jpg";
-import img5 from "@/assets/gen-5.jpg";
-import img6 from "@/assets/gen-6.jpg";
+import { useServerFn } from "@tanstack/react-start";
+import { getMyGenerationHistory } from "@/lib/admin.functions";
 
-const IMAGES = [img1, img2, img3, img4, img5, img6];
-const META = [
-  { model: "Flux.1 Pro", prompt: "黑暗山脉上空的超现实极光，缥缈薄雾", time: "刚刚" },
-  { model: "MJ V6", prompt: "戴全息绿色护目镜的赛博朋克人像", time: "6 分钟前" },
-  { model: "Flux.1 Pro", prompt: "粗野主义混凝土建筑，风暴天空", time: "14 分钟前" },
-  { model: "SDXL Turbo", prompt: "液态金属雕塑，虹彩铬合金", time: "1 小时前" },
-  { model: "MJ V6", prompt: "生物荧光水母，深海翠绿", time: "2 小时前" },
-  { model: "Nano Banana", prompt: "复古模拟合成器，暗调摄影", time: "3 小时前" },
-];
+type HistoryItem = {
+  id: string;
+  model: string;
+  prompt: string | null;
+  image_url: string;
+  created_at: string;
+  cost: number;
+};
+
+function timeAgo(iso: string) {
+  const t = new Date(iso).getTime();
+  const diff = Math.max(0, Date.now() - t);
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "刚刚";
+  if (m < 60) return `${m} 分钟前`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} 小时前`;
+  const d = Math.floor(h / 24);
+  return `${d} 天前`;
+}
+
 
 type Props = {
   generating: boolean;
-  heroIndex: number;
+  heroIndex?: number;
   generatedUrl?: string | null;
   currentPrompt?: string;
   currentModel?: string;
   historyOpen: boolean;
   onHistoryOpenChange: (v: boolean) => void;
-  onSelectHistory: (i: number) => void;
+  onSelectHistory: (url: string, prompt: string, model: string) => void;
 };
+
 
 async function downloadImage(url: string, filename: string) {
   try {
@@ -61,9 +70,35 @@ async function copyToClipboard(text: string) {
   }
 }
 
-export function Canvas({ generating, heroIndex, generatedUrl, currentPrompt, currentModel, historyOpen, onHistoryOpenChange, onSelectHistory }: Props) {
-  const [lightbox, setLightbox] = useState<number | null>(null);
+export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, historyOpen, onHistoryOpenChange, onSelectHistory }: Props) {
+  const [lightbox, setLightbox] = useState<HistoryItem | null>(null);
   const [heroLightbox, setHeroLightbox] = useState(false);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const fetchHistory = useServerFn(getMyGenerationHistory);
+
+  const loadHistory = async () => {
+    setLoadingHistory(true);
+    try {
+      const list = await fetchHistory();
+      setHistory(list);
+    } catch (e) {
+      console.warn("[history] load failed", e);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  useEffect(() => {
+    if (historyOpen) loadHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyOpen]);
+
+  // 当主画布出现新图（生成完成）时，自动刷新历史，确保下次打开抽屉是最新的
+  useEffect(() => {
+    if (generatedUrl) loadHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generatedUrl]);
 
   const heroPrompt = currentPrompt ?? "";
   const heroModel = currentModel ?? "当前模型";
@@ -77,7 +112,6 @@ export function Canvas({ generating, heroIndex, generatedUrl, currentPrompt, cur
         ) : generatedUrl ? (
           <>
             <img src={generatedUrl} alt="生成结果" className="h-full w-full object-contain bg-black" />
-            {/* Hover overlay actions */}
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/30 opacity-0 transition-opacity group-hover:opacity-100" />
             <div className="absolute right-3 top-3 flex items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
               <HeroAction label="查看大图" onClick={() => setHeroLightbox(true)}>
@@ -103,7 +137,6 @@ export function Canvas({ generating, heroIndex, generatedUrl, currentPrompt, cur
         )}
       </div>
 
-
       {/* History drawer */}
       <Sheet open={historyOpen} onOpenChange={onHistoryOpenChange}>
         <SheetContent
@@ -117,7 +150,7 @@ export function Canvas({ generating, heroIndex, generatedUrl, currentPrompt, cur
                 <h2 className="font-display text-base font-semibold tracking-tight">历史记录</h2>
               </div>
               <p className="mt-0.5 text-[11px] font-light text-muted-foreground">
-                共 248 张作品 · 会话 #042
+                共 {history.length} 张 · 最多保留 100 张 · 超过 15 天自动清理
               </p>
             </div>
             <button
@@ -128,47 +161,49 @@ export function Canvas({ generating, heroIndex, generatedUrl, currentPrompt, cur
             </button>
           </div>
           <div className="scrollbar-thin h-[calc(100vh-72px)] overflow-y-auto p-4">
-            <div className="grid grid-cols-2 gap-3">
-              {[...IMAGES, ...IMAGES].map((src, i) => {
-                const meta = META[i % META.length];
-                const idx = i % IMAGES.length;
-                return (
+            {loadingHistory ? (
+              <div className="py-20 text-center text-xs text-muted-foreground">加载中…</div>
+            ) : history.length === 0 ? (
+              <div className="py-20 text-center text-xs text-muted-foreground">还没有历史作品，去生成第一张吧</div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {history.map((item) => (
                   <div
-                    key={i}
+                    key={item.id}
                     className="group relative aspect-square overflow-hidden rounded-xl border border-border bg-card transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-glow"
                   >
                     <button
                       onClick={() => {
-                        onSelectHistory(idx);
+                        onSelectHistory(item.image_url, item.prompt ?? "", item.model);
                         onHistoryOpenChange(false);
                       }}
                       className="absolute inset-0"
                     >
-                      <img src={src} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                      <img src={item.image_url} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
                     </button>
                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/0 opacity-0 transition-opacity group-hover:opacity-100" />
                     <div className="absolute left-2 top-2 opacity-0 transition-opacity group-hover:opacity-100">
-                      <span className="glass rounded-full px-1.5 py-0.5 text-[8px] font-semibold uppercase text-primary">{meta.model.split(" ")[0]}</span>
+                      <span className="glass rounded-full px-1.5 py-0.5 text-[8px] font-semibold uppercase text-primary">{item.model.split(" ")[0]}</span>
                     </div>
                     <div className="absolute inset-x-2 bottom-2 flex items-end justify-between gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                      <span className="font-mono text-[9px] text-foreground/70">{meta.time}</span>
+                      <span className="font-mono text-[9px] text-foreground/70">{timeAgo(item.created_at)}</span>
                       <div className="flex items-center gap-1">
                         <button
-                          onClick={(e) => { e.stopPropagation(); copyToClipboard(meta.prompt); }}
+                          onClick={(e) => { e.stopPropagation(); copyToClipboard(item.prompt ?? ""); }}
                           title="复制提示词"
                           className="glass flex h-6 w-6 items-center justify-center rounded-md text-foreground/90 hover:bg-primary/20 hover:text-primary"
                         >
                           <Copy className="h-2.5 w-2.5" />
                         </button>
                         <button
-                          onClick={(e) => { e.stopPropagation(); downloadImage(src, `lovable-${meta.model}-${idx}.jpg`); }}
+                          onClick={(e) => { e.stopPropagation(); downloadImage(item.image_url, `lovable-${item.model}-${item.id}.png`); }}
                           title="下载"
                           className="glass flex h-6 w-6 items-center justify-center rounded-md text-foreground/90 hover:bg-primary/20 hover:text-primary"
                         >
                           <Download className="h-2.5 w-2.5" />
                         </button>
                         <button
-                          onClick={(e) => { e.stopPropagation(); setLightbox(idx); }}
+                          onClick={(e) => { e.stopPropagation(); setLightbox(item); }}
                           title="查看大图"
                           className="glass flex h-6 w-6 items-center justify-center rounded-md text-foreground/90 hover:bg-primary/20 hover:text-primary"
                         >
@@ -177,19 +212,19 @@ export function Canvas({ generating, heroIndex, generatedUrl, currentPrompt, cur
                       </div>
                     </div>
                   </div>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </SheetContent>
       </Sheet>
 
-      {lightbox !== null && (
+      {lightbox && (
         <Lightbox
-          src={IMAGES[lightbox]}
-          prompt={META[lightbox].prompt}
-          model={META[lightbox].model}
-          filename={`lovable-${META[lightbox].model}-${lightbox}.jpg`}
+          src={lightbox.image_url}
+          prompt={lightbox.prompt ?? ""}
+          model={lightbox.model}
+          filename={`lovable-${lightbox.model}-${lightbox.id}.png`}
           onClose={() => setLightbox(null)}
         />
       )}
@@ -205,6 +240,7 @@ export function Canvas({ generating, heroIndex, generatedUrl, currentPrompt, cur
     </main>
   );
 }
+
 
 function HeroAction({ children, label, onClick }: { children: React.ReactNode; label: string; onClick: () => void }) {
   return (
