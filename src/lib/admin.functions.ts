@@ -514,9 +514,14 @@ export const generateImage = createServerFn({ method: "POST" })
     const promptKey = (model as any).prompt_key || "prompt";
     const requestFormat = (model as any).request_format || "async_id";
 
-    // 支持 extra_params 中的占位符替换：{{aspect}} / {{prompt}}
+    // 占位符：{{aspect}} / {{prompt}} 替换为字符串；{{urls}} 替换为整个参考图数组（用 __URLS__ 标记）
+    const URLS_TOKEN = "__LOVABLE_URLS_ARRAY__";
+    const rawExtra = (model as any).extra_params ?? {};
     const substitute = (v: any): any => {
       if (typeof v === "string") {
+        const trimmed = v.trim();
+        // 整个字符串就是 {{urls}} → 直接替换为数组
+        if (/^\{\{\s*urls\s*\}\}$/.test(trimmed)) return URLS_TOKEN;
         return v
           .replace(/\{\{\s*aspect\s*\}\}/g, size)
           .replace(/\{\{\s*prompt\s*\}\}/g, data.prompt);
@@ -529,13 +534,23 @@ export const generateImage = createServerFn({ method: "POST" })
       }
       return v;
     };
-    const extra = substitute((model as any).extra_params ?? {}) as Record<string, unknown>;
+    const extra = substitute(rawExtra) as Record<string, unknown>;
+
+    // 找到所有用了 {{urls}} 占位符的字段，把它们替换为真实数组
+    let urlsHandledByExtra = false;
+    for (const [k, val] of Object.entries(extra)) {
+      if (val === URLS_TOKEN) {
+        extra[k] = httpRefs;
+        urlsHandledByExtra = true;
+      }
+    }
 
     const body: Record<string, unknown> = {
       [promptKey]: data.prompt,
-      ...extra, // 每个模型自定义参数（如 size、image_weight、num_inference_steps 等）
+      ...extra, // 每个模型自定义参数（如 size、image_weight、aspect_ratio 等）
     };
-    if (Array.isArray(httpRefs) && httpRefs.length > 0) {
+    // 没有显式用 {{urls}} 占位符的模型，默认把参考图放到 body.urls
+    if (!urlsHandledByExtra && Array.isArray(httpRefs) && httpRefs.length > 0) {
       body.urls = httpRefs;
     }
     console.log("[generateImage] submit body →", JSON.stringify({ url: submitUrl, body }, null, 2));
