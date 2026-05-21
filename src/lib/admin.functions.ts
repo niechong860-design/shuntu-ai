@@ -388,8 +388,8 @@ function extractImageUrl(payload: any): string | null {
    return `${base}${path}`;
  }
 
- // Upstream (wuyinkeji) authenticates via the standard `Authorization: Bearer <key>` header.
-// Do NOT append `?key=` to the URL — both submission and polling must reuse this header.
+  // Upstream (wuyinkeji) requires the key in the URL query string, while we also keep
+  // the standard Authorization header as a secondary compatibility path.
 
   function normalizeUpstreamApiKey(value: unknown): string {
     if (typeof value !== "string") return "";
@@ -407,6 +407,12 @@ function extractImageUrl(payload: any): string | null {
       "Content-Type": "application/json",
       Authorization: `Bearer ${clean}`,
     };
+  }
+
+  function appendApiKeyToUrl(apiUrl: string, targetKey: string): string {
+    const finalApiKey = String(targetKey).replace(/Bearer\s+/i, "").trim();
+    const joinChar = apiUrl.includes("?") ? "&" : "?";
+    return `${apiUrl}${joinChar}key=${finalApiKey}`;
   }
 
  export const generateImage = createServerFn({ method: "POST" })
