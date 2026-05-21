@@ -520,14 +520,15 @@ function extractImageUrl(payload: any): string | null {
         if (!rawFetchUrl || rawFetchUrl.includes("api.example.com")) {
           rawFetchUrl = "https://api.wuyinkeji.com/api/async/fetch_result";
         }
-       const start = Date.now();
+         const finalFetchUrl = appendApiKeyToUrl(rawFetchUrl, finalApiKey);
+        const start = Date.now();
        const TIMEOUT_MS = 60_000;
        const INTERVAL_MS = 3000;
 
        while (Date.now() - start < TIMEOUT_MS) {
          await new Promise((r) => setTimeout(r, INTERVAL_MS));
          try {
-            const qUrl = `${rawFetchUrl}${rawFetchUrl.includes("?") ? "&" : "?"}id=${encodeURIComponent(taskId)}`;
+             const qUrl = `${finalFetchUrl}${finalFetchUrl.includes("?") ? "&" : "?"}id=${encodeURIComponent(taskId)}`;
             const r = await fetch(qUrl, { method: "GET", headers });
            const t = await r.text();
            let j: any = null;
