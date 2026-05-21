@@ -577,10 +577,17 @@ export const generateImage = createServerFn({ method: "POST" })
         const res = await fetch(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
         const text = await res.text();
         const json = parseUpstreamResponse(text);
-        if (!res.ok) throw new Error(`上游提交失败 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
-        if (Number(json?.code) >= 400) throw new Error(`上游提交失败: ${json?.msg ?? "未知错误"}`);
+        console.log("[generateImage] upstream response →", { status: res.status, ok: res.ok, body: text?.slice(0, 1000) });
+        const upstreamMsg = (json?.msg ?? json?.message ?? json?.error?.message ?? "").toString().trim();
+        const rawTail = text?.slice(0, 300) || "";
+        if (!res.ok) {
+          throw new Error(`上游提交失败 ${res.status}: ${upstreamMsg || rawTail || "(空响应)"}`);
+        }
+        if (Number(json?.code) >= 400) {
+          throw new Error(`上游提交失败 [code=${json?.code}]: ${upstreamMsg || rawTail || "(无 msg 字段)"}`);
+        }
         taskId = json?.data?.id ?? json?.id ?? json?.task_id ?? (typeof json?.data === "string" ? json.data : null);
-        if (!taskId) throw new Error("上游未返回任务ID");
+        if (!taskId) throw new Error(`上游未返回任务ID，原始响应: ${rawTail || "(空)"}`);
       } catch (e: any) {
         throw new Error(e?.message ?? "提交任务失败");
       }
