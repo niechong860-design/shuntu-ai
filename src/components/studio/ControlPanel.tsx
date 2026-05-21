@@ -407,12 +407,6 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
           </div>
         </section>
 
-        {/* Advanced sliders */}
-        <section className="space-y-3.5">
-          <Label>高级参数</Label>
-          <SliderRow label="CFG 引导强度" value={cfg[0]} onChange={setCfg} min={1} max={20} step={0.5} hint="提示词贴合度" />
-          <SliderRow label="采样步数" value={steps[0]} onChange={setSteps} min={10} max={80} step={1} hint="渲染质量" />
-        </section>
       </div>
 
       {/* Generate */}
