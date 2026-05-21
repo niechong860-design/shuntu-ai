@@ -845,3 +845,62 @@ export const adminDeleteAd = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+// --- Founder: Admin role management ---
+export const founderListAdmins = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertFounder(context.userId);
+    const { data: roles, error } = await supabaseAdmin
+      .from("user_roles")
+      .select("user_id, role, created_at")
+      .in("role", ["admin", "founder"]);
+    if (error) throw new Error(error.message);
+    const ids = (roles ?? []).map((r: any) => r.user_id);
+    if (ids.length === 0) return [];
+    const { data: profiles } = await supabaseAdmin
+      .from("profiles")
+      .select("id, email, display_name")
+      .in("id", ids);
+    const pmap = new Map((profiles ?? []).map((p: any) => [p.id, p]));
+    return (roles ?? []).map((r: any) => ({
+      user_id: r.user_id,
+      role: r.role,
+      created_at: r.created_at,
+      email: pmap.get(r.user_id)?.email ?? null,
+      display_name: pmap.get(r.user_id)?.display_name ?? null,
+    }));
+  });
+
+export const founderAddAdmin = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ email: z.string().trim().email() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertFounder(context.userId);
+    const { data: prof, error: e1 } = await supabaseAdmin
+      .from("profiles")
+      .select("id, email")
+      .ilike("email", data.email)
+      .maybeSingle();
+    if (e1) throw new Error(e1.message);
+    if (!prof) throw new Error("找不到该邮箱用户，请确认对方已注册");
+    const { error } = await supabaseAdmin
+      .from("user_roles")
+      .insert({ user_id: prof.id, role: "admin" as any });
+    if (error && !error.message.includes("duplicate")) throw new Error(error.message);
+    return { ok: true, email: prof.email };
+  });
+
+export const founderRemoveAdmin = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ userId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertFounder(context.userId);
+    const { error } = await supabaseAdmin
+      .from("user_roles")
+      .delete()
+      .eq("user_id", data.userId)
+      .eq("role", "admin");
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
