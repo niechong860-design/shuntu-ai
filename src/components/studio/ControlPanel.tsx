@@ -290,7 +290,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
                       return (
                         <button
                           key={m.id}
-                          onClick={() => setModelKey(m.model_key)}
+                          onClick={() => { setModelKey(m.model_key); setModelOpen(false); }}
                           className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors ${
                             active ? "bg-primary/10" : "hover:bg-white/5"
                           }`}
