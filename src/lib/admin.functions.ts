@@ -393,13 +393,19 @@ function extractImageUrl(payload: any): string | null {
 
   function normalizeUpstreamApiKey(value: unknown): string {
     if (typeof value !== "string") return "";
-    return value.trim().replace(/^Bearer\s+/i, "").replace(/^['\"]|['\"]$/g, "").trim();
+    // Strip all whitespace (incl. \r \n \t and zero-width chars), surrounding quotes,
+    // and any number of leading "Bearer " prefixes that may have been pasted in.
+    let v = value.replace(/[\s\u200B-\u200D\uFEFF]/g, "");
+    v = v.replace(/^['"]+|['"]+$/g, "");
+    while (/^Bearer/i.test(v)) v = v.replace(/^Bearer/i, "");
+    return v.trim();
   }
 
   function buildUpstreamHeaders(finalApiKey: string): Record<string, string> {
+    const clean = normalizeUpstreamApiKey(finalApiKey);
     return {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${finalApiKey}`,
+      Authorization: `Bearer ${clean}`,
     };
   }
 
