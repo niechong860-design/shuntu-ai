@@ -681,9 +681,13 @@ export const generateImage = createServerFn({ method: "POST" })
 export const checkImageStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
-    z.object({ taskId: z.string().min(1).max(128) }).parse(d),
+    z.object({
+      taskId: z.string().min(1).max(128),
+      modelName: z.string().max(128).optional(),
+    }).parse(d),
   )
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
     const { global_api_key } = await loadGlobalConfig();
     const pureApiKey = normalizeUpstreamApiKey(global_api_key);
     if (!pureApiKey) throw new Error("尚未配置全局 API Key，请联系管理员");
@@ -712,7 +716,6 @@ export const checkImageStatus = createServerFn({ method: "POST" })
     }
     if (taskStatus === 3) {
       const detailMsg: string = String(j?.data?.message ?? rawMsg ?? "");
-      // 优先识别"参考图/URL 下载失败"，避免被笼统归为"内容违规"
       const isRefUrlIssue = /参考图|垫图|图片.*(下载|读取|获取|无法|失败|超时)|url.*(download|fetch|timeout|not.*found|404)|download.*image|fetch.*image/i.test(detailMsg);
       if (isRefUrlIssue) {
         return { status: "failed" as const, reason: "ref_url" as const, imageUrl: null as string | null, message: detailMsg || "参考图读取失败，请检查链接是否为公开的 HTTPS 链接", code, taskStatus, rawMsg, debug: rawDebug };
@@ -722,11 +725,20 @@ export const checkImageStatus = createServerFn({ method: "POST" })
 
     if (taskStatus === 2) {
       const url = extractImageUrl(j?.data) ?? extractImageUrl(j);
-      if (url) return { status: "success" as const, reason: null as null, imageUrl: url, message: null as string | null, code, taskStatus, rawMsg, debug: rawDebug };
+      if (url) {
+        if (data.modelName) {
+          await supabase.rpc("set_latest_history_image", {
+            _model: data.modelName,
+            _image_url: url,
+          });
+        }
+        return { status: "success" as const, reason: null as null, imageUrl: url, message: null as string | null, code, taskStatus, rawMsg, debug: rawDebug };
+      }
       return { status: "pending" as const, reason: null as null, imageUrl: null as string | null, message: "成功但URL未就绪", code, taskStatus, rawMsg, debug: rawDebug };
     }
     return { status: "pending" as const, reason: null as null, imageUrl: null as string | null, message: `处理中 status=${j?.data?.status ?? "?"}`, code, taskStatus, rawMsg, debug: rawDebug };
   });
+
 
 // --- Role check ---
 export const checkIsAdmin = createServerFn({ method: "POST" })
