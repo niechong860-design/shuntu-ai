@@ -474,18 +474,17 @@ function extractImageUrl(payload: any): string | null {
        throw new Error("您的算力余额不足，请联系老板兑换充值卡密");
      }
 
-      // Key priority is strict: per-model API Key first, global API Key only as fallback.
-      const modelApiKey = normalizeUpstreamApiKey((model as any).api_key);
-      const globalApiKey = normalizeUpstreamApiKey(global_api_key);
-      const finalApiKey = modelApiKey || globalApiKey;
-      if (!finalApiKey) {
+       // Key priority is strict: per-model API Key first, global API Key only as fallback.
+       const targetKey = (model as any).api_key || global_api_key;
+       const pureApiKey = String(targetKey).replace(/Bearer\s+/i, "").trim();
+       if (!pureApiKey) {
         throw new Error("该模型或全局接口设置尚未配置 API Key，请联系管理员");
       }
 
-      const headers = buildUpstreamHeaders(finalApiKey);
+       const headers = buildUpstreamHeaders(pureApiKey);
 
       const submitUrl = resolveUrl(base_url, model.api_url);
-      const finalSubmitUrl = appendApiKeyToUrl(submitUrl, finalApiKey);
+       const finalSubmitUrl = appendApiKeyToUrl(submitUrl, pureApiKey);
 
      const size = VALID_SIZES.has(data.aspectRatio) ? data.aspectRatio : "auto";
      const httpRefs = (data.referenceImages ?? []).filter((u) => /^https?:\/\//i.test(u));
@@ -506,7 +505,7 @@ function extractImageUrl(payload: any): string | null {
        }
        const text = await res.text();
        let json: any = null;
-       try { json = JSON.parse(text); } catch { /* */ }
+        json = parseUpstreamResponse(text);
        if (!res.ok) {
          throw new Error(`上游接口返回 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
        }
@@ -523,13 +522,12 @@ function extractImageUrl(payload: any): string | null {
            console.log("1. 最终请求的完整 URL:", finalSubmitUrl);
           console.log("2. 最终 Authorization 头的值 (前15位):", finalHeaders["Authorization"]?.substring(0, 15) + "...");
           console.log("3. 最终 Authorization 头的总长度:", finalHeaders["Authorization"]?.length);
-          console.log("4. Key 来源:", modelApiKey ? "模型独立Key" : "全局Key", "| Key长度:", finalApiKey.length);
+          console.log("4. Key 来源:", (model as any).api_key ? "模型独立Key" : "全局Key", "| Key长度:", pureApiKey.length);
           console.log("5. 最终发送给上游的 body 核心字段:", JSON.stringify({ prompt: (body as any)?.[promptKey], size: (body as any)?.size }));
           console.log("========================================");
            const res = await fetch(finalSubmitUrl, { method: "POST", headers: finalHeaders, body: JSON.stringify(body) });
          const text = await res.text();
-         let json: any = null;
-         try { json = JSON.parse(text); } catch { /* */ }
+          const json = parseUpstreamResponse(text);
          if (!res.ok) {
            throw new Error(`上游提交失败 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
          }
