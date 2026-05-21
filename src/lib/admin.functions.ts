@@ -1042,3 +1042,56 @@ export const adminSetSystemPrompt = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+// Public: anyone (including unauthenticated) can fetch contact info to display
+export const getContactInfo = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const { data } = await supabaseAdmin
+      .from("admin_settings")
+      .select("contact_wechat, contact_qq")
+      .eq("id", 1)
+      .maybeSingle();
+    return {
+      wechat: ((data as any)?.contact_wechat ?? "") as string,
+      qq: ((data as any)?.contact_qq ?? "") as string,
+    };
+  });
+
+export const adminGetContactInfo = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context.userId);
+    const { data, error } = await supabaseAdmin
+      .from("admin_settings")
+      .select("contact_wechat, contact_qq, updated_at")
+      .eq("id", 1)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return {
+      wechat: ((data as any)?.contact_wechat ?? "") as string,
+      qq: ((data as any)?.contact_qq ?? "") as string,
+      updated_at: (data as any)?.updated_at ?? null,
+    };
+  });
+
+export const adminSetContactInfo = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      wechat: z.string().max(120).default(""),
+      qq: z.string().max(120).default(""),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const { error } = await supabaseAdmin
+      .from("admin_settings")
+      .upsert({
+        id: 1,
+        contact_wechat: data.wechat.trim(),
+        contact_qq: data.qq.trim(),
+        updated_at: new Date().toISOString(),
+      } as never);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
