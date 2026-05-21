@@ -35,7 +35,7 @@ export function TopBar({ credits, onOpenHistory, onSwitchAccount }: Props) {
       <div className="flex items-center gap-1 pr-3">
         <NavLinkTo to="/">在线生成</NavLinkTo>
         <NavLinkTo to="/inspiration">灵感广场</NavLinkTo>
-        <NavLink>联系客服</NavLink>
+        <NavLink onClick={() => setContactOpen(true)}>联系客服</NavLink>
       </div>
 
 
