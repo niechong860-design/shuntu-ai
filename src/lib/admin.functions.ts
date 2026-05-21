@@ -583,8 +583,11 @@ export const checkImageStatus = createServerFn({ method: "POST" })
     const fetchResultUrl = "https://api.wuyinkeji.com/api/async/fetch_result";
     const r = await fetch(fetchResultUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: pureApiKey, id: data.taskId }),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": pureApiKey,
+      },
+      body: JSON.stringify({ id: data.taskId }),
     });
     const t = await r.text();
     const j = parseUpstreamResponse(t);
