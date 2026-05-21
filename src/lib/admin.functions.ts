@@ -168,6 +168,65 @@ export const adminUpdateModelPrice = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const adminUpdateModel = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      id: z.string().uuid(),
+      name: z.string().min(1).max(64).optional(),
+      model_key: z.string().min(1).max(64).regex(/^[a-zA-Z0-9_\-.]+$/).optional(),
+      description: z.string().max(200).nullable().optional(),
+      cost: z.number().min(0).max(100000).optional(),
+      sort_order: z.number().int().min(0).max(10000).optional(),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const { id, ...rest } = data;
+    const patch: Record<string, unknown> = { ...rest, updated_at: new Date().toISOString() };
+    const { error } = await supabaseAdmin.from("models_config").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const adminCreateModel = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      name: z.string().min(1).max(64),
+      model_key: z.string().min(1).max(64).regex(/^[a-zA-Z0-9_\-.]+$/),
+      description: z.string().max(200).optional(),
+      cost: z.number().min(0).max(100000).default(1),
+      sort_order: z.number().int().min(0).max(10000).optional(),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const { data: row, error } = await supabaseAdmin
+      .from("models_config")
+      .insert({
+        name: data.name,
+        model_key: data.model_key,
+        description: data.description ?? null,
+        cost: data.cost,
+        sort_order: data.sort_order ?? 999,
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    return row;
+  });
+
+export const adminDeleteModel = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const { error } = await supabaseAdmin.from("models_config").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 // --- Generation: deduct credits + log history ---
 export const consumeGeneration = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
