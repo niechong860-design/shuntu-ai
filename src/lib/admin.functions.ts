@@ -431,6 +431,18 @@ function extractImageUrl(payload: any): string | null {
     }
   }
 
+  function parseUpstreamResponse(text: string): any {
+    const parsed = parseUpstreamJson(text);
+    if (!parsed || typeof parsed !== "object") return parsed;
+    for (const key of ["data", "result", "output"]) {
+      const value = parsed[key];
+      if (typeof value === "string" && /^[\[{]/.test(value.trim())) {
+        try { parsed[key] = parseUpstreamResponse(value); } catch { /* keep original */ }
+      }
+    }
+    return parsed;
+  }
+
  export const generateImage = createServerFn({ method: "POST" })
    .middleware([requireSupabaseAuth])
    .inputValidator((d) =>
