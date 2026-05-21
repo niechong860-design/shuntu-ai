@@ -50,9 +50,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
   const [ratioOpen, setRatioOpen] = useState(false);
   const [sizeOpen, setSizeOpen] = useState(false);
   const [refs, setRefs] = useState<string[]>([]);
-  const [prompt, setPrompt] = useState(
-    "黄昏时分的超现实赛博朋克花园，生物荧光植物散发翠绿光芒，电影级广角，超精细细节",
-  );
+  const [prompt, setPrompt] = useState("");
   const [cfg, setCfg] = useState([7.5]);
   const [steps, setSteps] = useState([32]);
 
