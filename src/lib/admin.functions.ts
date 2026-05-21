@@ -591,23 +591,26 @@ export const checkImageStatus = createServerFn({ method: "POST" })
     const t = await r.text();
     const j = parseUpstreamResponse(t);
 
+    const rawMsg: string | null = j?.msg ?? j?.message ?? null;
+    const rawDebug = j?.debug ?? j?.data?.debug ?? null;
+    const taskStatus = Number.isFinite(Number(j?.data?.status)) ? Number(j?.data?.status) : null;
+
     if (!r.ok) {
-      return { status: "pending" as const, imageUrl: null as string | null, message: `HTTP ${r.status}` };
+      return { status: "pending" as const, reason: null as null, imageUrl: null as string | null, message: `HTTP ${r.status}`, code: r.status, taskStatus, rawMsg, debug: rawDebug };
     }
     const code = Number(j?.code);
     if (code >= 400) {
-      return { status: "failed" as const, imageUrl: null as string | null, message: j?.msg ?? "上游查询失败" };
+      return { status: "failed" as const, reason: "upstream" as const, imageUrl: null as string | null, message: rawMsg ?? "上游查询失败", code, taskStatus, rawMsg, debug: rawDebug };
     }
-    const taskStatus = Number(j?.data?.status);
     if (taskStatus === 3) {
-      return { status: "failed" as const, imageUrl: null as string | null, message: j?.data?.message ?? j?.msg ?? "生成失败" };
+      return { status: "failed" as const, reason: "rejected" as const, imageUrl: null as string | null, message: j?.data?.message ?? rawMsg ?? "任务被拒绝", code, taskStatus, rawMsg, debug: rawDebug };
     }
     if (taskStatus === 2) {
       const url = extractImageUrl(j?.data) ?? extractImageUrl(j);
-      if (url) return { status: "success" as const, imageUrl: url, message: null as string | null };
-      return { status: "pending" as const, imageUrl: null as string | null, message: "成功但URL未就绪" };
+      if (url) return { status: "success" as const, reason: null as null, imageUrl: url, message: null as string | null, code, taskStatus, rawMsg, debug: rawDebug };
+      return { status: "pending" as const, reason: null as null, imageUrl: null as string | null, message: "成功但URL未就绪", code, taskStatus, rawMsg, debug: rawDebug };
     }
-    return { status: "pending" as const, imageUrl: null as string | null, message: `处理中 status=${j?.data?.status ?? "?"}` };
+    return { status: "pending" as const, reason: null as null, imageUrl: null as string | null, message: `处理中 status=${j?.data?.status ?? "?"}`, code, taskStatus, rawMsg, debug: rawDebug };
   });
 
 // --- Role check ---

@@ -110,12 +110,32 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
             return;
           }
           if (s.status === "failed") {
-            throw new Error(s.message ?? "生成失败");
+            // 打印原始返回，方便排查被哪个关键词拦截
+            console.warn("[checkImageStatus failed]", {
+              taskId,
+              reason: (s as any).reason,
+              code: (s as any).code,
+              taskStatus: (s as any).taskStatus,
+              msg: (s as any).rawMsg,
+              debug: (s as any).debug,
+              message: s.message,
+            });
+            if ((s as any).reason === "rejected" || (s as any).taskStatus === 3) {
+              toast.error(
+                `生成任务失败（原因：任务被拒绝或涉及合规限制，请尝试更换提示词）${s.message ? ` · ${s.message}` : ""}`,
+                { duration: 8000 },
+              );
+            } else {
+              toast.error(`生成失败：${s.message ?? "上游服务异常，请稍后重试"}`, { duration: 6000 });
+            }
+            onGenerateDone(null);
+            return;
           }
           // pending — 重置瞬时错误计数，继续轮询
           transientRetries = 0;
         } catch (pollErr: any) {
           const msg = pollErr?.message ?? "";
+          console.warn("[checkImageStatus network error]", pollErr);
           const isTransient = /network|fetch|timeout|500|502|503|504/i.test(msg) || !msg;
           if (isTransient && transientRetries < MAX_TRANSIENT_RETRIES) {
             transientRetries += 1;
