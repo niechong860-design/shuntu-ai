@@ -10,10 +10,11 @@ import {
   adminListCoupons, adminGenerateCoupons, adminDeleteCoupon,
 } from "@/lib/admin.functions";
 import { toast } from "sonner";
-import { Shield, KeyRound, Coins, Copy, Plus, RefreshCw, Users, Ticket, LayoutDashboard, Trash2, Sparkles } from "lucide-react";
+import { Shield, KeyRound, Coins, Copy, Plus, RefreshCw, Users, Ticket, LayoutDashboard, Trash2, Sparkles, Megaphone } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { AnalyticsPanel } from "./AnalyticsPanel";
 import { ModelsPanel } from "./ModelsPanel";
+import { AdsPanel } from "./AdsPanel";
 
 type UserRow = { id: string; email: string | null; display_name: string | null; credits: number; created_at: string; total_spent: number };
 type Coupon = {
