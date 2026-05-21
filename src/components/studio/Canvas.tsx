@@ -29,7 +29,7 @@ function timeAgo(iso: string) {
 
 type Props = {
   generating: boolean;
-  heroIndex: number;
+  heroIndex?: number;
   generatedUrl?: string | null;
   currentPrompt?: string;
   currentModel?: string;
