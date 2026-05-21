@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, Copy, Maximize2, Sparkles, ArrowUpRight, X, Clock } from "lucide-react";
+import { Download, Copy, Maximize2, Sparkles, ArrowUpRight, X, Clock, ImageIcon } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import img1 from "@/assets/gen-1.jpg";
 import img2 from "@/assets/gen-2.jpg";
@@ -35,15 +35,7 @@ export function Canvas({ generating, heroIndex, historyOpen, onHistoryOpenChange
     <main className="flex h-full min-h-0 flex-col overflow-hidden bg-background p-3">
       {/* Main canvas — pure, full height */}
       <div className="relative flex-1 min-h-0 overflow-hidden rounded-2xl border border-border bg-card">
-        {generating ? (
-          <SkeletonShimmer />
-        ) : (
-          <img
-            src={hero}
-            alt={heroMeta.prompt}
-            className="h-full w-full object-cover animate-[fade-in_0.6s_ease-out]"
-          />
-        )}
+        {generating ? <SkeletonShimmer /> : <EmptyPlaceholder />}
       </div>
 
 
@@ -109,6 +101,20 @@ export function Canvas({ generating, heroIndex, historyOpen, onHistoryOpenChange
 
       {lightbox !== null && <Lightbox idx={lightbox} onClose={() => setLightbox(null)} />}
     </main>
+  );
+}
+
+function EmptyPlaceholder() {
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-gradient-to-br from-surface to-surface-elevated">
+      <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-border/60 bg-white/[0.02]">
+        <ImageIcon className="h-8 w-8 text-muted-foreground/60" strokeWidth={1.5} />
+      </div>
+      <div className="text-center">
+        <div className="text-sm font-medium text-foreground/80">生成的图片将在这里显示</div>
+        <div className="mt-1.5 text-xs font-light text-muted-foreground">在左侧输入提示词，点击按钮开始体验</div>
+      </div>
+    </div>
   );
 }
 
