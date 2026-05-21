@@ -28,7 +28,6 @@ export function InspirationPage() {
   const fetchFacets = useServerFn(listCaseFacets);
   const fetchStyles = useServerFn(listStyleTemplates);
 
-  const fetchStyles = useServerFn(listStyleTemplates);
   const fetchModels = useServerFn(listModelsConfig);
 
   const [items, setItems] = useState<CaseItem[]>([]);
