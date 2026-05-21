@@ -215,7 +215,7 @@ export const adminCreateModel = createServerFn({ method: "POST" })
       model_key: z.string().min(1).max(64).regex(/^[a-zA-Z0-9_\-.]+$/),
       description: z.string().max(200).optional(),
       cost: z.number().min(0).max(100000).default(1),
-      api_url: z.string().url().max(500).optional(),
+      api_url: z.string().min(1).max(500).optional(),
       api_key: z.string().max(500).optional(),
       request_format: z.enum(["async_id", "sync_url"]).default("async_id"),
       prompt_key: z.string().min(1).max(64).default("prompt"),
