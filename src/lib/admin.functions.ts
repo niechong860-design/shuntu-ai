@@ -574,7 +574,7 @@ export const generateImage = createServerFn({ method: "POST" })
           .replace(/\{\{\s*wan_size\s*\}\}/g, wanSize)
           .replace(/\{\{\s*size\s*\}\}/g, data.size)
           .replace(/\{\{\s*aspect\s*\}\}/g, size)
-          .replace(/\{\{\s*prompt\s*\}\}/g, data.prompt);
+          .replace(/\{\{\s*prompt\s*\}\}/g, finalPrompt);
       }
       if (Array.isArray(v)) return v.map(substitute);
       if (v && typeof v === "object") {
