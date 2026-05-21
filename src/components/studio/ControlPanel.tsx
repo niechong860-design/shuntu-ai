@@ -17,11 +17,17 @@ type ModelCfg = {
 };
 
 const RATIOS = [
+  { id: "auto", icon: Sparkles, label: "自适应" },
   { id: "1:1", icon: Square, label: "方形" },
-  { id: "16:9", icon: RectangleHorizontal, label: "横屏" },
-  { id: "9:16", icon: RectangleVertical, label: "竖屏" },
-  { id: "3:4", icon: RectangleVertical, label: "照片" },
-  { id: "4:3", icon: Monitor, label: "经典" },
+  { id: "16:9", icon: RectangleHorizontal, label: "横版" },
+  { id: "9:16", icon: RectangleVertical, label: "竖版" },
+  { id: "4:3", icon: RectangleHorizontal, label: "横版" },
+  { id: "3:4", icon: RectangleVertical, label: "竖版" },
+  { id: "21:9", icon: RectangleHorizontal, label: "影院" },
+  { id: "3:2", icon: RectangleHorizontal, label: "横版" },
+  { id: "2:3", icon: RectangleVertical, label: "竖版" },
+  { id: "5:4", icon: RectangleHorizontal, label: "横版" },
+  { id: "4:5", icon: RectangleVertical, label: "竖版" },
 ];
 
 type Props = {
