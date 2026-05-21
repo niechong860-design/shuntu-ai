@@ -87,7 +87,7 @@ function NavLink({ children, ...rest }: React.ButtonHTMLAttributes<HTMLButtonEle
   );
 }
 
-function NavLinkTo({ to, children }: { to: string; children: React.ReactNode }) {
+function NavLinkTo({ to, children }: { to: "/" | "/inspiration"; children: React.ReactNode }) {
   return (
     <Link
       to={to}
@@ -98,4 +98,5 @@ function NavLinkTo({ to, children }: { to: string; children: React.ReactNode }) 
     </Link>
   );
 }
+
 
