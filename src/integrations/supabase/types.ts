@@ -17,18 +17,24 @@ export type Database = {
       admin_settings: {
         Row: {
           access_password: string
+          contact_qq: string
+          contact_wechat: string
           id: number
           system_prompt: string
           updated_at: string
         }
         Insert: {
           access_password?: string
+          contact_qq?: string
+          contact_wechat?: string
           id?: number
           system_prompt?: string
           updated_at?: string
         }
         Update: {
           access_password?: string
+          contact_qq?: string
+          contact_wechat?: string
           id?: number
           system_prompt?: string
           updated_at?: string
@@ -434,6 +440,13 @@ export type Database = {
           credits: number
           message: string
           success: boolean
+        }[]
+      }
+      get_contact_info: {
+        Args: never
+        Returns: {
+          contact_qq: string
+          contact_wechat: string
         }[]
       }
       has_admin_access: { Args: { _user_id: string }; Returns: boolean }

@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { RedeemDialog } from "@/components/auth/RedeemDialog";
 import { AdBanner } from "./AdBanner";
+import { ContactDialog } from "./ContactDialog";
 
 
 type Props = {
@@ -14,6 +15,7 @@ type Props = {
 
 export function TopBar({ credits, onOpenHistory, onSwitchAccount }: Props) {
   const [redeemOpen, setRedeemOpen] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
   return (
     <header className="flex h-14 w-full shrink-0 items-center justify-between border-b border-border/60 bg-card/70 px-4 backdrop-blur-2xl">
       {/* Left: Logo */}
@@ -33,7 +35,7 @@ export function TopBar({ credits, onOpenHistory, onSwitchAccount }: Props) {
       <div className="flex items-center gap-1 pr-3">
         <NavLinkTo to="/">在线生成</NavLinkTo>
         <NavLinkTo to="/inspiration">灵感广场</NavLinkTo>
-        <NavLink>联系客服</NavLink>
+        <NavLink onClick={() => setContactOpen(true)}>联系客服</NavLink>
       </div>
 
 
@@ -61,6 +63,7 @@ export function TopBar({ credits, onOpenHistory, onSwitchAccount }: Props) {
         </button>
       </div>
       <RedeemDialog open={redeemOpen} onOpenChange={setRedeemOpen} />
+      <ContactDialog open={contactOpen} onOpenChange={setContactOpen} />
     </header>
   );
 }
