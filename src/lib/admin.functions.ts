@@ -388,16 +388,9 @@ function extractImageUrl(payload: any): string | null {
    return `${base}${path}`;
  }
 
- function withKeyParam(url: string, key: string | null | undefined): string {
-   if (!key) return url;
-   try {
-     const u = new URL(url);
-     if (!u.searchParams.has("key")) u.searchParams.set("key", key);
-     return u.toString();
-   } catch {
-     return `${url}${url.includes("?") ? "&" : "?"}key=${encodeURIComponent(key)}`;
-   }
- }
+// Upstream (wuyinkeji) authenticates via `Authorization: Bearer <key>` header ONLY.
+// Do NOT append `?key=` to the URL — upstream treats query `key` as authoritative
+// and rejects with "请求密钥KEY不正确" when both are set or query is empty/encoded.
 
  export const generateImage = createServerFn({ method: "POST" })
    .middleware([requireSupabaseAuth])
