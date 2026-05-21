@@ -40,16 +40,17 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
       <DialogContent className="max-w-md border-border/70 bg-card/80 backdrop-blur-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Gift className="h-4 w-4 text-primary" /> 卡密兑换中心
+            <Gift className="h-4 w-4 text-primary" /> 充值中心
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 pt-2">
-          <div className="relative overflow-hidden rounded-lg border border-border bg-white/[0.03] p-4">
+          <div className="relative overflow-hidden rounded-lg border border-primary/30 bg-primary/[0.06] p-4">
             <div className="pointer-events-none absolute -top-10 -right-10 h-32 w-32 rounded-full bg-gradient-aurora opacity-20 blur-3xl" />
-            <p className="text-xs text-muted-foreground">输入您手中的充值卡密，立即获得对应算力点数。</p>
+            <p className="text-sm font-medium text-primary">请联系客服充值</p>
+            <p className="mt-1 text-xs text-muted-foreground">客服会在确认后向您发放兑换码，下方输入即可到账。</p>
           </div>
           <div className="space-y-2">
-            <label className="text-xs text-muted-foreground">请输入您的充值卡密</label>
+            <label className="text-xs text-muted-foreground">兑换码</label>
             <Input
               autoFocus
               value={code}
