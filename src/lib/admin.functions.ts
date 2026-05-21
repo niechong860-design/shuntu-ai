@@ -280,25 +280,37 @@ function extractImageUrl(payload: any): string | null {
   const d0 = payload?.data?.[0];
   if (d0?.url) return d0.url;
   if (d0?.b64_json) return `data:image/png;base64,${d0.b64_json}`;
-  // Common variants
+  // Common variants, including wuyinkeji async detail payloads.
   const candidates = [
     payload?.url,
     payload?.image_url,
     payload?.image,
+    payload?.output,
+    payload?.result,
+    payload?.message,
     payload?.output?.[0],
-     payload?.images?.[0]?.url,
-     payload?.images?.[0],
-     payload?.result?.url,
-     payload?.result?.image,
-     payload?.data?.url,
-     payload?.data?.image_url,
-     payload?.data?.image,
-     payload?.data?.images?.[0]?.url,
-     payload?.data?.images?.[0],
-     payload?.data?.result?.url,
-     payload?.data?.urls?.[0],
-     payload?.urls?.[0],
-   ];
+    payload?.images?.[0]?.url,
+    payload?.images?.[0],
+    payload?.result?.url,
+    payload?.result?.image,
+    payload?.result?.images?.[0]?.url,
+    payload?.result?.images?.[0],
+    payload?.data?.url,
+    payload?.data?.image_url,
+    payload?.data?.image,
+    payload?.data?.output,
+    payload?.data?.result,
+    payload?.data?.message,
+    payload?.data?.output?.[0],
+    payload?.data?.images?.[0]?.url,
+    payload?.data?.images?.[0],
+    payload?.data?.result?.url,
+    payload?.data?.result?.image,
+    payload?.data?.result?.images?.[0]?.url,
+    payload?.data?.result?.images?.[0],
+    payload?.data?.urls?.[0],
+    payload?.urls?.[0],
+  ];
    for (const c of candidates) {
      if (typeof c === "string" && /^https?:\/\//i.test(c)) return c;
    }
@@ -309,8 +321,9 @@ function extractImageUrl(payload: any): string | null {
      while (stack.length) {
        const v = stack.pop();
        if (!v || seen.has(v)) continue;
-       if (typeof v === "string") {
-         if (/^https?:\/\/\S+\.(png|jpe?g|webp|gif|bmp)/i.test(v)) return v;
+        if (typeof v === "string") {
+          const embedded = v.match(/https?:\/\/[^\s"'<>\\]+(?:png|jpe?g|webp|gif|bmp)(?:\?[^\s"'<>\\]*)?/i);
+          if (embedded) return embedded[0];
          continue;
        }
        if (typeof v === "object") {
