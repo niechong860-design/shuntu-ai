@@ -7,6 +7,7 @@ export type StudioPrefill = {
   aspectRatio?: string;
   size?: "1K" | "2K" | "4K";
   styleId?: string;
+  fromInspiration?: boolean;
 };
 
 export function setStudioPrefill(p: StudioPrefill) {
