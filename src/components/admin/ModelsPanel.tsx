@@ -221,7 +221,7 @@ export function ModelsPanel() {
               </TableRow>
             ))}
             {rows.length === 0 && !loading && (
-              <TableRow><TableCell colSpan={6} className="text-center text-xs text-muted-foreground">暂无模型</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center text-xs text-muted-foreground">暂无模型</TableCell></TableRow>
             )}
           </TableBody>
         </Table>
