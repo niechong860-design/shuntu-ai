@@ -431,7 +431,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
               return (
                 <button
                   key={s.id}
-                  onClick={() => setStyleId(s.id)}
+                  onClick={() => setStyleId((prev) => (prev === s.id ? "" : s.id))}
                   title={s.name}
                   className={`group relative aspect-[9/16] w-[120px] shrink-0 overflow-hidden rounded-2xl border transition-all ${
                     active
