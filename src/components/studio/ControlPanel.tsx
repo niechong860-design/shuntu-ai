@@ -419,44 +419,55 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
           </div>
         </section>
 
-        {/* Style templates — horizontal scroll (below prompt, enlarged) */}
+        {/* Style templates — 9:16 image-only horizontal gallery */}
         <section>
           <div className="mb-2 flex items-center justify-between">
             <Label>风格模板</Label>
-            <span className="text-[10px] font-light text-muted-foreground">仅影响视觉风格，不改变比例/尺寸</span>
+            <span className="text-[10px] font-light text-muted-foreground">左右滑动浏览 · 仅影响视觉风格</span>
           </div>
-          <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-2 scrollbar-thin">
-            {STYLE_TEMPLATES.map((s) => {
+          <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-3 scrollbar-light">
+            {styles.map((s) => {
               const active = s.id === styleId;
               return (
                 <button
                   key={s.id}
                   onClick={() => setStyleId(s.id)}
-                  className={`group relative flex w-[150px] shrink-0 flex-col gap-2 rounded-2xl border p-2.5 text-left transition-all ${
+                  title={s.name}
+                  className={`group relative aspect-[9/16] w-[120px] shrink-0 overflow-hidden rounded-2xl border transition-all ${
                     active
-                      ? "border-primary/60 bg-primary/10 shadow-glow"
-                      : "border-border bg-white/[0.02] hover:border-primary/40 hover:bg-white/5"
+                      ? "border-primary/70 shadow-glow ring-2 ring-primary/40"
+                      : "border-border hover:border-primary/40"
                   }`}
                 >
-                  <div className={`flex h-24 w-full items-center justify-center rounded-xl text-4xl ${
-                    active ? "bg-gradient-aurora text-primary-foreground" : "bg-white/5 text-muted-foreground"
-                  }`}>
-                    {s.emoji}
-                  </div>
-                  <div className={`text-sm font-medium leading-tight ${active ? "text-primary" : ""}`}>
-                    {s.name}
-                  </div>
-                  <div className="text-[11px] font-light leading-snug text-muted-foreground line-clamp-2">
-                    {s.desc}
-                  </div>
+                  {s.image_url ? (
+                    <img
+                      src={s.image_url}
+                      alt={s.name}
+                      className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-white/[0.04] to-white/[0.01] text-muted-foreground">
+                      <ImageIcon className="h-6 w-6" strokeWidth={1.5} />
+                      <span className="px-2 text-center text-[11px] font-medium">{s.name}</span>
+                    </div>
+                  )}
                   {active && (
-                    <Check className="absolute right-2 top-2 h-3.5 w-3.5 text-primary" />
+                    <div className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
+                      <Check className="h-3 w-3" strokeWidth={3} />
+                    </div>
                   )}
                 </button>
               );
             })}
+            {styles.length === 0 && (
+              <div className="flex h-[213px] items-center justify-center text-xs text-muted-foreground">
+                加载中…
+              </div>
+            )}
           </div>
         </section>
+
 
 
 
