@@ -946,3 +946,72 @@ export const founderSetAccessPassword = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+// --- Style templates & system prompt ---
+export const listStyleTemplates = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase } = context;
+    const { data, error } = await supabase
+      .from("style_templates")
+      .select("id, name, image_url, sort_order")
+      .order("sort_order", { ascending: true });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+
+export const adminListStyleTemplates = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context.userId);
+    const { data, error } = await supabaseAdmin
+      .from("style_templates")
+      .select("id, name, prompt, image_url, sort_order, updated_at")
+      .order("sort_order", { ascending: true });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+
+export const adminUpdateStyleTemplate = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      id: z.string().min(1).max(64),
+      name: z.string().min(1).max(64).optional(),
+      prompt: z.string().max(4000).optional(),
+      image_url: z.string().max(1000).nullable().optional(),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const { id, ...rest } = data;
+    const patch: Record<string, unknown> = { ...rest, updated_at: new Date().toISOString() };
+    const { error } = await supabaseAdmin.from("style_templates").update(patch as never).eq("id", id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const adminGetSystemPrompt = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context.userId);
+    const { data, error } = await supabaseAdmin
+      .from("admin_settings")
+      .select("system_prompt, updated_at")
+      .eq("id", 1)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return { system_prompt: data?.system_prompt ?? "", updated_at: data?.updated_at ?? null };
+  });
+
+export const adminSetSystemPrompt = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ system_prompt: z.string().max(4000) }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const { error } = await supabaseAdmin
+      .from("admin_settings")
+      .upsert({ id: 1, system_prompt: data.system_prompt, updated_at: new Date().toISOString() });
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
