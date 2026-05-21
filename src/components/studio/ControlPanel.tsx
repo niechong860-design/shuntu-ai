@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   Wand2, Eraser, Sparkles, Plus, X, Dices, Zap,
   ChevronDown, Square, RectangleHorizontal, RectangleVertical, Monitor,
-  Check, Image as ImageIcon,
+  Check,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
@@ -222,30 +222,6 @@ export function ControlPanel({ onGenerate, generating }: Props) {
   );
 }
 
-function RefSlot({ url, onPick, onClear }: {
-  url: string | null; onPick: (e: React.ChangeEvent<HTMLInputElement>) => void; onClear: () => void;
-}) {
-  if (url) {
-    return (
-      <div className="group relative aspect-square overflow-hidden rounded-xl border border-border bg-surface">
-        <img src={url} alt="ref" className="h-full w-full object-cover" />
-        <button
-          onClick={onClear}
-          className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 hover:bg-destructive"
-        >
-          <X className="h-3 w-3" />
-        </button>
-      </div>
-    );
-  }
-  return (
-    <label className="group flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border bg-white/[0.015] transition-all hover:border-primary/50 hover:bg-primary/[0.04] hover:shadow-glow">
-      <Plus className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" strokeWidth={1.5} />
-      <ImageIcon className="hidden h-2.5 w-2.5 text-muted-foreground" />
-      <input type="file" accept="image/*" className="hidden" onChange={onPick} />
-    </label>
-  );
-}
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
