@@ -75,6 +75,19 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
+  // Apply a one-shot prefill payload coming from the inspiration plaza ("一键复用")
+  useEffect(() => {
+    const p = consumeStudioPrefill();
+    if (!p) return;
+    if (typeof p.prompt === "string") setPrompt(p.prompt);
+    if (p.aspectRatio) setRatio(p.aspectRatio);
+    if (p.size) setSize(p.size);
+    if (p.styleId) setStyleId(p.styleId);
+    if (p.modelKey) setModelKey(p.modelKey);
+    toast.success("已载入案例参数，可直接生成");
+  }, []);
+
+
   const activeModel = models.find((m) => m.model_key === modelKey);
   const activeRatio = RATIOS.find((r) => r.id === ratio)!;
   const ActiveRatioIcon = activeRatio.icon;
