@@ -79,6 +79,8 @@ export type Database = {
       }
       models_config: {
         Row: {
+          api_key: string | null
+          api_url: string | null
           cost: number
           created_at: string
           description: string | null
@@ -89,6 +91,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          api_key?: string | null
+          api_url?: string | null
           cost?: number
           created_at?: string
           description?: string | null
@@ -99,6 +103,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          api_key?: string | null
+          api_url?: string | null
           cost?: number
           created_at?: string
           description?: string | null

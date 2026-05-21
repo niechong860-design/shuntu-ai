@@ -21,12 +21,13 @@ const META = [
 type Props = {
   generating: boolean;
   heroIndex: number;
+  generatedUrl?: string | null;
   historyOpen: boolean;
   onHistoryOpenChange: (v: boolean) => void;
   onSelectHistory: (i: number) => void;
 };
 
-export function Canvas({ generating, heroIndex, historyOpen, onHistoryOpenChange, onSelectHistory }: Props) {
+export function Canvas({ generating, heroIndex, generatedUrl, historyOpen, onHistoryOpenChange, onSelectHistory }: Props) {
   const [lightbox, setLightbox] = useState<number | null>(null);
   const hero = IMAGES[heroIndex];
   const heroMeta = META[heroIndex];
@@ -35,7 +36,13 @@ export function Canvas({ generating, heroIndex, historyOpen, onHistoryOpenChange
     <main className="flex h-full min-h-0 flex-col overflow-hidden bg-background p-3">
       {/* Main canvas — pure, full height */}
       <div className="relative flex-1 min-h-0 overflow-hidden rounded-2xl border border-border bg-card">
-        {generating ? <SkeletonShimmer /> : <EmptyPlaceholder />}
+        {generating ? (
+          <SkeletonShimmer />
+        ) : generatedUrl ? (
+          <img src={generatedUrl} alt="生成结果" className="h-full w-full object-contain bg-black" />
+        ) : (
+          <EmptyPlaceholder />
+        )}
       </div>
 
 

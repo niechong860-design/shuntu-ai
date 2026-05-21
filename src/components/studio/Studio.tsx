@@ -9,16 +9,17 @@ export function Studio() {
   const { session, profile, loading } = useAuth();
   const [generating, setGenerating] = useState(false);
   const [heroIndex, setHeroIndex] = useState(0);
+  const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [forceAuth, setForceAuth] = useState(false);
 
-  const handleGenerate = () => {
-    if (generating) return;
+  const handleGenerateStart = () => {
     setGenerating(true);
-    setTimeout(() => {
-      setGenerating(false);
-      setHeroIndex((i) => (i + 1) % 6);
-    }, 3000);
+    setGeneratedUrl(null);
+  };
+  const handleGenerateDone = (url: string | null) => {
+    setGenerating(false);
+    if (url) setGeneratedUrl(url);
   };
 
   const showAuth = !loading && (!session || forceAuth);
@@ -33,13 +34,18 @@ export function Studio() {
           onSwitchAccount={() => setForceAuth(true)}
         />
         <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2" style={{ height: "calc(100vh - 56px)" }}>
-          <ControlPanel onGenerate={handleGenerate} generating={generating} />
+          <ControlPanel
+            onGenerateStart={handleGenerateStart}
+            onGenerateDone={handleGenerateDone}
+            generating={generating}
+          />
           <Canvas
             generating={generating}
             heroIndex={heroIndex}
+            generatedUrl={generatedUrl}
             historyOpen={historyOpen}
             onHistoryOpenChange={setHistoryOpen}
-            onSelectHistory={setHeroIndex}
+            onSelectHistory={(i) => { setHeroIndex(i); setGeneratedUrl(null); }}
           />
         </div>
       </div>
