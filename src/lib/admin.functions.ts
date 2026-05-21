@@ -489,7 +489,7 @@ export const generateImage = createServerFn({ method: "POST" })
       aspectRatio: z.string().min(1).max(16).default("1:1"),
       size: z.enum(["1K", "2K", "4K"]).default("1K"),
       referenceImages: z.array(z.string().url().or(z.string().startsWith("data:"))).max(5).optional(),
-      styleId: z.string().min(1).max(64).optional(),
+      styleId: z.string().max(64).optional().or(z.literal("")),
     }).parse(d),
   )
   .handler(async ({ data, context }) => {
