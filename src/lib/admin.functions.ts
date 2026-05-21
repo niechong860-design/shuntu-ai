@@ -388,16 +388,13 @@ function extractImageUrl(payload: any): string | null {
    return `${base}${path}`;
  }
 
-  // Upstream (wuyinkeji) requires the key in the URL query string, while we also keep
-  // the standard Authorization header as a secondary compatibility path.
+   // Upstream (wuyinkeji) requires the pure key in both URL query string and Authorization.
 
   function normalizeUpstreamApiKey(value: unknown): string {
     if (typeof value !== "string") return "";
-    // Strip all whitespace (incl. \r \n \t and zero-width chars), surrounding quotes,
-    // and any number of leading "Bearer " prefixes that may have been pasted in.
-    let v = value.replace(/[\s\u200B-\u200D\uFEFF]/g, "");
+    let v = value.replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
     v = v.replace(/^['"]+|['"]+$/g, "");
-    while (/^Bearer/i.test(v)) v = v.replace(/^Bearer/i, "");
+    while (/^Bearer\s+/i.test(v)) v = v.replace(/^Bearer\s+/i, "");
     return v.trim();
   }
 
@@ -405,12 +402,12 @@ function extractImageUrl(payload: any): string | null {
     const clean = normalizeUpstreamApiKey(finalApiKey);
     return {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${clean}`,
+      Authorization: clean,
     };
   }
 
   function appendApiKeyToUrl(apiUrl: string, targetKey: string): string {
-    const finalApiKey = String(targetKey).replace(/Bearer\s+/i, "").trim();
+    const finalApiKey = normalizeUpstreamApiKey(targetKey);
     const joinChar = apiUrl.includes("?") ? "&" : "?";
     return `${apiUrl}${joinChar}key=${finalApiKey}`;
   }
@@ -520,7 +517,6 @@ function extractImageUrl(payload: any): string | null {
         if (!rawFetchUrl || rawFetchUrl.includes("api.example.com")) {
           rawFetchUrl = "https://api.wuyinkeji.com/api/async/fetch_result";
         }
-         const finalFetchUrl = appendApiKeyToUrl(rawFetchUrl, finalApiKey);
         const start = Date.now();
        const TIMEOUT_MS = 60_000;
        const INTERVAL_MS = 3000;
@@ -528,7 +524,7 @@ function extractImageUrl(payload: any): string | null {
        while (Date.now() - start < TIMEOUT_MS) {
          await new Promise((r) => setTimeout(r, INTERVAL_MS));
          try {
-             const qUrl = `${finalFetchUrl}${finalFetchUrl.includes("?") ? "&" : "?"}id=${encodeURIComponent(taskId)}`;
+             const qUrl = `${rawFetchUrl}${rawFetchUrl.includes("?") ? "&" : "?"}id=${encodeURIComponent(taskId)}&key=${finalApiKey}`;
             const r = await fetch(qUrl, { method: "GET", headers });
            const t = await r.text();
            let j: any = null;
