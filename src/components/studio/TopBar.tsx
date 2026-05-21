@@ -63,6 +63,7 @@ export function TopBar({ credits, onOpenHistory, onSwitchAccount }: Props) {
         </button>
       </div>
       <RedeemDialog open={redeemOpen} onOpenChange={setRedeemOpen} />
+      <ContactDialog open={contactOpen} onOpenChange={setContactOpen} />
     </header>
   );
 }
