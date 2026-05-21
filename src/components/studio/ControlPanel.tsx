@@ -445,11 +445,24 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
         <section>
           <div className="mb-2 flex items-center justify-between">
             <Label>风格模板</Label>
-            <span className="text-[10px] font-light text-muted-foreground">左右滑动浏览 · 仅影响视觉风格</span>
+            <span className="text-[10px] font-light text-muted-foreground">
+              {inspirationMode ? "已使用灵感广场案例 · 风格模板已禁用" : "左右滑动浏览 · 仅影响视觉风格"}
+            </span>
           </div>
-          <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-3 scrollbar-light">
+          {inspirationMode && (
+            <div className="mb-2 flex items-center justify-between rounded-lg border border-primary/30 bg-primary/[0.06] px-3 py-2 text-[11px]">
+              <span className="text-primary/90">灵感广场提示词优先，避免与风格模板冲突</span>
+              <button
+                onClick={() => setInspirationMode(false)}
+                className="rounded-md border border-primary/40 px-2 py-0.5 text-[10px] text-primary transition-colors hover:bg-primary/10"
+              >
+                取消复用
+              </button>
+            </div>
+          )}
+          <div className={`-mx-1 flex gap-3 overflow-x-auto px-1 pb-3 scrollbar-light ${inspirationMode ? "pointer-events-none opacity-40" : ""}`}>
             {styles.map((s) => {
-              const active = s.id === styleId;
+              const active = !inspirationMode && s.id === styleId;
               return (
                 <button
                   key={s.id}
