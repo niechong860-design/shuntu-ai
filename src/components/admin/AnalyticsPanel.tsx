@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { adminGetAnalytics } from "@/lib/admin.functions";
-import { TrendingUp, Users, Zap, Ticket, Sparkles, ArrowUpRight, RefreshCw } from "lucide-react";
+import { TrendingUp, Users, Zap, Ticket, Sparkles, ArrowUpRight, RefreshCw, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
