@@ -14,7 +14,7 @@ import { Shield, KeyRound, Coins, Copy, Plus, RefreshCw, Users, Ticket, LayoutDa
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { AnalyticsPanel } from "./AnalyticsPanel";
 
-type UserRow = { id: string; email: string | null; display_name: string | null; credits: number; created_at: string };
+type UserRow = { id: string; email: string | null; display_name: string | null; credits: number; created_at: string; total_spent: number };
 type Coupon = {
   id: string; code: string; amount: number; is_used: boolean;
   used_by_email: string | null; used_at: string | null; created_at: string;
