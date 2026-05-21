@@ -78,7 +78,18 @@ export function ModelsPanel() {
     request_format: (r.request_format ?? "async_id") as "async_id" | "sync_url",
     prompt_key: r.prompt_key ?? "prompt",
     fetch_url: r.fetch_url ?? "",
+    extra_params: JSON.stringify(r.extra_params ?? {}, null, 2),
   });
+
+  const parseExtra = (s: string): Record<string, unknown> | null => {
+    const t = s.trim();
+    if (!t) return {};
+    try {
+      const v = JSON.parse(t);
+      if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+      return v as Record<string, unknown>;
+    } catch { return null; }
+  };
 
   const save = async () => {
     if (!editing) return;
@@ -86,6 +97,8 @@ export function ModelsPanel() {
     if (!editing.name.trim() || !editing.model_key.trim()) return toast.error("名称和 Key 不能为空");
     if (!Number.isFinite(n) || n < 0) return toast.error("请输入有效的点数");
     if (editing.api_url && !/^https?:\/\//i.test(editing.api_url)) return toast.error("API 接口地址必须是 http(s) URL");
+    const extra = parseExtra(editing.extra_params);
+    if (extra === null) return toast.error("额外请求参数必须是合法的 JSON 对象");
     setBusy(true);
     try {
       await update({ data: {
@@ -99,6 +112,7 @@ export function ModelsPanel() {
         request_format: editing.request_format,
         prompt_key: editing.prompt_key.trim() || "prompt",
         fetch_url: editing.fetch_url.trim() || null,
+        extra_params: extra,
       }});
       toast.success("模型已更新");
       setEditing(null);
@@ -113,6 +127,8 @@ export function ModelsPanel() {
     if (!creating.name.trim() || !creating.model_key.trim()) return toast.error("名称和 Key 不能为空");
     if (!Number.isFinite(n) || n < 0) return toast.error("请输入有效的点数");
     if (creating.api_url && !/^https?:\/\//i.test(creating.api_url)) return toast.error("API 接口地址必须是 http(s) URL");
+    const extra = parseExtra(creating.extra_params);
+    if (extra === null) return toast.error("额外请求参数必须是合法的 JSON 对象");
     setBusy(true);
     try {
       await create({ data: {
@@ -125,6 +141,7 @@ export function ModelsPanel() {
         request_format: creating.request_format,
         prompt_key: creating.prompt_key.trim() || "prompt",
         fetch_url: creating.fetch_url.trim() || undefined,
+        extra_params: extra,
       }});
       toast.success("模型添加成功");
       setCreating(null);
