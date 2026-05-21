@@ -429,7 +429,15 @@ function extractImageUrl(payload: any): string | null {
       const start = cleaned.search(/[\[{]/);
       const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
       if (start < 0 || end < start) return null;
-      return JSON.parse(cleaned.slice(start, end + 1));
+      try { return JSON.parse(cleaned.slice(start, end + 1)); }
+      catch {
+        return JSON.parse(
+          cleaned.slice(start, end + 1)
+            .replace(/,\s*}/g, "}")
+            .replace(/,\s*]/g, "]")
+            .replace(/[\x00-\x1F\x7F]/g, ""),
+        );
+      }
     }
   }
 
@@ -519,15 +527,7 @@ function extractImageUrl(payload: any): string | null {
      } else {
         let taskId: string | null = null;
         try {
-          const finalHeaders = { ...headers };
-          console.log("=== 【调试暴漏】前端即将发出的最终请求包 ===");
-           console.log("1. 最终请求的完整 URL:", finalSubmitUrl);
-          console.log("2. 最终 Authorization 头的值 (前15位):", finalHeaders["Authorization"]?.substring(0, 15) + "...");
-          console.log("3. 最终 Authorization 头的总长度:", finalHeaders["Authorization"]?.length);
-          console.log("4. Key 来源:", (model as any).api_key ? "模型独立Key" : "全局Key", "| Key长度:", pureApiKey.length);
-          console.log("5. 最终发送给上游的 body 核心字段:", JSON.stringify({ prompt: (body as any)?.[promptKey], size: (body as any)?.size }));
-          console.log("========================================");
-           const res = await fetch(finalSubmitUrl, { method: "POST", headers: finalHeaders, body: JSON.stringify(body) });
+          const res = await fetch(finalSubmitUrl, { method: "POST", headers, body: JSON.stringify(body) });
          const text = await res.text();
           const json = parseUpstreamResponse(text);
          if (!res.ok) {
@@ -542,13 +542,7 @@ function extractImageUrl(payload: any): string | null {
          throw new Error(e?.message ?? "提交任务失败");
        }
 
-         const configuredFetchUrl = String((model as any).fetch_url ?? "").trim();
-         let rawFetchUrl = configuredFetchUrl ? resolveUrl(base_url, configuredFetchUrl) : "";
-        // Defensive auto-correction: never allow empty or placeholder/example polling hosts.
-        if (!rawFetchUrl || rawFetchUrl.includes("api.example.com")) {
-          rawFetchUrl = "https://api.wuyinkeji.com/api/async/fetch_result";
-        }
-         rawFetchUrl = rawFetchUrl.replace(/([?&])id=[^&]*&?/i, "$1").replace(/[?&]$/, "");
+         const fetchResultUrl = "https://api.wuyinkeji.com/api/async/fetch_result";
         const start = Date.now();
        const TIMEOUT_MS = 60_000;
        const INTERVAL_MS = 3000;
@@ -556,7 +550,7 @@ function extractImageUrl(payload: any): string | null {
        while (Date.now() - start < TIMEOUT_MS) {
          await new Promise((r) => setTimeout(r, INTERVAL_MS));
          try {
-             const qUrl = appendApiKeyToUrl(`${rawFetchUrl}${rawFetchUrl.includes("?") ? "&" : "?"}id=${taskId}`, pureApiKey);
+             const qUrl = `${fetchResultUrl}?id=${taskId}&key=${pureApiKey}`;
             const r = await fetch(qUrl, { method: "GET", headers });
            const t = await r.text();
             const j = parseUpstreamResponse(t);
