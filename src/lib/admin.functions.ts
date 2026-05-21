@@ -195,6 +195,7 @@ export const adminUpdateModel = createServerFn({ method: "POST" })
       request_format: z.enum(["async_id", "sync_url"]).optional(),
       prompt_key: z.string().min(1).max(64).optional(),
       fetch_url: z.string().min(1).max(500).nullable().optional(),
+      extra_params: z.record(z.string(), z.any()).optional(),
       sort_order: z.number().int().min(0).max(10000).optional(),
     }).parse(d),
   )
@@ -220,6 +221,7 @@ export const adminCreateModel = createServerFn({ method: "POST" })
       request_format: z.enum(["async_id", "sync_url"]).default("async_id"),
       prompt_key: z.string().min(1).max(64).default("prompt"),
       fetch_url: z.string().min(1).max(500).optional(),
+      extra_params: z.record(z.string(), z.any()).optional(),
       sort_order: z.number().int().min(0).max(10000).optional(),
     }).parse(d),
   )
@@ -237,6 +239,7 @@ export const adminCreateModel = createServerFn({ method: "POST" })
         request_format: data.request_format,
         prompt_key: data.prompt_key,
         fetch_url: data.fetch_url ?? null,
+        extra_params: data.extra_params ?? {},
         sort_order: data.sort_order ?? 999,
       })
       .select("id")
