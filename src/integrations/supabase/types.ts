@@ -18,16 +18,19 @@ export type Database = {
         Row: {
           access_password: string
           id: number
+          system_prompt: string
           updated_at: string
         }
         Insert: {
           access_password?: string
           id?: number
+          system_prompt?: string
           updated_at?: string
         }
         Update: {
           access_password?: string
           id?: number
+          system_prompt?: string
           updated_at?: string
         }
         Relationships: []
@@ -223,6 +226,33 @@ export type Database = {
           display_name?: string | null
           email?: string | null
           id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      style_templates: {
+        Row: {
+          id: string
+          image_url: string | null
+          name: string
+          prompt: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          image_url?: string | null
+          name: string
+          prompt?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          image_url?: string | null
+          name?: string
+          prompt?: string
+          sort_order?: number
           updated_at?: string
         }
         Relationships: []

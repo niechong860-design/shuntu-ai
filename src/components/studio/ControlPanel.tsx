@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import {
   Wand2, Eraser, Sparkles, Plus, X, Dices, Zap,
   ChevronDown, Square, RectangleHorizontal, RectangleVertical, Monitor,
-  Check,
+  Check, ImageIcon,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { useServerFn } from "@tanstack/react-start";
-import { listModelsConfig, generateImage, checkImageStatus } from "@/lib/admin.functions";
+import { listModelsConfig, generateImage, checkImageStatus, listStyleTemplates } from "@/lib/admin.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -30,29 +30,7 @@ const RATIOS = [
   { id: "4:5", icon: RectangleVertical, label: "竖版" },
 ];
 
-// 风格模板：只控制 灯光 / 背景 / 氛围 / 质感 / 色调 / 广告风格
-// 严禁出现：比例 / 分辨率 / 尺寸 / 像素 / --ar / 16:9 / 4K 等字眼
-const STYLE_TEMPLATES: { id: string; name: string; desc: string; emoji: string; prompt: string }[] = [
-  { id: "none", name: "无风格", desc: "仅按提示词生成", emoji: "✖", prompt: "" },
-  { id: "premium_ecom", name: "高级电商", desc: "柔光 · 高级商业大片", emoji: "🛍", prompt: "high-end e-commerce commercial photography, soft cinematic studio lighting, clean composition, premium glossy product feel, refined color grading, luxury advertising aesthetic" },
-  { id: "xhs", name: "小红书", desc: "清新文艺日系氛围", emoji: "📔", prompt: "Xiaohongshu lifestyle photography, soft natural daylight, fresh airy atmosphere, pastel warm tones, cozy aesthetic background, instagrammable lifestyle styling" },
-  { id: "ins_minimal", name: "INS极简", desc: "极简留白 · 性冷淡", emoji: "◻", prompt: "minimalist instagram aesthetic, lots of negative space, neutral muted palette, soft diffused lighting, clean geometric composition, editorial calm mood" },
-  { id: "white_ecom", name: "白底电商", desc: "纯白棚拍商业图", emoji: "⬜", prompt: "pure white seamless studio background, even soft box lighting, crisp clean shadows, commercial catalog product photography, sharp clear details" },
-  { id: "tech", name: "科技质感", desc: "冷色调 · 未来科技", emoji: "🛰", prompt: "futuristic tech product photography, cool cyan and blue tones, sleek dark gradient background, sharp rim lighting, glowing accent highlights, premium hi-tech mood" },
-  { id: "trend_ad", name: "潮流广告", desc: "撞色潮酷海报感", emoji: "🎨", prompt: "trendy streetwear advertising poster, bold contrasting colors, dynamic playful composition, punchy saturated palette, modern editorial energy" },
-  { id: "jewelry", name: "珠宝高级感", desc: "深色丝绒 · 璀璨反射", emoji: "💎", prompt: "luxury jewelry photography, dark velvet backdrop, sparkling specular highlights, precise focused lighting, refined reflections, opulent premium mood" },
-  { id: "beauty", name: "美妆海报", desc: "柔光质感美妆大片", emoji: "💄", prompt: "high-end beauty cosmetics poster, soft glowing skin-friendly lighting, silky smooth gradient background, elegant pastel or rose tones, dewy luxurious atmosphere" },
-  { id: "food", name: "食品广告", desc: "诱人质感 · 食欲色调", emoji: "🍔", prompt: "appetizing food commercial photography, warm golden lighting, rich appetizing colors, mouthwatering textures, steam and freshness, premium culinary mood" },
-  { id: "shoes", name: "鞋靴高级感", desc: "动感光影 · 潮鞋大片", emoji: "👟", prompt: "premium footwear advertising, dramatic directional lighting, dynamic shadow play, textured concrete or stone surface, hype sneaker editorial mood" },
-  { id: "outdoor", name: "户外露营", desc: "自然光 · 山野氛围", emoji: "🏕", prompt: "outdoor camping lifestyle scene, natural golden hour sunlight, rugged mountain or forest environment, earthy organic tones, adventurous warm atmosphere" },
-  { id: "luxury_stage", name: "奢侈品展台", desc: "石材展台 · 博物馆光", emoji: "🏛", prompt: "luxury product display stage, marble or stone pedestal, museum-grade spotlight lighting, elegant deep background, sophisticated high-end gallery atmosphere" },
-  { id: "white_studio", name: "极简白棚", desc: "纯净光影 · 极简棚拍", emoji: "🔳", prompt: "minimal white studio set, soft wraparound lighting, gentle natural shadows, pure clean backdrop, refined minimalist product mood" },
-  { id: "dark_premium", name: "暗黑高级感", desc: "暗色调 · 戏剧光影", emoji: "🖤", prompt: "dark moody premium product photography, deep black background, dramatic chiaroscuro lighting, rich shadows, cinematic luxurious atmosphere" },
-];
-
-// 商品保护：固定追加，保证商品本体不被改动
-const PRODUCT_PROTECTION_PROMPT =
-  "Preserve the exact original product. Do not redesign or replace the product. Keep the exact shape, logo, material, stitching, structure, proportions and colors unchanged. Only optimize lighting, shadows, background and composition.";
+type StyleTpl = { id: string; name: string; image_url: string | null; sort_order: number };
 
 type Props = {
   onGenerateStart: () => void;
@@ -76,8 +54,11 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
   const [refs, setRefs] = useState<string[]>([]);
   const [prompt, setPrompt] = useState("");
   const [styleId, setStyleId] = useState<string>("none");
+  const [styles, setStyles] = useState<StyleTpl[]>([]);
   const [cfg, setCfg] = useState([7.5]);
   const [steps, setSteps] = useState([32]);
+
+  const fetchStyles = useServerFn(listStyleTemplates);
 
   useEffect(() => {
     if (!session) return;
@@ -85,6 +66,9 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
       const list = (data ?? []) as ModelCfg[];
       setModels(list);
       if (list[0] && !modelKey) setModelKey(list[0].model_key);
+    }).catch(() => {});
+    fetchStyles({}).then((data) => {
+      setStyles((data ?? []) as StyleTpl[]);
     }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
@@ -143,21 +127,15 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
     onGenerateStart();
     try {
       const httpRefs = refs.filter((u) => /^https?:\/\//i.test(u));
-      const style = STYLE_TEMPLATES.find((s) => s.id === styleId);
-      // 风格模板只拼接「风格/灯光/氛围」prompt，不包含任何比例/分辨率/尺寸字眼
-      const finalPrompt = [
-        prompt.trim(),
-        style?.prompt?.trim(),
-        PRODUCT_PROTECTION_PROMPT,
-      ].filter(Boolean).join("\n\n");
+      // 风格模板的 prompt 与后台固定提示词由服务端拼接，不在客户端修改用户原始输入
       const payload = {
         modelKey: activeModel.model_key,
-        prompt: finalPrompt,
-        aspectRatio: ratio, // 用户选择优先级最高
-        size,               // 用户选择优先级最高
+        prompt: prompt.trim(),
+        aspectRatio: ratio,
+        size,
         referenceImages: httpRefs.length ? httpRefs : undefined,
+        styleId,
       };
-      // 调试：打印最终发送给 serverFn 的 JSON Body（serverFn 会再透传给上游 API）
       console.log("[generate click] payload →", JSON.stringify(payload, null, 2));
       const r = await generate({ data: payload });
 
@@ -441,44 +419,55 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
           </div>
         </section>
 
-        {/* Style templates — horizontal scroll (below prompt, enlarged) */}
+        {/* Style templates — 9:16 image-only horizontal gallery */}
         <section>
           <div className="mb-2 flex items-center justify-between">
             <Label>风格模板</Label>
-            <span className="text-[10px] font-light text-muted-foreground">仅影响视觉风格，不改变比例/尺寸</span>
+            <span className="text-[10px] font-light text-muted-foreground">左右滑动浏览 · 仅影响视觉风格</span>
           </div>
-          <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-2 scrollbar-thin">
-            {STYLE_TEMPLATES.map((s) => {
+          <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-3 scrollbar-light">
+            {styles.map((s) => {
               const active = s.id === styleId;
               return (
                 <button
                   key={s.id}
                   onClick={() => setStyleId(s.id)}
-                  className={`group relative flex w-[150px] shrink-0 flex-col gap-2 rounded-2xl border p-2.5 text-left transition-all ${
+                  title={s.name}
+                  className={`group relative aspect-[9/16] w-[120px] shrink-0 overflow-hidden rounded-2xl border transition-all ${
                     active
-                      ? "border-primary/60 bg-primary/10 shadow-glow"
-                      : "border-border bg-white/[0.02] hover:border-primary/40 hover:bg-white/5"
+                      ? "border-primary/70 shadow-glow ring-2 ring-primary/40"
+                      : "border-border hover:border-primary/40"
                   }`}
                 >
-                  <div className={`flex h-24 w-full items-center justify-center rounded-xl text-4xl ${
-                    active ? "bg-gradient-aurora text-primary-foreground" : "bg-white/5 text-muted-foreground"
-                  }`}>
-                    {s.emoji}
-                  </div>
-                  <div className={`text-sm font-medium leading-tight ${active ? "text-primary" : ""}`}>
-                    {s.name}
-                  </div>
-                  <div className="text-[11px] font-light leading-snug text-muted-foreground line-clamp-2">
-                    {s.desc}
-                  </div>
+                  {s.image_url ? (
+                    <img
+                      src={s.image_url}
+                      alt={s.name}
+                      className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-white/[0.04] to-white/[0.01] text-muted-foreground">
+                      <ImageIcon className="h-6 w-6" strokeWidth={1.5} />
+                      <span className="px-2 text-center text-[11px] font-medium">{s.name}</span>
+                    </div>
+                  )}
                   {active && (
-                    <Check className="absolute right-2 top-2 h-3.5 w-3.5 text-primary" />
+                    <div className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
+                      <Check className="h-3 w-3" strokeWidth={3} />
+                    </div>
                   )}
                 </button>
               );
             })}
+            {styles.length === 0 && (
+              <div className="flex h-[213px] items-center justify-center text-xs text-muted-foreground">
+                加载中…
+              </div>
+            )}
           </div>
         </section>
+
 
 
 

@@ -477,6 +477,9 @@ function extractImageUrl(payload: any): string | null {
 
 // 提交生图任务：上游提交 + 立即扣费记账，**不在服务端循环轮询**。
 // 同步模型（sync_url）直接返回 imageUrl；异步模型返回 taskId 由前端轮询 checkImageStatus。
+const PRODUCT_PROTECTION_PROMPT =
+  "Preserve the exact original product. Do not redesign or replace the product. Keep the exact shape, logo, material, stitching, structure, proportions and colors unchanged. Only optimize lighting, shadows, background and composition.";
+
 export const generateImage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
@@ -486,6 +489,7 @@ export const generateImage = createServerFn({ method: "POST" })
       aspectRatio: z.string().min(1).max(16).default("1:1"),
       size: z.enum(["1K", "2K", "4K"]).default("1K"),
       referenceImages: z.array(z.string().url().or(z.string().startsWith("data:"))).max(5).optional(),
+      styleId: z.string().min(1).max(64).optional(),
     }).parse(d),
   )
   .handler(async ({ data, context }) => {
@@ -508,6 +512,29 @@ export const generateImage = createServerFn({ method: "POST" })
     if (!prof || Number(prof.credits) < Number(model.cost)) {
       throw new Error("您的算力余额不足，请联系老板兑换充值卡密");
     }
+
+    // 服务端拼接最终 prompt：用户原文 + 风格模板 + 商品保护 + 后台固定提示词
+    let stylePromptStr = "";
+    if (data.styleId && data.styleId !== "none") {
+      const { data: tpl } = await supabaseAdmin
+        .from("style_templates")
+        .select("prompt")
+        .eq("id", data.styleId)
+        .maybeSingle();
+      stylePromptStr = (tpl?.prompt ?? "").trim();
+    }
+    const { data: settings } = await supabaseAdmin
+      .from("admin_settings")
+      .select("system_prompt")
+      .eq("id", 1)
+      .maybeSingle();
+    const systemPromptStr = ((settings as any)?.system_prompt ?? "").trim();
+    const finalPrompt = [
+      data.prompt.trim(),
+      stylePromptStr,
+      PRODUCT_PROTECTION_PROMPT,
+      systemPromptStr,
+    ].filter(Boolean).join("\n\n");
 
     const targetKey = normalizeUpstreamApiKey((model as any).api_key) || normalizeUpstreamApiKey(global_api_key);
     const pureApiKey = String(targetKey).replace(/Bearer\s+/i, "").trim();
@@ -547,7 +574,7 @@ export const generateImage = createServerFn({ method: "POST" })
           .replace(/\{\{\s*wan_size\s*\}\}/g, wanSize)
           .replace(/\{\{\s*size\s*\}\}/g, data.size)
           .replace(/\{\{\s*aspect\s*\}\}/g, size)
-          .replace(/\{\{\s*prompt\s*\}\}/g, data.prompt);
+          .replace(/\{\{\s*prompt\s*\}\}/g, finalPrompt);
       }
       if (Array.isArray(v)) return v.map(substitute);
       if (v && typeof v === "object") {
@@ -569,7 +596,7 @@ export const generateImage = createServerFn({ method: "POST" })
     }
 
     const body: Record<string, unknown> = {
-      [promptKey]: data.prompt,
+      [promptKey]: finalPrompt,
       ...extra, // 每个模型自定义参数（如 size、image_weight、aspect_ratio 等）
     };
     // 没有显式用 {{urls}} 占位符的模型，默认把参考图放到 body.urls
@@ -943,6 +970,75 @@ export const founderSetAccessPassword = createServerFn({ method: "POST" })
     const { error } = await supabaseAdmin
       .from("admin_settings")
       .upsert({ id: 1, access_password: data.password.trim(), updated_at: new Date().toISOString() });
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+// --- Style templates & system prompt ---
+export const listStyleTemplates = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase } = context;
+    const { data, error } = await supabase
+      .from("style_templates")
+      .select("id, name, image_url, sort_order")
+      .order("sort_order", { ascending: true });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+
+export const adminListStyleTemplates = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context.userId);
+    const { data, error } = await supabaseAdmin
+      .from("style_templates")
+      .select("id, name, prompt, image_url, sort_order, updated_at")
+      .order("sort_order", { ascending: true });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+
+export const adminUpdateStyleTemplate = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      id: z.string().min(1).max(64),
+      name: z.string().min(1).max(64).optional(),
+      prompt: z.string().max(4000).optional(),
+      image_url: z.string().max(1000).nullable().optional(),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const { id, ...rest } = data;
+    const patch: Record<string, unknown> = { ...rest, updated_at: new Date().toISOString() };
+    const { error } = await supabaseAdmin.from("style_templates").update(patch as never).eq("id", id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const adminGetSystemPrompt = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context.userId);
+    const { data, error } = await supabaseAdmin
+      .from("admin_settings")
+      .select("system_prompt, updated_at")
+      .eq("id", 1)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return { system_prompt: data?.system_prompt ?? "", updated_at: data?.updated_at ?? null };
+  });
+
+export const adminSetSystemPrompt = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ system_prompt: z.string().max(4000) }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const { error } = await supabaseAdmin
+      .from("admin_settings")
+      .upsert({ id: 1, system_prompt: data.system_prompt, updated_at: new Date().toISOString() });
     if (error) throw new Error(error.message);
     return { ok: true };
   });
