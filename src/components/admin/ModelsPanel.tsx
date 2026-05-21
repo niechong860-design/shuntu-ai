@@ -117,6 +117,9 @@ export function ModelsPanel() {
         cost: n,
         api_url: creating.api_url.trim() || undefined,
         api_key: creating.api_key.trim() || undefined,
+        request_format: creating.request_format,
+        prompt_key: creating.prompt_key.trim() || "prompt",
+        fetch_url: creating.fetch_url.trim() || undefined,
       }});
       toast.success("模型添加成功");
       setCreating(null);
