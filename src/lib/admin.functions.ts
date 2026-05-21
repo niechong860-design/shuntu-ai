@@ -904,3 +904,45 @@ export const founderRemoveAdmin = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+// --- Backend access password ---
+export const verifyAdminAccessPassword = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ password: z.string().min(1).max(200) }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const { data: row, error } = await supabaseAdmin
+      .from("admin_settings")
+      .select("access_password")
+      .eq("id", 1)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    const current = (row?.access_password ?? "888888").trim();
+    if (data.password.trim() !== current) throw new Error("访问密码错误");
+    return { ok: true };
+  });
+
+export const founderGetAccessPassword = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertFounder(context.userId);
+    const { data, error } = await supabaseAdmin
+      .from("admin_settings")
+      .select("access_password, updated_at")
+      .eq("id", 1)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return { password: data?.access_password ?? "888888", updated_at: data?.updated_at ?? null };
+  });
+
+export const founderSetAccessPassword = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ password: z.string().min(1).max(200) }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertFounder(context.userId);
+    const { error } = await supabaseAdmin
+      .from("admin_settings")
+      .upsert({ id: 1, access_password: data.password.trim(), updated_at: new Date().toISOString() });
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });

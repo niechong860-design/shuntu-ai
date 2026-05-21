@@ -14,6 +14,24 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_settings: {
+        Row: {
+          access_password: string
+          id: number
+          updated_at: string
+        }
+        Insert: {
+          access_password?: string
+          id?: number
+          updated_at?: string
+        }
+        Update: {
+          access_password?: string
+          id?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ads: {
         Row: {
           created_at: string

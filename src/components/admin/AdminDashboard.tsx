@@ -10,12 +10,14 @@ import {
   adminListCoupons, adminGenerateCoupons, adminDeleteCoupon,
 } from "@/lib/admin.functions";
 import { toast } from "sonner";
-import { Shield, KeyRound, Coins, Copy, Plus, RefreshCw, Users, Ticket, LayoutDashboard, Trash2, Sparkles, Megaphone, Crown } from "lucide-react";
+import { Shield, KeyRound, Coins, Copy, Plus, RefreshCw, Users, Ticket, LayoutDashboard, Trash2, Sparkles, Megaphone, Crown, Lock } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { AnalyticsPanel } from "./AnalyticsPanel";
 import { ModelsPanel } from "./ModelsPanel";
 import { AdsPanel } from "./AdsPanel";
 import { AdminsPanel } from "./AdminsPanel";
+import { AccessGate } from "./AccessGate";
+import { AccessPasswordPanel } from "./AccessPasswordPanel";
 
 type UserRow = { id: string; email: string | null; display_name: string | null; credits: number; created_at: string; total_spent: number };
 type Coupon = {
@@ -24,6 +26,20 @@ type Coupon = {
 };
 
 export function AdminDashboard({ open, onOpenChange, isFounder = false }: { open: boolean; onOpenChange: (v: boolean) => void; isFounder?: boolean }) {
+  const [unlocked, setUnlocked] = useState(false);
+
+  useEffect(() => { if (!open) setUnlocked(false); }, [open]);
+
+  if (open && !unlocked) {
+    return (
+      <AccessGate
+        open={open}
+        onCancel={() => onOpenChange(false)}
+        onPass={() => setUnlocked(true)}
+      />
+    );
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl border-border/70 bg-card/80 p-0 backdrop-blur-2xl">
@@ -43,6 +59,9 @@ export function AdminDashboard({ open, onOpenChange, isFounder = false }: { open
             {isFounder && (
               <TabsTrigger value="admins" className="gap-1.5"><Crown className="h-3.5 w-3.5" />管理员管理</TabsTrigger>
             )}
+            {isFounder && (
+              <TabsTrigger value="access" className="gap-1.5"><Lock className="h-3.5 w-3.5" />访问密码</TabsTrigger>
+            )}
           </TabsList>
           <TabsContent value="analytics" className="mt-4 max-h-[70vh] overflow-auto pr-1"><AnalyticsPanel /></TabsContent>
           <TabsContent value="users" className="mt-4"><UsersPanel /></TabsContent>
@@ -50,6 +69,7 @@ export function AdminDashboard({ open, onOpenChange, isFounder = false }: { open
           <TabsContent value="models" className="mt-4"><ModelsPanel /></TabsContent>
           <TabsContent value="ads" className="mt-4"><AdsPanel /></TabsContent>
           {isFounder && <TabsContent value="admins" className="mt-4"><AdminsPanel /></TabsContent>}
+          {isFounder && <TabsContent value="access" className="mt-4"><AccessPasswordPanel /></TabsContent>}
         </Tabs>
       </DialogContent>
     </Dialog>
