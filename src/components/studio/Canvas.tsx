@@ -1,23 +1,31 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Download, Copy, Maximize2, Sparkles, ArrowUpRight, X, Clock, ImageIcon } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
-import img1 from "@/assets/gen-1.jpg";
-import img2 from "@/assets/gen-2.jpg";
-import img3 from "@/assets/gen-3.jpg";
-import img4 from "@/assets/gen-4.jpg";
-import img5 from "@/assets/gen-5.jpg";
-import img6 from "@/assets/gen-6.jpg";
+import { useServerFn } from "@tanstack/react-start";
+import { getMyGenerationHistory } from "@/lib/admin.functions";
 
-const IMAGES = [img1, img2, img3, img4, img5, img6];
-const META = [
-  { model: "Flux.1 Pro", prompt: "黑暗山脉上空的超现实极光，缥缈薄雾", time: "刚刚" },
-  { model: "MJ V6", prompt: "戴全息绿色护目镜的赛博朋克人像", time: "6 分钟前" },
-  { model: "Flux.1 Pro", prompt: "粗野主义混凝土建筑，风暴天空", time: "14 分钟前" },
-  { model: "SDXL Turbo", prompt: "液态金属雕塑，虹彩铬合金", time: "1 小时前" },
-  { model: "MJ V6", prompt: "生物荧光水母，深海翠绿", time: "2 小时前" },
-  { model: "Nano Banana", prompt: "复古模拟合成器，暗调摄影", time: "3 小时前" },
-];
+type HistoryItem = {
+  id: string;
+  model: string;
+  prompt: string | null;
+  image_url: string;
+  created_at: string;
+  cost: number;
+};
+
+function timeAgo(iso: string) {
+  const t = new Date(iso).getTime();
+  const diff = Math.max(0, Date.now() - t);
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "刚刚";
+  if (m < 60) return `${m} 分钟前`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} 小时前`;
+  const d = Math.floor(h / 24);
+  return `${d} 天前`;
+}
+
 
 type Props = {
   generating: boolean;
