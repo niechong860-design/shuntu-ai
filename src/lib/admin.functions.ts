@@ -491,9 +491,8 @@ function extractImageUrl(payload: any): string | null {
        while (Date.now() - start < TIMEOUT_MS) {
          await new Promise((r) => setTimeout(r, INTERVAL_MS));
          try {
-           const baseQ = `${rawFetchUrl}${rawFetchUrl.includes("?") ? "&" : "?"}id=${encodeURIComponent(taskId)}`;
-           const qUrl = withKeyParam(baseQ, apiKey);
-           const r = await fetch(qUrl, { method: "GET", headers });
+            const qUrl = `${rawFetchUrl}${rawFetchUrl.includes("?") ? "&" : "?"}id=${encodeURIComponent(taskId)}`;
+            const r = await fetch(qUrl, { method: "GET", headers });
            const t = await r.text();
            let j: any = null;
            try { j = JSON.parse(t); } catch { /* */ }
