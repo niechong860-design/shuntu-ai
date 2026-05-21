@@ -500,7 +500,11 @@ export const generateImage = createServerFn({ method: "POST" })
       throw new Error("该模型或全局接口设置尚未配置 API Key，请联系管理员");
     }
 
-    const headers = { "Content-Type": "application/json" };
+    // 按官方文档：Authorization Header 鉴权 + JSON Body 仅含 prompt/size/urls
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "Authorization": pureApiKey,
+    };
     const submitUrl = resolveUrl(base_url, model.api_url);
 
     const size = VALID_SIZES.has(data.aspectRatio) ? data.aspectRatio : "auto";
@@ -509,7 +513,6 @@ export const generateImage = createServerFn({ method: "POST" })
     const requestFormat = (model as any).request_format || "async_id";
 
     const body: Record<string, unknown> = {
-      key: pureApiKey,
       [promptKey]: data.prompt,
       size,
     };
@@ -580,8 +583,11 @@ export const checkImageStatus = createServerFn({ method: "POST" })
     const fetchResultUrl = "https://api.wuyinkeji.com/api/async/fetch_result";
     const r = await fetch(fetchResultUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: pureApiKey, id: data.taskId }),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": pureApiKey,
+      },
+      body: JSON.stringify({ id: data.taskId }),
     });
     const t = await r.text();
     const j = parseUpstreamResponse(t);
