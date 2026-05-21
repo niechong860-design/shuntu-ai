@@ -550,8 +550,9 @@ function extractImageUrl(payload: any): string | null {
          throw new Error(e?.message ?? "提交任务失败");
        }
 
-        // 轮询查询任务结果（wuyinkeji 官方 detail 接口）
-        // code: 0/null = 处理中, 1 = 成功 (data 为图片 URL), 2 = 失败
+        // 轮询查询任务结果 — 严格依照官方文档 https://api.wuyinkeji.com/doc/47
+        // GET /api/async/detail?id=xxx&key=xxx
+        // 返回 data.status: 0 初始化 / 1 进行中 / 2 成功 / 3 失败
         const detailUrl = "https://api.wuyinkeji.com/api/async/detail";
         const start = Date.now();
         const TIMEOUT_MS = 60_000;
@@ -569,24 +570,26 @@ function extractImageUrl(payload: any): string | null {
               lastErr = `HTTP ${r.status}: ${(j?.msg ?? t).slice(0, 200)}`;
               continue;
             }
+            // 顶级 code 是业务响应码：>=400 视为接口本身报错（鉴权/参数等），直接抛出
             const code = Number(j?.code);
-            if (code === 2) {
-              throw new Error(`上游生成失败: ${j?.msg ?? "未知错误"}`);
+            if (code >= 400) {
+              throw new Error(`上游查询失败: ${j?.msg ?? "未知错误"}`);
             }
-            if (code === 1) {
+            // 真正的任务状态在 data.status
+            const status = Number(j?.data?.status);
+            if (status === 3) {
+              throw new Error(`上游生成失败: ${j?.data?.message ?? j?.msg ?? "未知错误"}`);
+            }
+            if (status === 2) {
               const url = extractImageUrl(j?.data) ?? extractImageUrl(j);
               if (url) { imageUrl = url; break; }
-              lastErr = `成功但未解析到图片URL: ${JSON.stringify(j).slice(0, 200)}`;
+              lastErr = `成功但未解析到图片URL: ${JSON.stringify(j).slice(0, 300)}`;
               continue;
             }
-            // code 200 通用成功也兜底解析
-            if (code === 200) {
-              const url = extractImageUrl(j);
-              if (url) { imageUrl = url; break; }
-            }
-            // 其它视为处理中
+            // status 0 / 1 / NaN —— 仍在处理中，继续轮询
+            lastErr = `处理中 status=${j?.data?.status ?? "?"}`;
           } catch (e: any) {
-            if (e?.message?.startsWith("上游生成失败")) throw e;
+            if (e?.message?.startsWith("上游生成失败") || e?.message?.startsWith("上游查询失败")) throw e;
             lastErr = e?.message ?? String(e);
           }
         }
