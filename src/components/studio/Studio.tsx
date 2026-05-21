@@ -18,7 +18,7 @@ export function Studio() {
   };
 
   return (
-    <div className="grid h-screen w-screen grid-cols-1 overflow-hidden bg-background text-foreground lg:grid-cols-[38%_62%]">
+    <div className="grid h-screen w-screen grid-cols-1 overflow-hidden bg-background text-foreground lg:grid-cols-[40%_60%]">
       <ControlPanel credits={credits} onGenerate={handleGenerate} generating={generating} />
       <Canvas generating={generating} heroIndex={heroIndex} />
     </div>
