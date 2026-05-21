@@ -550,35 +550,47 @@ function extractImageUrl(payload: any): string | null {
          throw new Error(e?.message ?? "提交任务失败");
        }
 
-         const fetchResultUrl = "https://api.wuyinkeji.com/api/async/fetch_result";
+        // 轮询查询任务结果（wuyinkeji 官方 detail 接口）
+        // code: 0/null = 处理中, 1 = 成功 (data 为图片 URL), 2 = 失败
+        const detailUrl = "https://api.wuyinkeji.com/api/async/detail";
         const start = Date.now();
-       const TIMEOUT_MS = 60_000;
-       const INTERVAL_MS = 3000;
+        const TIMEOUT_MS = 60_000;
+        const INTERVAL_MS = 3000;
+        let lastErr: string | null = null;
 
-       while (Date.now() - start < TIMEOUT_MS) {
-         await new Promise((r) => setTimeout(r, INTERVAL_MS));
-         try {
-             const qUrl = `${fetchResultUrl}?id=${taskId}&key=${pureApiKey}`;
+        while (Date.now() - start < TIMEOUT_MS) {
+          await new Promise((r) => setTimeout(r, INTERVAL_MS));
+          try {
+            const qUrl = `${detailUrl}?id=${encodeURIComponent(taskId)}&key=${encodeURIComponent(pureApiKey)}`;
             const r = await fetch(qUrl, { method: "GET", headers });
-           const t = await r.text();
+            const t = await r.text();
             const j = parseUpstreamResponse(t);
             if (!r.ok) {
-              throw new Error(`上游查询失败 ${r.status}: ${(j?.msg ?? j?.error?.message ?? t).slice(0, 200)}`);
+              lastErr = `HTTP ${r.status}: ${(j?.msg ?? t).slice(0, 200)}`;
+              continue;
             }
-            if (Number(j?.code) >= 400) {
-              throw new Error(`上游查询失败: ${j?.msg ?? j?.error?.message ?? "未知错误"}`);
+            const code = Number(j?.code);
+            if (code === 2) {
+              throw new Error(`上游生成失败: ${j?.msg ?? "未知错误"}`);
             }
-           const status = j?.data?.status ?? j?.status;
-            if (Number(status) === 3 || (typeof status === "string" && /fail|error|失败/i.test(status))) {
-             throw new Error(`上游生成失败: ${j?.msg ?? j?.data?.message ?? status}`);
-           }
-           const url = extractImageUrl(j);
-           if (url) { imageUrl = url; break; }
-         } catch (e: any) {
-           if (e?.message?.startsWith("上游生成失败")) throw e;
-         }
-       }
-       if (!imageUrl) throw new Error("上游生成超时，请重试");
+            if (code === 1) {
+              const url = extractImageUrl(j?.data) ?? extractImageUrl(j);
+              if (url) { imageUrl = url; break; }
+              lastErr = `成功但未解析到图片URL: ${JSON.stringify(j).slice(0, 200)}`;
+              continue;
+            }
+            // code 200 通用成功也兜底解析
+            if (code === 200) {
+              const url = extractImageUrl(j);
+              if (url) { imageUrl = url; break; }
+            }
+            // 其它视为处理中
+          } catch (e: any) {
+            if (e?.message?.startsWith("上游生成失败")) throw e;
+            lastErr = e?.message ?? String(e);
+          }
+        }
+        if (!imageUrl) throw new Error(`上游生成超时，请重试${lastErr ? ` (${lastErr})` : ""}`);
      }
 
      const { data: rpcRes, error: rpcErr } = await supabase.rpc("consume_credits_for_generation", {
