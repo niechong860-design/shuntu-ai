@@ -516,7 +516,13 @@ export const generateImage = createServerFn({ method: "POST" })
       [promptKey]: data.prompt,
       size,
     };
-    if (httpRefs.length > 0) body.urls = httpRefs;
+    if (Array.isArray(httpRefs) && httpRefs.length > 0) {
+      body.urls = httpRefs;
+      // 开启垫图权重，部分模型不传此参数会忽略参考图
+      body.image_weight = 0.6;
+    }
+    console.log("[generateImage] submit body →", JSON.stringify({ url: submitUrl, body }, null, 2));
+
 
     let imageUrl: string | null = null;
     let taskId: string | null = null;
@@ -603,8 +609,15 @@ export const checkImageStatus = createServerFn({ method: "POST" })
       return { status: "failed" as const, reason: "upstream" as const, imageUrl: null as string | null, message: rawMsg ?? "上游查询失败", code, taskStatus, rawMsg, debug: rawDebug };
     }
     if (taskStatus === 3) {
-      return { status: "failed" as const, reason: "rejected" as const, imageUrl: null as string | null, message: j?.data?.message ?? rawMsg ?? "任务被拒绝", code, taskStatus, rawMsg, debug: rawDebug };
+      const detailMsg: string = String(j?.data?.message ?? rawMsg ?? "");
+      // 优先识别"参考图/URL 下载失败"，避免被笼统归为"内容违规"
+      const isRefUrlIssue = /参考图|垫图|图片.*(下载|读取|获取|无法|失败|超时)|url.*(download|fetch|timeout|not.*found|404)|download.*image|fetch.*image/i.test(detailMsg);
+      if (isRefUrlIssue) {
+        return { status: "failed" as const, reason: "ref_url" as const, imageUrl: null as string | null, message: detailMsg || "参考图读取失败，请检查链接是否为公开的 HTTPS 链接", code, taskStatus, rawMsg, debug: rawDebug };
+      }
+      return { status: "failed" as const, reason: "rejected" as const, imageUrl: null as string | null, message: detailMsg || "任务被拒绝", code, taskStatus, rawMsg, debug: rawDebug };
     }
+
     if (taskStatus === 2) {
       const url = extractImageUrl(j?.data) ?? extractImageUrl(j);
       if (url) return { status: "success" as const, reason: null as null, imageUrl: url, message: null as string | null, code, taskStatus, rawMsg, debug: rawDebug };
