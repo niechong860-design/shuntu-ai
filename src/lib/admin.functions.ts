@@ -500,7 +500,11 @@ export const generateImage = createServerFn({ method: "POST" })
       throw new Error("该模型或全局接口设置尚未配置 API Key，请联系管理员");
     }
 
-    const headers = { "Content-Type": "application/json" };
+    // 按官方文档：Authorization Header 鉴权 + JSON Body 仅含 prompt/size/urls
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "Authorization": pureApiKey,
+    };
     const submitUrl = resolveUrl(base_url, model.api_url);
 
     const size = VALID_SIZES.has(data.aspectRatio) ? data.aspectRatio : "auto";
@@ -509,7 +513,6 @@ export const generateImage = createServerFn({ method: "POST" })
     const requestFormat = (model as any).request_format || "async_id";
 
     const body: Record<string, unknown> = {
-      key: pureApiKey,
       [promptKey]: data.prompt,
       size,
     };
