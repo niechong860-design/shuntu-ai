@@ -160,7 +160,7 @@ export const adminListModelsConfig = createServerFn({ method: "POST" })
     await assertAdmin(context.userId);
     const { data, error } = await supabaseAdmin
       .from("models_config")
-      .select("id, model_key, name, description, cost, api_url, api_key, request_format, prompt_key, fetch_url, sort_order, updated_at")
+      .select("id, model_key, name, description, cost, api_url, api_key, request_format, prompt_key, fetch_url, extra_params, sort_order, updated_at")
       .order("sort_order", { ascending: true });
     if (error) throw new Error(error.message);
     return data ?? [];
