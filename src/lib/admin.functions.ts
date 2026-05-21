@@ -596,7 +596,7 @@ export const generateImage = createServerFn({ method: "POST" })
     }
 
     const body: Record<string, unknown> = {
-      [promptKey]: data.prompt,
+      [promptKey]: finalPrompt,
       ...extra, // 每个模型自定义参数（如 size、image_weight、aspect_ratio 等）
     };
     // 没有显式用 {{urls}} 占位符的模型，默认把参考图放到 body.urls
