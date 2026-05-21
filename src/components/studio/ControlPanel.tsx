@@ -61,10 +61,47 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
   const ActiveRatioIcon = activeRatio.icon;
   const activeCost = Number(activeModel?.cost ?? 0);
 
-  const addRef = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [uploadingRef, setUploadingRef] = useState(false);
+
+  const addRef = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
-    if (f && refs.length < 5) setRefs((arr) => [...arr, URL.createObjectURL(f)]);
     e.target.value = "";
+    if (!f) return;
+    if (refs.length >= 5) {
+      toast.error("最多上传 5 张参考图");
+      return;
+    }
+    const uid = session?.user?.id;
+    if (!uid) {
+      toast.error("请先登录后再上传参考图");
+      return;
+    }
+    if (!/^image\//i.test(f.type)) {
+      toast.error("仅支持图片文件");
+      return;
+    }
+    if (f.size > 10 * 1024 * 1024) {
+      toast.error("图片大小请小于 10MB");
+      return;
+    }
+    setUploadingRef(true);
+    try {
+      const ext = (f.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
+      const path = `${uid}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from("reference-images")
+        .upload(path, f, { cacheControl: "3600", contentType: f.type, upsert: false });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from("reference-images").getPublicUrl(path);
+      const url = pub.publicUrl;
+      console.log("[ref upload] uploaded →", url);
+      setRefs((arr) => [...arr, url]);
+    } catch (err) {
+      console.error("[ref upload] failed", err);
+      toast.error("参考图上传失败，请重试");
+    } finally {
+      setUploadingRef(false);
+    }
   };
   const removeRef = (i: number) => setRefs((arr) => arr.filter((_, idx) => idx !== i));
 
