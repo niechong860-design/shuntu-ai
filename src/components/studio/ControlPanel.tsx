@@ -21,9 +21,9 @@ const RATIOS = [
   { id: "4:3", icon: Monitor, label: "Classic" },
 ];
 
-type Props = { credits: number; onGenerate: () => void; generating: boolean };
+type Props = { onGenerate: () => void; generating: boolean };
 
-export function ControlPanel({ credits, onGenerate, generating }: Props) {
+export function ControlPanel({ onGenerate, generating }: Props) {
   const [model, setModel] = useState("flux");
   const [ratio, setRatio] = useState("1:1");
   const [refs, setRefs] = useState<(string | null)[]>([null, null, null, null, null]);
@@ -47,29 +47,8 @@ export function ControlPanel({ credits, onGenerate, generating }: Props) {
 
   return (
     <aside className="scrollbar-thin flex h-screen flex-col overflow-y-auto border-r border-border/60 bg-card/40">
-      {/* Header */}
-      <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border/60 bg-background/80 px-5 py-3.5 backdrop-blur-xl">
-        <div className="flex items-center gap-2.5">
-          <div className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-aurora shadow-glow">
-            <Sparkles className="h-4 w-4 text-primary-foreground" strokeWidth={2.5} />
-          </div>
-          <div className="font-display text-base font-semibold tracking-tight">
-            Lumen<span className="text-gradient-aurora">.</span>Studio
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 rounded-full border border-border bg-white/[0.03] px-2.5 py-1">
-            <Zap className="h-3 w-3 text-primary" fill="currentColor" />
-            <span className="font-mono text-xs font-semibold tabular-nums">{credits}</span>
-            <span className="text-[10px] font-light text-muted-foreground">pts</span>
-          </div>
-          <button className="flex items-center gap-1 rounded-full bg-gradient-aurora px-2.5 py-1 text-[11px] font-semibold text-primary-foreground shadow-glow transition-transform hover:scale-[1.04]">
-            <Plus className="h-3 w-3" strokeWidth={3} /> Top up
-          </button>
-        </div>
-      </header>
+      <div className="flex flex-col gap-5 p-5 pt-6">
 
-      <div className="flex flex-col gap-5 p-5">
         {/* Reference images — top */}
         <section>
           <div className="mb-2 flex items-center justify-between">
