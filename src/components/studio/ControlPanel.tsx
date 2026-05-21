@@ -10,7 +10,9 @@ import { useServerFn } from "@tanstack/react-start";
 import { listModelsConfig, generateImage, checkImageStatus, listStyleTemplates } from "@/lib/admin.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
+import { consumeStudioPrefill } from "@/lib/studio-prefill";
 import { toast } from "sonner";
+
 
 type ModelCfg = {
   id: string; model_key: string; name: string; description: string | null; cost: number;
