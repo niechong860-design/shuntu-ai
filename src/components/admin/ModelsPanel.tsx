@@ -160,6 +160,17 @@ export function ModelsPanel() {
     } catch (e: any) { toast.error(e.message); load(); }
   };
 
+  const toggleEnabled = async (r: ModelCfg, next: boolean) => {
+    setRows(prev => prev.map(x => x.id === r.id ? { ...x, is_enabled: next } : x));
+    try {
+      await update({ data: { id: r.id, is_enabled: next } });
+      toast.success(next ? `已启用「${r.name}」` : `已停用「${r.name}」`);
+    } catch (e: any) {
+      toast.error(e.message);
+      setRows(prev => prev.map(x => x.id === r.id ? { ...x, is_enabled: !next } : x));
+    }
+  };
+
   return (
     <div className="space-y-3">
       <GlobalConfigCard />
