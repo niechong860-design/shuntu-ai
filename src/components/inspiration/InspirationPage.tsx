@@ -318,12 +318,13 @@ function CaseDetailDialog({
 
   const handleReuse = () => {
     if (!detail) return;
+    // 灵感广场一键复用优先：不带入 styleId，避免与风格模板提示词冲突
     setStudioPrefill({
       prompt: detail.prompt || "",
       modelKey: detail.model_key || undefined,
       aspectRatio: detail.aspect_ratio || undefined,
       size: (detail.size as any) || undefined,
-      styleId: detail.style_id || undefined,
+      fromInspiration: true,
     });
     toast.success("已复用案例参数");
     navigate({ to: "/" });
