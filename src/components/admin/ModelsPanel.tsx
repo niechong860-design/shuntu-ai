@@ -195,6 +195,7 @@ export function ModelsPanel() {
               <TableHead>API 接口地址</TableHead>
               <TableHead>API Key</TableHead>
               <TableHead className="text-right">费率</TableHead>
+              <TableHead className="text-center">启用</TableHead>
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
@@ -233,6 +234,17 @@ export function ModelsPanel() {
                   ) : <span className="text-muted-foreground/60">—</span>}
                 </TableCell>
                 <TableCell className="text-right font-mono tabular-nums text-primary">{Number(r.cost)} 点</TableCell>
+                <TableCell className="text-center">
+                  <div className="flex items-center justify-center gap-2">
+                    <Switch
+                      checked={r.is_enabled !== false}
+                      onCheckedChange={(v) => toggleEnabled(r, v)}
+                    />
+                    <span className={`text-[10px] ${r.is_enabled !== false ? "text-emerald-400" : "text-muted-foreground"}`}>
+                      {r.is_enabled !== false ? "启用" : "停用"}
+                    </span>
+                  </div>
+                </TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button variant="ghost" size="sm" onClick={() => openEdit(r)}>
@@ -257,7 +269,7 @@ export function ModelsPanel() {
               </TableRow>
             ))}
             {rows.length === 0 && !loading && (
-              <TableRow><TableCell colSpan={7} className="text-center text-xs text-muted-foreground">暂无模型</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center text-xs text-muted-foreground">暂无模型</TableCell></TableRow>
             )}
           </TableBody>
         </Table>
