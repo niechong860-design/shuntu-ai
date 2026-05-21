@@ -183,8 +183,8 @@ export const adminUpdateModel = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
     const { id, ...rest } = data;
-    const patch: Record<string, unknown> = { ...rest, updated_at: new Date().toISOString() };
-    const { error } = await supabaseAdmin.from("models_config").update(patch).eq("id", id);
+    const patch = { ...rest, updated_at: new Date().toISOString() };
+    const { error } = await supabaseAdmin.from("models_config").update(patch as never).eq("id", id);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
