@@ -140,7 +140,7 @@ export const redeemCoupon = createServerFn({ method: "POST" })
     return row as { success: boolean; message: string; amount: number };
   });
 
-// --- Models config ---
+// --- Models config (PUBLIC: safe columns only, no api_key) ---
 export const listModelsConfig = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -148,6 +148,19 @@ export const listModelsConfig = createServerFn({ method: "POST" })
     const { data, error } = await supabase
       .from("models_config")
       .select("id, model_key, name, description, cost, sort_order, updated_at")
+      .order("sort_order", { ascending: true });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+
+// Admin variant: includes api_url & api_key
+export const adminListModelsConfig = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context.userId);
+    const { data, error } = await supabaseAdmin
+      .from("models_config")
+      .select("id, model_key, name, description, cost, api_url, api_key, sort_order, updated_at")
       .order("sort_order", { ascending: true });
     if (error) throw new Error(error.message);
     return data ?? [];
@@ -177,6 +190,8 @@ export const adminUpdateModel = createServerFn({ method: "POST" })
       model_key: z.string().min(1).max(64).regex(/^[a-zA-Z0-9_\-.]+$/).optional(),
       description: z.string().max(200).nullable().optional(),
       cost: z.number().min(0).max(100000).optional(),
+      api_url: z.string().url().max(500).nullable().optional(),
+      api_key: z.string().max(500).nullable().optional(),
       sort_order: z.number().int().min(0).max(10000).optional(),
     }).parse(d),
   )
@@ -197,6 +212,8 @@ export const adminCreateModel = createServerFn({ method: "POST" })
       model_key: z.string().min(1).max(64).regex(/^[a-zA-Z0-9_\-.]+$/),
       description: z.string().max(200).optional(),
       cost: z.number().min(0).max(100000).default(1),
+      api_url: z.string().url().max(500).optional(),
+      api_key: z.string().max(500).optional(),
       sort_order: z.number().int().min(0).max(10000).optional(),
     }).parse(d),
   )
@@ -209,6 +226,8 @@ export const adminCreateModel = createServerFn({ method: "POST" })
         model_key: data.model_key,
         description: data.description ?? null,
         cost: data.cost,
+        api_url: data.api_url ?? null,
+        api_key: data.api_key ?? null,
         sort_order: data.sort_order ?? 999,
       })
       .select("id")
@@ -227,7 +246,7 @@ export const adminDeleteModel = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-// --- Generation: deduct credits + log history ---
+// --- Generation: deduct credits + log history (legacy, kept for compat) ---
 export const consumeGeneration = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
@@ -242,6 +261,124 @@ export const consumeGeneration = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     const row = Array.isArray(res) ? res[0] : res;
     return row as { success: boolean; message: string; credits: number; cost: number };
+  });
+
+// --- NEW: Dynamic upstream image generation (per-model API routing) ---
+function extractImageUrl(payload: any): string | null {
+  if (!payload) return null;
+  if (typeof payload === "string" && /^https?:\/\//i.test(payload)) return payload;
+  // OpenAI style: { data: [{ url, b64_json }] }
+  const d0 = payload?.data?.[0];
+  if (d0?.url) return d0.url;
+  if (d0?.b64_json) return `data:image/png;base64,${d0.b64_json}`;
+  // Common variants
+  const candidates = [
+    payload?.url,
+    payload?.image_url,
+    payload?.image,
+    payload?.output?.[0],
+    payload?.images?.[0]?.url,
+    payload?.images?.[0],
+    payload?.result?.url,
+    payload?.result?.image,
+    payload?.data?.url,
+    payload?.data?.image_url,
+  ];
+  for (const c of candidates) {
+    if (typeof c === "string" && c.length > 0) return c;
+  }
+  return null;
+}
+
+export const generateImage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      modelKey: z.string().min(1).max(64),
+      prompt: z.string().min(1).max(4000),
+      aspectRatio: z.string().min(1).max(16).default("1:1"),
+      referenceImages: z.array(z.string().url().or(z.string().startsWith("data:"))).max(5).optional(),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+
+    // 1. Look up model config (admin client to read api_key)
+    const { data: model, error: mErr } = await supabaseAdmin
+      .from("models_config")
+      .select("id, model_key, name, cost, api_url, api_key")
+      .eq("model_key", data.modelKey)
+      .maybeSingle();
+    if (mErr) throw new Error(mErr.message);
+    if (!model) throw new Error("模型不存在");
+    if (!model.api_url) throw new Error("该模型尚未配置 API 接口地址，请联系管理员");
+
+    // 2. Pre-check balance (RLS-scoped read as user)
+    const { data: prof, error: pErr } = await supabase
+      .from("profiles")
+      .select("credits")
+      .eq("id", userId)
+      .maybeSingle();
+    if (pErr) throw new Error(pErr.message);
+    if (!prof || Number(prof.credits) < Number(model.cost)) {
+      throw new Error("您的算力余额不足，请联系老板兑换充值卡密");
+    }
+
+    // 3. Call upstream API
+    let imageUrl: string | null = null;
+    let upstreamError: string | null = null;
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (model.api_key) headers["Authorization"] = `Bearer ${model.api_key}`;
+      const body = {
+        model: model.model_key,
+        prompt: data.prompt,
+        aspect_ratio: data.aspectRatio,
+        size: data.aspectRatio,
+        n: 1,
+        reference_images: data.referenceImages ?? [],
+      };
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 60_000);
+      const res = await fetch(model.api_url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      const text = await res.text();
+      let json: any = null;
+      try { json = JSON.parse(text); } catch { /* not json */ }
+      if (!res.ok) {
+        upstreamError = `上游接口返回 ${res.status}: ${(json?.error?.message ?? text).slice(0, 200)}`;
+      } else {
+        imageUrl = extractImageUrl(json ?? text);
+        if (!imageUrl) upstreamError = "上游返回未识别到图片地址";
+      }
+    } catch (e: any) {
+      upstreamError = e?.name === "AbortError" ? "上游接口超时" : `请求上游失败: ${e?.message ?? "未知错误"}`;
+    }
+
+    if (!imageUrl) {
+      throw new Error(upstreamError ?? "生成失败");
+    }
+
+    // 4. Deduct + log (atomic via RPC) — only on success
+    const { data: rpcRes, error: rpcErr } = await supabase.rpc("consume_credits_for_generation", {
+      _model_key: data.modelKey,
+      _prompt: data.prompt,
+    });
+    if (rpcErr) throw new Error(rpcErr.message);
+    const row = Array.isArray(rpcRes) ? rpcRes[0] : rpcRes;
+    if (!row?.success) throw new Error(row?.message ?? "扣费失败");
+
+    return {
+      success: true,
+      imageUrl,
+      cost: Number(row.cost),
+      credits: Number(row.credits),
+    };
   });
 
 // --- Role check ---
@@ -300,7 +437,6 @@ export const adminGetAnalytics = createServerFn({ method: "POST" })
     const todayMap = groupBy(todayHistory);
     const allMap = groupBy(allHistory);
 
-    // Merge models from both maps
     const modelKeys = new Set<string>([...todayMap.keys(), ...allMap.keys()]);
     let models = Array.from(modelKeys).map((m) => ({
       model: m,
@@ -309,7 +445,6 @@ export const adminGetAnalytics = createServerFn({ method: "POST" })
       totalCost: allMap.get(m)?.cost ?? 0,
     }));
 
-    // Seed with mock if no data yet
     if (models.length === 0) {
       models = [
         { model: "Flux.1 Pro", todayCount: 48, totalCount: 1820, totalCost: 364 },
@@ -334,4 +469,3 @@ export const adminGetAnalytics = createServerFn({ method: "POST" })
       })),
     };
   });
-
