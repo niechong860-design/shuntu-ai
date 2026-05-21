@@ -46,8 +46,8 @@ export function ControlPanel({ onGenerate, generating }: Props) {
   };
 
   return (
-    <aside className="scrollbar-thin flex h-full min-h-0 flex-col overflow-y-auto border-r border-border/60 bg-card/40">
-      <div className="flex flex-col gap-5 p-5 pt-6">
+    <aside className="flex h-full min-h-0 flex-col overflow-hidden border-r border-border/60 bg-card/40">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 scrollbar-thin">
 
         {/* Reference images — top */}
         <section>
@@ -71,7 +71,7 @@ export function ControlPanel({ onGenerate, generating }: Props) {
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              rows={5}
+              rows={3}
               placeholder="Describe the image you want to create…"
               className="block w-full resize-none rounded-2xl bg-transparent px-4 py-3.5 text-sm font-light leading-relaxed placeholder:text-muted-foreground/50 focus:outline-none"
             />
