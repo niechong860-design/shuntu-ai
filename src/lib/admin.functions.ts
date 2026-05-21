@@ -597,20 +597,23 @@ function extractImageUrl(payload: any): string | null {
      }
 
      const { data: rpcRes, error: rpcErr } = await supabase.rpc("consume_credits_for_generation", {
-       _model_key: data.modelKey,
-       _prompt: data.prompt,
-     });
-     if (rpcErr) throw new Error(rpcErr.message);
-     const row = Array.isArray(rpcRes) ? rpcRes[0] : rpcRes;
-     if (!row?.success) throw new Error(row?.message ?? "扣费失败");
+        _model_key: data.modelKey,
+        _prompt: data.prompt,
+      });
+      if (rpcErr) throw new Error(rpcErr.message);
+      const row: any = Array.isArray(rpcRes) ? rpcRes?.[0] : rpcRes;
+      if (!row?.success) throw new Error(row?.message ?? "扣费失败");
 
-     return {
-       success: true,
-       imageUrl,
-       cost: Number(row.cost),
-       credits: Number(row.credits),
-     };
-   });
+      const safeCost = Number(row?.cost ?? 0) || 0;
+      const safeCredits = Number(row?.credits ?? 0) || 0;
+
+      return {
+        success: true,
+        imageUrl,
+        cost: safeCost,
+        credits: safeCredits,
+      };
+    });
 
 // --- Role check ---
 export const checkIsAdmin = createServerFn({ method: "POST" })
