@@ -431,12 +431,16 @@ function extractImageUrl(payload: any): string | null {
       if (start < 0 || end < start) return null;
       try { return JSON.parse(cleaned.slice(start, end + 1)); }
       catch {
-        return JSON.parse(
-          cleaned.slice(start, end + 1)
-            .replace(/,\s*}/g, "}")
-            .replace(/,\s*]/g, "]")
-            .replace(/[\x00-\x1F\x7F]/g, ""),
-        );
+        try {
+          return JSON.parse(
+            cleaned.slice(start, end + 1)
+              .replace(/,\s*}/g, "}")
+              .replace(/,\s*]/g, "]")
+              .replace(/[\x00-\x1F\x7F]/g, ""),
+          );
+        } catch {
+          return null;
+        }
       }
     }
   }
@@ -536,7 +540,7 @@ function extractImageUrl(payload: any): string | null {
          if (json?.code && Number(json.code) !== 200) {
            throw new Error(`上游提交失败: ${json?.msg ?? "未知错误"}`);
          }
-         taskId = json?.data?.id ?? json?.id ?? json?.task_id ?? null;
+          taskId = json?.data?.id ?? json?.id ?? json?.task_id ?? (typeof json?.data === "string" ? json.data : null);
          if (!taskId) throw new Error("上游未返回任务ID");
        } catch (e: any) {
          throw new Error(e?.message ?? "提交任务失败");
