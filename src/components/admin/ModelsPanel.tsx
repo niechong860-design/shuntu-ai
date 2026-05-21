@@ -17,6 +17,9 @@ import { toast } from "sonner";
 type ModelCfg = {
   id: string; model_key: string; name: string; description: string | null;
   cost: number; api_url: string | null; api_key: string | null;
+  request_format: "async_id" | "sync_url" | null;
+  prompt_key: string | null;
+  fetch_url: string | null;
   sort_order?: number; updated_at: string;
 };
 
@@ -28,10 +31,14 @@ type EditState = {
   cost: string;
   api_url: string;
   api_key: string;
+  request_format: "async_id" | "sync_url";
+  prompt_key: string;
+  fetch_url: string;
 };
 
 const empty = (): EditState => ({
-  id: "", name: "", model_key: "", description: "", cost: "1", api_url: "", api_key: "",
+  id: "", name: "", model_key: "", description: "", cost: "1",
+  api_url: "", api_key: "", request_format: "async_id", prompt_key: "prompt", fetch_url: "",
 });
 
 const maskKey = (k: string | null) => {
