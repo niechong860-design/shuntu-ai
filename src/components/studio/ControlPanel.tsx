@@ -32,6 +32,7 @@ type Props = {
 export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Props) {
   const fetchModels = useServerFn(listModelsConfig);
   const generate = useServerFn(generateImage);
+  const checkStatus = useServerFn(checkImageStatus);
   const { refreshProfile, session } = useAuth();
 
   const [models, setModels] = useState<ModelCfg[]>([]);
