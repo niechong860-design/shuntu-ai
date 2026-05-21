@@ -10,12 +10,12 @@ import img6 from "@/assets/gen-6.jpg";
 
 const IMAGES = [img1, img2, img3, img4, img5, img6];
 const META = [
-  { model: "Flux.1 Pro", prompt: "Surreal aurora over dark mountains, ethereal mist", time: "now" },
-  { model: "MJ V6", prompt: "Cyberpunk portrait with holographic green visor", time: "6m ago" },
-  { model: "Flux.1 Pro", prompt: "Brutalist concrete architecture, stormy sky", time: "14m ago" },
-  { model: "SDXL Turbo", prompt: "Liquid metal sculpture, iridescent chrome", time: "1h ago" },
-  { model: "MJ V6", prompt: "Bioluminescent jellyfish, deep ocean emerald", time: "2h ago" },
-  { model: "Nano Banana", prompt: "Vintage analog synthesizer, dark photography", time: "3h ago" },
+  { model: "Flux.1 Pro", prompt: "黑暗山脉上空的超现实极光，缥缈薄雾", time: "刚刚" },
+  { model: "MJ V6", prompt: "戴全息绿色护目镜的赛博朋克人像", time: "6 分钟前" },
+  { model: "Flux.1 Pro", prompt: "粗野主义混凝土建筑，风暴天空", time: "14 分钟前" },
+  { model: "SDXL Turbo", prompt: "液态金属雕塑，虹彩铬合金", time: "1 小时前" },
+  { model: "MJ V6", prompt: "生物荧光水母，深海翠绿", time: "2 小时前" },
+  { model: "Nano Banana", prompt: "复古模拟合成器，暗调摄影", time: "3 小时前" },
 ];
 
 type Props = {
