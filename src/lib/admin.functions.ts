@@ -83,6 +83,21 @@ export const adminListCoupons = createServerFn({ method: "POST" })
     return data;
   });
 
+export const adminDeleteCoupon = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ couponId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const { data: row, error: e1 } = await supabaseAdmin
+      .from("coupons").select("is_used").eq("id", data.couponId).maybeSingle();
+    if (e1) throw new Error(e1.message);
+    if (!row) throw new Error("卡密不存在");
+    if (row.is_used) throw new Error("已使用的卡密不可删除");
+    const { error } = await supabaseAdmin.from("coupons").delete().eq("id", data.couponId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 export const adminGenerateCoupons = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
