@@ -23,11 +23,15 @@ const RATIOS = [
   { id: "4:3", icon: Monitor, label: "经典" },
 ];
 
-type Props = { onGenerate: () => void; generating: boolean };
+type Props = {
+  onGenerateStart: () => void;
+  onGenerateDone: (imageUrl: string | null) => void;
+  generating: boolean;
+};
 
-export function ControlPanel({ onGenerate, generating }: Props) {
+export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Props) {
   const fetchModels = useServerFn(listModelsConfig);
-  const consume = useServerFn(consumeGeneration);
+  const generate = useServerFn(generateImage);
   const { refreshProfile, session } = useAuth();
 
   const [models, setModels] = useState<ModelCfg[]>([]);
@@ -64,14 +68,21 @@ export function ControlPanel({ onGenerate, generating }: Props) {
 
   const handleGenerate = async () => {
     if (generating || !activeModel) return;
+    onGenerateStart();
     try {
-      const r = await consume({ data: { modelKey: activeModel.model_key, prompt } });
-      if (!r.success) { toast.error(r.message); return; }
-      toast.success(`已扣除 ${r.cost} 点，剩余 ${r.credits}`);
+      const httpRefs = refs.filter((u) => /^https?:\/\//i.test(u));
+      const r = await generate({ data: {
+        modelKey: activeModel.model_key,
+        prompt,
+        aspectRatio: ratio,
+        referenceImages: httpRefs.length ? httpRefs : undefined,
+      }});
+      toast.success(`生成成功 · 扣除 ${r.cost} 点，剩余 ${r.credits}`);
       await refreshProfile();
-      onGenerate();
+      onGenerateDone(r.imageUrl);
     } catch (e: any) {
       toast.error(e.message ?? "生成失败");
+      onGenerateDone(null);
     }
   };
 
