@@ -239,9 +239,13 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
               </div>
             ))}
             {refs.length < 5 && (
-              <label className="group flex h-20 w-20 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border bg-white/[0.015] transition-all hover:border-primary/50 hover:bg-primary/[0.04] hover:shadow-glow">
-                <Plus className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" strokeWidth={1.5} />
-                <input type="file" accept="image/*" className="hidden" onChange={addRef} />
+              <label className={`group flex h-20 w-20 ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"} flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border bg-white/[0.015] transition-all hover:border-primary/50 hover:bg-primary/[0.04] hover:shadow-glow`}>
+                {uploadingRef ? (
+                  <span className="text-[10px] text-muted-foreground">上传中…</span>
+                ) : (
+                  <Plus className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" strokeWidth={1.5} />
+                )}
+                <input type="file" accept="image/*" className="hidden" onChange={addRef} disabled={uploadingRef} />
               </label>
             )}
           </div>
