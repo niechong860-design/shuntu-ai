@@ -244,6 +244,7 @@ export type Database = {
           success: boolean
         }[]
       }
+      has_admin_access: { Args: { _user_id: string }; Returns: boolean }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
