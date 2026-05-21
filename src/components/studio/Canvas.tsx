@@ -31,12 +31,9 @@ export function Canvas({ generating, heroIndex, historyOpen, onHistoryOpenChange
   const hero = IMAGES[heroIndex];
   const heroMeta = META[heroIndex];
 
-  // Build a longer history list (recent first = current hero)
-  const historyList = Array.from({ length: 12 }, (_, i) => (heroIndex + i) % IMAGES.length);
-
   return (
-    <main className="flex h-full min-h-0 flex-col gap-3 overflow-hidden bg-background p-3">
-      {/* Main canvas — pure, no overlays. 75% */}
+    <main className="flex h-full min-h-0 flex-col overflow-hidden bg-background p-3">
+      {/* Main canvas — pure, full height */}
       <div className="relative flex-1 min-h-0 overflow-hidden rounded-2xl border border-border bg-card">
         {generating ? (
           <SkeletonShimmer />
@@ -49,44 +46,6 @@ export function Canvas({ generating, heroIndex, historyOpen, onHistoryOpenChange
         )}
       </div>
 
-      {/* History strip — 25% */}
-      <div className="h-[25%] min-h-0 shrink-0 rounded-2xl border border-border bg-card/60 p-2.5">
-        <div className="mb-1.5 flex items-center justify-between px-1">
-          <div className="flex items-center gap-1.5">
-            <Clock className="h-3 w-3 text-muted-foreground" />
-            <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              Recent
-            </span>
-          </div>
-          <button
-            onClick={() => onHistoryOpenChange(true)}
-            className="text-[10px] font-light text-muted-foreground transition-colors hover:text-primary"
-          >
-            View all →
-          </button>
-        </div>
-        <div className="scrollbar-thin flex h-[calc(100%-22px)] gap-2 overflow-x-auto overflow-y-hidden">
-          {historyList.map((idx, i) => (
-            <button
-              key={i}
-              onClick={() => onSelectHistory(idx)}
-              className={`group relative aspect-square h-full shrink-0 overflow-hidden rounded-xl border transition-all hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-glow ${
-                i === 0 ? "border-primary/60 shadow-glow" : "border-border"
-              }`}
-            >
-              <img src={IMAGES[idx]} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent opacity-0 transition-opacity group-hover:opacity-100" />
-              <span
-                role="button"
-                onClick={(e) => { e.stopPropagation(); setLightbox(idx); }}
-                className="absolute right-1.5 top-1.5 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md bg-black/60 text-foreground/90 opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 hover:bg-primary/30 hover:text-primary"
-              >
-                <Maximize2 className="h-2.5 w-2.5" />
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
 
       {/* History drawer */}
       <Sheet open={historyOpen} onOpenChange={onHistoryOpenChange}>
