@@ -128,6 +128,24 @@
   }
   .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
   .scrollbar-thin::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
+
+  /* Always-visible light gray scrollbar for horizontal galleries */
+  .scrollbar-light {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.35) rgba(255,255,255,0.06);
+  }
+  .scrollbar-light::-webkit-scrollbar { width: 10px; height: 10px; }
+  .scrollbar-light::-webkit-scrollbar-track {
+    background: rgba(255,255,255,0.08);
+    border-radius: 999px;
+  }
+  .scrollbar-light::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.38);
+    border-radius: 999px;
+  }
+  .scrollbar-light::-webkit-scrollbar-thumb:hover {
+    background: rgba(255,255,255,0.6);
+  }
 }
 
 @keyframes shimmer {
