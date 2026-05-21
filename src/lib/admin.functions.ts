@@ -499,83 +499,86 @@ function extractImageUrl(payload: any): string | null {
         throw new Error("该模型或全局接口设置尚未配置 API Key，请联系管理员");
       }
 
-       const headers = buildUpstreamHeaders(pureApiKey);
+      // 官方规范：API Key 必须放在 JSON Body 中，使用 POST + application/json
+      const headers = { "Content-Type": "application/json" };
 
       const submitUrl = resolveUrl(base_url, model.api_url);
-       const finalSubmitUrl = appendApiKeyToUrl(submitUrl, pureApiKey);
 
-     const size = VALID_SIZES.has(data.aspectRatio) ? data.aspectRatio : "auto";
-     const httpRefs = (data.referenceImages ?? []).filter((u) => /^https?:\/\//i.test(u));
-     const promptKey = (model as any).prompt_key || "prompt";
-     const requestFormat = (model as any).request_format || "async_id";
+      const size = VALID_SIZES.has(data.aspectRatio) ? data.aspectRatio : "auto";
+      const httpRefs = (data.referenceImages ?? []).filter((u) => /^https?:\/\//i.test(u));
+      const promptKey = (model as any).prompt_key || "prompt";
+      const requestFormat = (model as any).request_format || "async_id";
 
-     const body: Record<string, unknown> = { [promptKey]: data.prompt, size };
-     if (httpRefs.length > 0) body.urls = httpRefs;
+      const body: Record<string, unknown> = {
+        key: pureApiKey,
+        [promptKey]: data.prompt,
+        size,
+      };
+      if (httpRefs.length > 0) body.urls = httpRefs;
 
-     let imageUrl: string | null = null;
+      let imageUrl: string | null = null;
 
-     if (requestFormat === "sync_url") {
-       let res: Response;
-       try {
-          res = await fetch(finalSubmitUrl, { method: "POST", headers, body: JSON.stringify(body) });
-       } catch (e: any) {
-         throw new Error(`请求上游失败: ${e?.message ?? "网络错误"}`);
-       }
-       const text = await res.text();
-       let json: any = null;
-        json = parseUpstreamResponse(text);
-       if (!res.ok) {
-         throw new Error(`上游接口返回 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
-       }
+      if (requestFormat === "sync_url") {
+        let res: Response;
+        try {
+          res = await fetch(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
+        } catch (e: any) {
+          throw new Error(`请求上游失败: ${e?.message ?? "网络错误"}`);
+        }
+        const text = await res.text();
+        const json: any = parseUpstreamResponse(text);
+        if (!res.ok) {
+          throw new Error(`上游接口返回 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
+        }
         if (Number(json?.code) >= 400) {
-         throw new Error(`上游接口失败: ${json?.msg ?? "未知错误"}`);
-       }
-       imageUrl = extractImageUrl(json ?? text);
-       if (!imageUrl) throw new Error("上游未返回图片地址");
-     } else {
+          throw new Error(`上游接口失败: ${json?.msg ?? "未知错误"}`);
+        }
+        imageUrl = extractImageUrl(json ?? text);
+        if (!imageUrl) throw new Error("上游未返回图片地址");
+      } else {
         let taskId: string | null = null;
         try {
-          const res = await fetch(finalSubmitUrl, { method: "POST", headers, body: JSON.stringify(body) });
-         const text = await res.text();
+          const res = await fetch(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
+          const text = await res.text();
           const json = parseUpstreamResponse(text);
-         if (!res.ok) {
-           throw new Error(`上游提交失败 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
-         }
+          if (!res.ok) {
+            throw new Error(`上游提交失败 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
+          }
           if (Number(json?.code) >= 400) {
-           throw new Error(`上游提交失败: ${json?.msg ?? "未知错误"}`);
-         }
+            throw new Error(`上游提交失败: ${json?.msg ?? "未知错误"}`);
+          }
           taskId = json?.data?.id ?? json?.id ?? json?.task_id ?? (typeof json?.data === "string" ? json.data : null);
-         if (!taskId) throw new Error("上游未返回任务ID");
-       } catch (e: any) {
-         throw new Error(e?.message ?? "提交任务失败");
-       }
+          if (!taskId) throw new Error("上游未返回任务ID");
+        } catch (e: any) {
+          throw new Error(e?.message ?? "提交任务失败");
+        }
 
-        // 轮询查询任务结果 — 严格依照官方文档 https://api.wuyinkeji.com/doc/47
-        // GET /api/async/detail?id=xxx&key=xxx
+        // 轮询查询任务结果：官方规范 POST /api/async/fetch_result，body = { key, id }
         // 返回 data.status: 0 初始化 / 1 进行中 / 2 成功 / 3 失败
-        const detailUrl = "https://api.wuyinkeji.com/api/async/detail";
+        const fetchResultUrl = "https://api.wuyinkeji.com/api/async/fetch_result";
         const start = Date.now();
-        const TIMEOUT_MS = 240_000; // 4 分钟，给高精度渲染充足时间
+        const TIMEOUT_MS = 240_000; // 4 分钟
         const INTERVAL_MS = 4000;   // 每 4 秒轮询一次，最多 60 次
         let lastErr: string | null = null;
 
         while (Date.now() - start < TIMEOUT_MS) {
           await new Promise((r) => setTimeout(r, INTERVAL_MS));
           try {
-            const qUrl = `${detailUrl}?id=${encodeURIComponent(taskId)}&key=${encodeURIComponent(pureApiKey)}`;
-            const r = await fetch(qUrl, { method: "GET", headers });
+            const r = await fetch(fetchResultUrl, {
+              method: "POST",
+              headers,
+              body: JSON.stringify({ key: pureApiKey, id: taskId }),
+            });
             const t = await r.text();
             const j = parseUpstreamResponse(t);
             if (!r.ok) {
               lastErr = `HTTP ${r.status}: ${(j?.msg ?? t).slice(0, 200)}`;
               continue;
             }
-            // 顶级 code 是业务响应码：>=400 视为接口本身报错（鉴权/参数等），直接抛出
             const code = Number(j?.code);
             if (code >= 400) {
               throw new Error(`上游查询失败: ${j?.msg ?? "未知错误"}`);
             }
-            // 真正的任务状态在 data.status
             const status = Number(j?.data?.status);
             if (status === 3) {
               throw new Error(`上游生成失败: ${j?.data?.message ?? j?.msg ?? "未知错误"}`);
@@ -586,7 +589,6 @@ function extractImageUrl(payload: any): string | null {
               lastErr = `成功但未解析到图片URL: ${JSON.stringify(j).slice(0, 300)}`;
               continue;
             }
-            // status 0 / 1 / NaN —— 仍在处理中，继续轮询
             lastErr = `处理中 status=${j?.data?.status ?? "?"}`;
           } catch (e: any) {
             if (e?.message?.startsWith("上游生成失败") || e?.message?.startsWith("上游查询失败")) throw e;
@@ -594,7 +596,8 @@ function extractImageUrl(payload: any): string | null {
           }
         }
         if (!imageUrl) throw new Error("服务器生图排队人数较多，请稍后重新提交");
-     }
+      }
+
 
      const { data: rpcRes, error: rpcErr } = await supabase.rpc("consume_credits_for_generation", {
         _model_key: data.modelKey,
