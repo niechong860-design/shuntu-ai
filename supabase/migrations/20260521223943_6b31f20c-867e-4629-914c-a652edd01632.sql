@@ -1,0 +1,3 @@
+update public.models_config set extra_params = '{"size": "{{aspect}}"}'::jsonb where model_key = 'gpt-image-2';
+update public.models_config set extra_params = '{"size": "{{size}}", "aspectRatio": "{{aspect}}"}'::jsonb where model_key = 'nanobanana_pro';
+update public.models_config set extra_params = '{"image_urls": "{{urls}}", "aspect_ratio": "{{grok_aspect}}"}'::jsonb where model_key = 'grok_imagine';
