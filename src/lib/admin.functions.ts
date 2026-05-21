@@ -540,12 +540,13 @@ function extractImageUrl(payload: any): string | null {
          throw new Error(e?.message ?? "提交任务失败");
        }
 
-        const configuredFetchUrl = String((model as any).fetch_url ?? "").trim();
-        let rawFetchUrl = configuredFetchUrl ? resolveUrl(base_url, configuredFetchUrl) : "";
+         const configuredFetchUrl = String((model as any).fetch_url ?? "").trim();
+         let rawFetchUrl = configuredFetchUrl ? resolveUrl(base_url, configuredFetchUrl) : "";
         // Defensive auto-correction: never allow empty or placeholder/example polling hosts.
         if (!rawFetchUrl || rawFetchUrl.includes("api.example.com")) {
           rawFetchUrl = "https://api.wuyinkeji.com/api/async/fetch_result";
         }
+         rawFetchUrl = rawFetchUrl.replace(/([?&])id=[^&]*&?/i, "$1").replace(/[?&]$/, "");
         const start = Date.now();
        const TIMEOUT_MS = 60_000;
        const INTERVAL_MS = 3000;
@@ -553,11 +554,10 @@ function extractImageUrl(payload: any): string | null {
        while (Date.now() - start < TIMEOUT_MS) {
          await new Promise((r) => setTimeout(r, INTERVAL_MS));
          try {
-             const qUrl = `${rawFetchUrl}${rawFetchUrl.includes("?") ? "&" : "?"}id=${encodeURIComponent(taskId)}&key=${finalApiKey}`;
+             const qUrl = appendApiKeyToUrl(`${rawFetchUrl}${rawFetchUrl.includes("?") ? "&" : "?"}id=${taskId}`, pureApiKey);
             const r = await fetch(qUrl, { method: "GET", headers });
            const t = await r.text();
-           let j: any = null;
-           try { j = JSON.parse(t); } catch { /* */ }
+            const j = parseUpstreamResponse(t);
             if (!r.ok) {
               throw new Error(`上游查询失败 ${r.status}: ${(j?.msg ?? j?.error?.message ?? t).slice(0, 200)}`);
             }
@@ -565,7 +565,7 @@ function extractImageUrl(payload: any): string | null {
               throw new Error(`上游查询失败: ${j?.msg ?? j?.error?.message ?? "未知错误"}`);
             }
            const status = j?.data?.status ?? j?.status;
-           if (typeof status === "string" && /fail|error/i.test(status)) {
+            if (Number(status) === 3 || (typeof status === "string" && /fail|error|失败/i.test(status))) {
              throw new Error(`上游生成失败: ${j?.msg ?? j?.data?.message ?? status}`);
            }
            const url = extractImageUrl(j);
