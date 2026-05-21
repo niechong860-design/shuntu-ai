@@ -5,13 +5,15 @@ import {
   adminUpdateModel,
   adminCreateModel,
   adminDeleteModel,
+  adminGetGlobalConfig,
+  adminUpdateGlobalConfig,
 } from "@/lib/admin.functions";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
-import { Pencil, RefreshCw, Sparkles, Plus, Trash2, KeyRound, Link as LinkIcon } from "lucide-react";
+import { Pencil, RefreshCw, Sparkles, Plus, Trash2, KeyRound, Link as LinkIcon, Globe, Save } from "lucide-react";
 import { toast } from "sonner";
 
 type ModelCfg = {
