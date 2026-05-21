@@ -512,6 +512,15 @@ export const generateImage = createServerFn({ method: "POST" })
     if (!prof || Number(prof.credits) < Number(model.cost)) {
       throw new Error("您的算力余额不足，请联系老板兑换充值卡密");
     }
+    const currentCredits = Number(prof.credits ?? 0) || 0;
+    const failGeneration = (message: string) => ({
+      success: false,
+      imageUrl: null,
+      taskId: null,
+      cost: 0,
+      credits: currentCredits,
+      message,
+    });
 
     // 服务端拼接最终 prompt：用户原文 + 风格模板 + 商品保护 + 后台固定提示词
     let stylePromptStr = "";
@@ -590,7 +599,8 @@ export const generateImage = createServerFn({ method: "POST" })
     let urlsHandledByExtra = false;
     for (const [k, val] of Object.entries(extra)) {
       if (val === URLS_TOKEN) {
-        extra[k] = httpRefs;
+        if (httpRefs.length > 0) extra[k] = httpRefs;
+        else delete extra[k];
         urlsHandledByExtra = true;
       }
     }
@@ -614,14 +624,14 @@ export const generateImage = createServerFn({ method: "POST" })
       try {
         res = await fetch(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
       } catch (e: any) {
-        throw new Error(`请求上游失败: ${e?.message ?? "网络错误"}`);
+        return failGeneration(`请求上游失败: ${e?.message ?? "网络错误"}`);
       }
       const text = await res.text();
       const json: any = parseUpstreamResponse(text);
-      if (!res.ok) throw new Error(`上游接口返回 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
-      if (Number(json?.code) >= 400) throw new Error(`上游接口失败: ${json?.msg ?? "未知错误"}`);
+      if (!res.ok) return failGeneration(`上游接口返回 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
+      if (Number(json?.code) >= 400) return failGeneration(`上游接口失败: ${json?.msg ?? "当前模型接口拒绝了请求，请检查模型配置、密钥权限或额度"}`);
       imageUrl = extractImageUrl(json ?? text);
-      if (!imageUrl) throw new Error("上游未返回图片地址");
+      if (!imageUrl) return failGeneration("上游未返回图片地址");
     } else {
       try {
         const res = await fetch(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
@@ -631,15 +641,15 @@ export const generateImage = createServerFn({ method: "POST" })
         const upstreamMsg = (json?.msg ?? json?.message ?? json?.error?.message ?? "").toString().trim();
         const rawTail = text?.slice(0, 300) || "";
         if (!res.ok) {
-          throw new Error(`上游提交失败 ${res.status}: ${upstreamMsg || rawTail || "(空响应)"}`);
+          return failGeneration(`上游提交失败 ${res.status}: ${upstreamMsg || rawTail || "(空响应)"}`);
         }
         if (Number(json?.code) >= 400) {
-          throw new Error(`上游提交失败 [code=${json?.code}]: ${upstreamMsg || rawTail || "(无 msg 字段)"}`);
+          return failGeneration(`上游提交失败 [code=${json?.code}]: ${upstreamMsg || "当前模型接口拒绝了请求，请检查模型配置、密钥权限或额度"}`);
         }
         taskId = json?.data?.id ?? json?.id ?? json?.task_id ?? (typeof json?.data === "string" ? json.data : null);
-        if (!taskId) throw new Error(`上游未返回任务ID，原始响应: ${rawTail || "(空)"}`);
+        if (!taskId) return failGeneration(`上游未返回任务ID，原始响应: ${rawTail || "(空)"}`);
       } catch (e: any) {
-        throw new Error(e?.message ?? "提交任务失败");
+        return failGeneration(e?.message ?? "提交任务失败");
       }
     }
 

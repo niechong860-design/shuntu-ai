@@ -163,6 +163,12 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
       console.log("[generate click] payload →", JSON.stringify(payload, null, 2));
       const r = await generate({ data: payload });
 
+      if (!r.success) {
+        toast.error(r.message ?? "生成提交失败，请检查模型配置或稍后重试", { duration: 7000 });
+        onGenerateDone(null);
+        return;
+      }
+
       toast.success(`已提交 · 扣除 ${r.cost} 点，剩余 ${r.credits}`);
       await refreshProfile();
 
