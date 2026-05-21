@@ -8,11 +8,13 @@ import {
   adminUpdateStyleTemplate,
   adminGetSystemPrompt,
   adminSetSystemPrompt,
+  adminGetContactInfo,
+  adminSetContactInfo,
 } from "@/lib/admin.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
-import { Save, Upload, RefreshCw, ImageIcon, FileText, Palette } from "lucide-react";
+import { Save, Upload, RefreshCw, ImageIcon, FileText, Palette, Headphones } from "lucide-react";
 
 type Tpl = {
   id: string;
