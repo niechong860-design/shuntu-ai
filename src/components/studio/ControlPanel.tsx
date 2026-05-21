@@ -349,6 +349,43 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
                     </div>
                   </PopoverContent>
                 </Popover>
+
+                {/* Size popover (1K / 2K / 4K) */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button className="flex items-center gap-1.5 rounded-lg border border-border bg-white/[0.03] px-2.5 py-1.5 text-[11px] font-medium transition-colors hover:border-primary/40 hover:bg-primary/[0.05]">
+                      <Zap className="h-3 w-3" />
+                      {size}
+                      <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-auto border-border bg-popover/95 p-2 backdrop-blur-xl">
+                    <div className="mb-1.5 px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                      输出像素
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {(["1K", "2K", "4K"] as const).map((s) => {
+                        const active = size === s;
+                        return (
+                          <button
+                            key={s}
+                            onClick={() => setSize(s)}
+                            className={`flex flex-col items-center gap-1 rounded-lg border px-3 py-2 transition-all ${
+                              active
+                                ? "border-primary/50 bg-primary/10 text-primary"
+                                : "border-border bg-white/[0.02] text-muted-foreground hover:bg-white/5"
+                            }`}
+                          >
+                            <span className="font-mono text-[11px] font-semibold">{s}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-2 px-1 text-[9px] font-light text-muted-foreground">
+                      像素越高生成越慢，仅部分模型支持（如 NanoBanana2）
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
 
               <div className="flex items-center gap-1">
