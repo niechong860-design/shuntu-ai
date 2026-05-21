@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
 import { Pencil, RefreshCw, Sparkles, Plus, Trash2, KeyRound, Link as LinkIcon, Globe, Save } from "lucide-react";
 import { toast } from "sonner";
 
@@ -23,6 +24,7 @@ type ModelCfg = {
   prompt_key: string | null;
   fetch_url: string | null;
   extra_params?: Record<string, unknown> | null;
+  is_enabled?: boolean;
   sort_order?: number; updated_at: string;
 };
 
