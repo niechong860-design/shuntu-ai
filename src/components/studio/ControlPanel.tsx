@@ -267,7 +267,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
             <div className="flex items-center justify-between gap-2 border-t border-border/50 px-2.5 py-2">
               <div className="flex items-center gap-1">
                 {/* Model popover */}
-                <Popover>
+                <Popover open={modelOpen} onOpenChange={setModelOpen}>
                   <PopoverTrigger asChild>
                     <button className="flex items-center gap-1.5 rounded-lg border border-border bg-white/[0.03] px-2.5 py-1.5 text-[11px] font-medium transition-colors hover:border-primary/40 hover:bg-primary/[0.05]">
                       <Sparkles className="h-3 w-3 text-primary" />
