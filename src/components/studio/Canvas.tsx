@@ -133,8 +133,8 @@ function SkeletonShimmer() {
         <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-aurora shadow-glow">
           <Sparkles className="h-7 w-7 animate-pulse text-primary-foreground" />
         </div>
-        <div className="text-sm font-medium text-foreground/90">正在渲染你的灵感…</div>
-        <div className="text-[11px] font-light text-muted-foreground">扩散模型正在全力工作</div>
+        <div className="text-sm font-medium text-foreground/90">AI 正在拼命绘制中，请稍候…</div>
+        <div className="text-[11px] font-light text-muted-foreground">异步任务轮询中 · 最长 60 秒</div>
         <div className="mt-1 h-1 w-48 overflow-hidden rounded-full bg-white/5">
           <div className="h-full w-1/2 animate-[shimmer_2s_infinite] rounded-full bg-gradient-aurora shadow-glow" />
         </div>
