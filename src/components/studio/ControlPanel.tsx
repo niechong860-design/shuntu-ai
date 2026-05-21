@@ -156,7 +156,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
         aspectRatio: ratio,
         size,
         referenceImages: httpRefs.length ? httpRefs : undefined,
-        styleId,
+        styleId: inspirationMode ? "" : styleId,
       };
       console.log("[generate click] payload →", JSON.stringify(payload, null, 2));
       const r = await generate({ data: payload });
