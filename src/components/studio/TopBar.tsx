@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { RedeemDialog } from "@/components/auth/RedeemDialog";
 import { AdBanner } from "./AdBanner";
+import { ContactDialog } from "./ContactDialog";
 
 
 type Props = {
