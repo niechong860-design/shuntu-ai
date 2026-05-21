@@ -91,8 +91,17 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
       if (!r.taskId) throw new Error("未获取到任务ID");
       const taskId = r.taskId;
       const POLL_INTERVAL = 5000;
+      const MAX_DURATION_MS = 5 * 60 * 1000; // 5 分钟硬性超时
+      const MAX_TRANSIENT_RETRIES = 3;
+      const startedAt = Date.now();
+      let transientRetries = 0;
       // eslint-disable-next-line no-constant-condition
       while (true) {
+        if (Date.now() - startedAt > MAX_DURATION_MS) {
+          toast.error(`AI 生成任务超时，请检查网络或稍后重新提交（任务 ID: ${taskId}）`, { duration: 8000 });
+          onGenerateDone(null);
+          return;
+        }
         await new Promise((res) => setTimeout(res, POLL_INTERVAL));
         try {
           const s = await checkStatus({ data: { taskId } });
@@ -103,12 +112,16 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
           if (s.status === "failed") {
             throw new Error(s.message ?? "生成失败");
           }
-          // pending — 继续轮询
+          // pending — 重置瞬时错误计数，继续轮询
+          transientRetries = 0;
         } catch (pollErr: any) {
-          // 真正的失败抛出；瞬时网络错误继续重试
-          if (pollErr?.message && !/network|fetch|timeout/i.test(pollErr.message)) {
-            throw pollErr;
+          const msg = pollErr?.message ?? "";
+          const isTransient = /network|fetch|timeout|500|502|503|504/i.test(msg) || !msg;
+          if (isTransient && transientRetries < MAX_TRANSIENT_RETRIES) {
+            transientRetries += 1;
+            continue;
           }
+          throw pollErr;
         }
       }
     } catch (e: any) {
