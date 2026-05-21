@@ -40,6 +40,9 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
   const [modelKey, setModelKey] = useState<string>("");
   const [ratio, setRatio] = useState("1:1");
   const [size, setSize] = useState<"1K" | "2K" | "4K">("1K");
+  const [modelOpen, setModelOpen] = useState(false);
+  const [ratioOpen, setRatioOpen] = useState(false);
+  const [sizeOpen, setSizeOpen] = useState(false);
   const [refs, setRefs] = useState<string[]>([]);
   const [prompt, setPrompt] = useState(
     "黄昏时分的超现实赛博朋克花园，生物荧光植物散发翠绿光芒，电影级广角，超精细细节",
@@ -267,7 +270,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
             <div className="flex items-center justify-between gap-2 border-t border-border/50 px-2.5 py-2">
               <div className="flex items-center gap-1">
                 {/* Model popover */}
-                <Popover>
+                <Popover open={modelOpen} onOpenChange={setModelOpen}>
                   <PopoverTrigger asChild>
                     <button className="flex items-center gap-1.5 rounded-lg border border-border bg-white/[0.03] px-2.5 py-1.5 text-[11px] font-medium transition-colors hover:border-primary/40 hover:bg-primary/[0.05]">
                       <Sparkles className="h-3 w-3 text-primary" />
@@ -287,7 +290,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
                       return (
                         <button
                           key={m.id}
-                          onClick={() => setModelKey(m.model_key)}
+                          onClick={() => { setModelKey(m.model_key); setModelOpen(false); }}
                           className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors ${
                             active ? "bg-primary/10" : "hover:bg-white/5"
                           }`}
@@ -316,7 +319,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
                 </Popover>
 
                 {/* Ratio popover */}
-                <Popover>
+                <Popover open={ratioOpen} onOpenChange={setRatioOpen}>
                   <PopoverTrigger asChild>
                     <button className="flex items-center gap-1.5 rounded-lg border border-border bg-white/[0.03] px-2.5 py-1.5 text-[11px] font-medium transition-colors hover:border-primary/40 hover:bg-primary/[0.05]">
                       <ActiveRatioIcon className="h-3 w-3" />
@@ -335,7 +338,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
                         return (
                           <button
                             key={r.id}
-                            onClick={() => setRatio(r.id)}
+                            onClick={() => { setRatio(r.id); setRatioOpen(false); }}
                             className={`flex flex-col items-center gap-1 rounded-lg border px-2.5 py-2 transition-all ${
                               active ? "border-primary/50 bg-primary/10 text-primary"
                               : "border-border bg-white/[0.02] text-muted-foreground hover:bg-white/5"
@@ -351,7 +354,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
                 </Popover>
 
                 {/* Size popover (1K / 2K / 4K) */}
-                <Popover>
+                <Popover open={sizeOpen} onOpenChange={setSizeOpen}>
                   <PopoverTrigger asChild>
                     <button className="flex items-center gap-1.5 rounded-lg border border-border bg-white/[0.03] px-2.5 py-1.5 text-[11px] font-medium transition-colors hover:border-primary/40 hover:bg-primary/[0.05]">
                       <Zap className="h-3 w-3" />
@@ -369,7 +372,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
                         return (
                           <button
                             key={s}
-                            onClick={() => setSize(s)}
+                            onClick={() => { setSize(s); setSizeOpen(false); }}
                             className={`flex flex-col items-center gap-1 rounded-lg border px-3 py-2 transition-all ${
                               active
                                 ? "border-primary/50 bg-primary/10 text-primary"
