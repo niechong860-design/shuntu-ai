@@ -124,7 +124,12 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
               debug: (s as any).debug,
               message: s.message,
             });
-            if ((s as any).reason === "rejected" || (s as any).taskStatus === 3) {
+            if ((s as any).reason === "ref_url") {
+              toast.error(
+                `参考图读取失败，请检查链接是否为公开的 HTTPS 链接${s.message ? ` · ${s.message}` : ""}`,
+                { duration: 8000 },
+              );
+            } else if ((s as any).reason === "rejected" || (s as any).taskStatus === 3) {
               toast.error(
                 `生成任务失败（原因：任务被拒绝或涉及合规限制，请尝试更换提示词）${s.message ? ` · ${s.message}` : ""}`,
                 { duration: 8000 },
@@ -132,6 +137,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
             } else {
               toast.error(`生成失败：${s.message ?? "上游服务异常，请稍后重试"}`, { duration: 6000 });
             }
+
             onGenerateDone(null);
             return;
           }
