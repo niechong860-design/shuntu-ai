@@ -401,28 +401,34 @@ function extractImageUrl(payload: any): string | null {
    return `${base}${path}`;
  }
 
-   // Upstream (wuyinkeji) requires the pure key in both URL query string and Authorization.
-
-  function normalizeUpstreamApiKey(value: unknown): string {
-    if (typeof value !== "string") return "";
-    let v = value.replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
-    v = v.replace(/^['"]+|['"]+$/g, "");
-    while (/^Bearer\s+/i.test(v)) v = v.replace(/^Bearer\s+/i, "");
-    return v.trim();
+  function normalizeUpstreamApiKey(targetKey: unknown): string {
+    const pureApiKey = String(targetKey ?? "").replace(/Bearer\s+/i, "").trim();
+    return pureApiKey;
   }
 
-  function buildUpstreamHeaders(finalApiKey: string): Record<string, string> {
-    const clean = normalizeUpstreamApiKey(finalApiKey);
+  function buildUpstreamHeaders(pureApiKey: string): Record<string, string> {
     return {
       "Content-Type": "application/json",
-      Authorization: clean,
+      Authorization: pureApiKey,
     };
   }
 
-  function appendApiKeyToUrl(apiUrl: string, targetKey: string): string {
-    const finalApiKey = normalizeUpstreamApiKey(targetKey);
-    const joinChar = apiUrl.includes("?") ? "&" : "?";
-    return `${apiUrl}${joinChar}key=${finalApiKey}`;
+  function appendApiKeyToUrl(apiUrl: string, pureApiKey: string): string {
+    const cleanUrl = apiUrl.replace(/([?&])key=[^&]*&?/i, "$1").replace(/[?&]$/, "");
+    const joinChar = cleanUrl.includes("?") ? "&" : "?";
+    return `${cleanUrl}${joinChar}key=${pureApiKey}`;
+  }
+
+  function parseUpstreamJson(text: string): any {
+    try {
+      return JSON.parse(text);
+    } catch {
+      const cleaned = text.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
+      const start = cleaned.search(/[\[{]/);
+      const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
+      if (start < 0 || end < start) return null;
+      return JSON.parse(cleaned.slice(start, end + 1));
+    }
   }
 
  export const generateImage = createServerFn({ method: "POST" })
