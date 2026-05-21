@@ -17,11 +17,17 @@ type ModelCfg = {
 };
 
 const RATIOS = [
+  { id: "auto", icon: Sparkles, label: "自适应" },
   { id: "1:1", icon: Square, label: "方形" },
-  { id: "16:9", icon: RectangleHorizontal, label: "横屏" },
-  { id: "9:16", icon: RectangleVertical, label: "竖屏" },
-  { id: "3:4", icon: RectangleVertical, label: "照片" },
-  { id: "4:3", icon: Monitor, label: "经典" },
+  { id: "16:9", icon: RectangleHorizontal, label: "横版" },
+  { id: "9:16", icon: RectangleVertical, label: "竖版" },
+  { id: "4:3", icon: RectangleHorizontal, label: "横版" },
+  { id: "3:4", icon: RectangleVertical, label: "竖版" },
+  { id: "21:9", icon: RectangleHorizontal, label: "影院" },
+  { id: "3:2", icon: RectangleHorizontal, label: "横版" },
+  { id: "2:3", icon: RectangleVertical, label: "竖版" },
+  { id: "5:4", icon: RectangleHorizontal, label: "横版" },
+  { id: "4:5", icon: RectangleVertical, label: "竖版" },
 ];
 
 type Props = {
@@ -327,11 +333,11 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
                       <ChevronDown className="h-3 w-3 text-muted-foreground" />
                     </button>
                   </PopoverTrigger>
-                  <PopoverContent align="start" className="w-auto border-border bg-popover/95 p-2 backdrop-blur-xl">
+                  <PopoverContent align="start" className="w-auto max-w-[360px] border-border bg-popover/95 p-2 backdrop-blur-xl">
                     <div className="mb-1.5 px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                       画面比例
                     </div>
-                    <div className="grid grid-cols-5 gap-1.5">
+                    <div className="grid grid-cols-4 gap-1.5">
                       {RATIOS.map((r) => {
                         const Icon = r.icon;
                         const active = ratio === r.id;
@@ -339,13 +345,14 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
                           <button
                             key={r.id}
                             onClick={() => { setRatio(r.id); setRatioOpen(false); }}
-                            className={`flex flex-col items-center gap-1 rounded-lg border px-2.5 py-2 transition-all ${
+                            className={`flex flex-col items-center gap-1 rounded-lg border px-2 py-2 transition-all ${
                               active ? "border-primary/50 bg-primary/10 text-primary"
                               : "border-border bg-white/[0.02] text-muted-foreground hover:bg-white/5"
                             }`}
                           >
                             <Icon className="h-3.5 w-3.5" strokeWidth={1.5} />
-                            <span className="font-mono text-[9px]">{r.id}</span>
+                            <span className="font-mono text-[9px] leading-none">{r.id}</span>
+                            <span className="text-[9px] font-light leading-none">{r.label}</span>
                           </button>
                         );
                       })}
