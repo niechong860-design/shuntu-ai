@@ -140,8 +140,9 @@ export function ModelsPanel() {
 
   return (
     <div className="space-y-3">
+      <GlobalConfigCard />
       <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">每个模型可配置独立的 API 接口地址、密钥与扣点费率</p>
+        <p className="text-xs text-muted-foreground">每个模型可配置独立的 API 接口地址、密钥与扣点费率（留空则使用全局 API Key）</p>
         <div className="flex items-center gap-2">
           <Button size="sm" onClick={() => setCreating(empty())} className="bg-gradient-aurora text-primary-foreground">
             <Plus className="mr-1.5 h-3.5 w-3.5" />添加模型
