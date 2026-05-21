@@ -483,7 +483,7 @@ export const generateImage = createServerFn({ method: "POST" })
 
     const { data: model, error: mErr } = await supabaseAdmin
       .from("models_config")
-      .select("id, model_key, name, cost, api_url, api_key, request_format, prompt_key, fetch_url")
+      .select("id, model_key, name, cost, api_url, api_key, request_format, prompt_key, fetch_url, extra_params")
       .eq("model_key", data.modelKey)
       .maybeSingle();
     if (mErr) throw new Error(mErr.message);
@@ -503,7 +503,6 @@ export const generateImage = createServerFn({ method: "POST" })
       throw new Error("该模型或全局接口设置尚未配置 API Key，请联系管理员");
     }
 
-    // 按官方文档：Authorization Header 鉴权 + JSON Body 仅含 prompt/size/urls
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "Authorization": pureApiKey,
@@ -515,9 +514,26 @@ export const generateImage = createServerFn({ method: "POST" })
     const promptKey = (model as any).prompt_key || "prompt";
     const requestFormat = (model as any).request_format || "async_id";
 
+    // 支持 extra_params 中的占位符替换：{{aspect}} / {{prompt}}
+    const substitute = (v: any): any => {
+      if (typeof v === "string") {
+        return v
+          .replace(/\{\{\s*aspect\s*\}\}/g, size)
+          .replace(/\{\{\s*prompt\s*\}\}/g, data.prompt);
+      }
+      if (Array.isArray(v)) return v.map(substitute);
+      if (v && typeof v === "object") {
+        const o: Record<string, any> = {};
+        for (const k of Object.keys(v)) o[k] = substitute(v[k]);
+        return o;
+      }
+      return v;
+    };
+    const extra = substitute((model as any).extra_params ?? {}) as Record<string, unknown>;
+
     const body: Record<string, unknown> = {
       [promptKey]: data.prompt,
-      size,
+      ...extra, // 每个模型自定义参数（如 size、image_weight、num_inference_steps 等）
     };
     if (Array.isArray(httpRefs) && httpRefs.length > 0) {
       body.urls = httpRefs;
