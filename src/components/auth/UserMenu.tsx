@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { Settings, RefreshCw, LogOut, Zap, Shield } from "lucide-react";
+import { Settings, RefreshCw, LogOut, Zap, Shield, Crown } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { SettingsDialog } from "./SettingsDialog";
 import { AdminDashboard } from "@/components/admin/AdminDashboard";
@@ -13,11 +13,15 @@ export function UserMenu({ onSwitchAccount }: { onSwitchAccount: () => void }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isFounder, setIsFounder] = useState(false);
   const check = useServerFn(checkIsAdmin);
 
   useEffect(() => {
-    if (!session) { setIsAdmin(false); return; }
-    check({}).then((r) => setIsAdmin(!!r?.isAdmin)).catch(() => setIsAdmin(false));
+    if (!session) { setIsAdmin(false); setIsFounder(false); return; }
+    check({}).then((r: any) => {
+      setIsAdmin(!!r?.isAdmin);
+      setIsFounder(!!r?.isFounder);
+    }).catch(() => { setIsAdmin(false); setIsFounder(false); });
   }, [session, check]);
 
   const initial = (profile?.display_name || profile?.email || user?.email || "U")[0].toUpperCase();
@@ -81,7 +85,8 @@ export function UserMenu({ onSwitchAccount }: { onSwitchAccount: () => void }) {
             </DropdownMenuItem>
             {isAdmin && (
               <DropdownMenuItem onSelect={() => setAdminOpen(true)} className="cursor-pointer gap-2.5 rounded-md px-2.5 py-2 text-xs text-primary focus:bg-primary/10">
-                <Shield className="h-3.5 w-3.5" /> 管理员后台
+                {isFounder ? <Crown className="h-3.5 w-3.5" /> : <Shield className="h-3.5 w-3.5" />}
+                {isFounder ? "创始人后台" : "管理员后台"}
               </DropdownMenuItem>
             )}
             <DropdownMenuItem
@@ -110,7 +115,7 @@ export function UserMenu({ onSwitchAccount }: { onSwitchAccount: () => void }) {
       </DropdownMenu>
 
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
-      {isAdmin && <AdminDashboard open={adminOpen} onOpenChange={setAdminOpen} />}
+      {isAdmin && <AdminDashboard open={adminOpen} onOpenChange={setAdminOpen} isFounder={isFounder} />}
     </>
   );
 }
