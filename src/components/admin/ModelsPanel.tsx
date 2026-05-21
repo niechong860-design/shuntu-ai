@@ -331,6 +331,25 @@ function ModelFormDialog({
               )}
             </div>
 
+            <div className="space-y-1">
+              <label className="text-[11px] text-muted-foreground">
+                额外请求参数（JSON 对象，按该模型上游 API 文档填写）
+              </label>
+              <textarea
+                value={state.extra_params}
+                onChange={(e) => setState({ ...state, extra_params: e.target.value })}
+                className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-[11px] shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                placeholder={`{\n  "size": "{{aspect}}",\n  "image_weight": 0.6,\n  "num_inference_steps": 30\n}`}
+                spellCheck={false}
+              />
+              <p className="text-[10px] text-muted-foreground/80">
+                这些参数会与 prompt / urls 一起合并进上游请求体。支持占位符：
+                <code className="mx-1 rounded bg-white/5 px-1">{"{{aspect}}"}</code>（比例如 1:1）、
+                <code className="mx-1 rounded bg-white/5 px-1">{"{{prompt}}"}</code>。
+                留空则不发送任何额外字段。
+              </p>
+            </div>
+
             <Button className="w-full" onClick={onSubmit} disabled={busy}>保存</Button>
           </div>
         )}
