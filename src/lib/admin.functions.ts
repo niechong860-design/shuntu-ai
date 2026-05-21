@@ -477,8 +477,6 @@ function extractImageUrl(payload: any): string | null {
 
 // 提交生图任务：上游提交 + 立即扣费记账，**不在服务端循环轮询**。
 // 同步模型（sync_url）直接返回 imageUrl；异步模型返回 taskId 由前端轮询 checkImageStatus。
-const PRODUCT_PROTECTION_PROMPT =
-  "Preserve the exact original product. Do not redesign or replace the product. Keep the exact shape, logo, material, stitching, structure, proportions and colors unchanged. Only optimize lighting, shadows, background and composition.";
 
 export const generateImage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -522,7 +520,9 @@ export const generateImage = createServerFn({ method: "POST" })
       message,
     });
 
-    // 服务端拼接最终 prompt：用户原文 + 风格模板 + 商品保护 + 后台固定提示词
+    // 最终 prompt = 用户原文 + （若选择了风格模板）模板提示词
+    // 灵感广场的提示词在前端已直接写入用户输入框，这里无需重复追加。
+    // 商品保护提示 / 后台 system_prompt 不再自动并入请求。
     let stylePromptStr = "";
     if (data.styleId && data.styleId !== "none") {
       const { data: tpl } = await supabaseAdmin
@@ -532,18 +532,11 @@ export const generateImage = createServerFn({ method: "POST" })
         .maybeSingle();
       stylePromptStr = (tpl?.prompt ?? "").trim();
     }
-    const { data: settings } = await supabaseAdmin
-      .from("admin_settings")
-      .select("system_prompt")
-      .eq("id", 1)
-      .maybeSingle();
-    const systemPromptStr = ((settings as any)?.system_prompt ?? "").trim();
-    const finalPrompt = [
-      data.prompt.trim(),
-      stylePromptStr,
-      PRODUCT_PROTECTION_PROMPT,
-      systemPromptStr,
-    ].filter(Boolean).join("\n\n");
+    const finalPrompt = [data.prompt.trim(), stylePromptStr]
+      .filter(Boolean)
+      .join("\n\n");
+
+
 
     const targetKey = normalizeUpstreamApiKey((model as any).api_key) || normalizeUpstreamApiKey(global_api_key);
     const pureApiKey = String(targetKey).replace(/Bearer\s+/i, "").trim();
