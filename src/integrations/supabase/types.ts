@@ -105,6 +105,7 @@ export type Database = {
           cost: number
           created_at: string
           description: string | null
+          extra_params: Json
           fetch_url: string | null
           id: string
           model_key: string
@@ -120,6 +121,7 @@ export type Database = {
           cost?: number
           created_at?: string
           description?: string | null
+          extra_params?: Json
           fetch_url?: string | null
           id?: string
           model_key: string
@@ -135,6 +137,7 @@ export type Database = {
           cost?: number
           created_at?: string
           description?: string | null
+          extra_params?: Json
           fetch_url?: string | null
           id?: string
           model_key?: string
