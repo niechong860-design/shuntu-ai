@@ -24,6 +24,11 @@ export function TopBar({ credits, onOpenHistory, onSwitchAccount }: Props) {
       </div>
 
       {/* Right: actions */}
+      <div className="ml-auto flex items-center gap-1 pr-3">
+        <NavLink>在线生成</NavLink>
+        <NavLink>使用案例</NavLink>
+        <NavLink>联系客服</NavLink>
+      </div>
       <div className="flex items-center gap-2">
         <IconBtn title="历史记录" onClick={onOpenHistory}><History className="h-4 w-4" /></IconBtn>
         <IconBtn title="通知">
