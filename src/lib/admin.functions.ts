@@ -534,6 +534,7 @@ export const generateImage = createServerFn({ method: "POST" })
         if (/^\{\{\s*urls\s*\}\}$/.test(trimmed)) return URLS_TOKEN;
         return v
           .replace(/\{\{\s*wan_size\s*\}\}/g, wanSize)
+          .replace(/\{\{\s*size\s*\}\}/g, data.size)
           .replace(/\{\{\s*aspect\s*\}\}/g, size)
           .replace(/\{\{\s*prompt\s*\}\}/g, data.prompt);
       }
