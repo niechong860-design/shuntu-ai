@@ -115,6 +115,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
         modelKey: activeModel.model_key,
         prompt,
         aspectRatio: ratio,
+        size,
         referenceImages: httpRefs.length ? httpRefs : undefined,
       };
       // 调试：打印最终发送给 serverFn 的 JSON Body（serverFn 会再透传给上游 API）
