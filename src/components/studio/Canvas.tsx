@@ -80,7 +80,7 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
   const loadHistory = async () => {
     setLoadingHistory(true);
     try {
-      const list = await fetchHistory({ data: undefined as unknown as never });
+      const list = await fetchHistory();
       setHistory(list);
     } catch (e) {
       console.warn("[history] load failed", e);
