@@ -696,10 +696,14 @@ export const checkIsAdmin = createServerFn({ method: "POST" })
       .from("user_roles")
       .select("role")
       .eq("user_id", context.userId)
-      .eq("role", "admin")
-      .maybeSingle();
-    return { isAdmin: !!data };
+      .in("role", ["admin", "founder"]);
+    const roles = (data ?? []).map((r: any) => r.role);
+    return {
+      isAdmin: roles.length > 0,
+      isFounder: roles.includes("founder"),
+    };
   });
+
 
 // --- Analytics ---
 export const adminGetAnalytics = createServerFn({ method: "POST" })
