@@ -65,6 +65,90 @@ export type Database = {
         }
         Relationships: []
       }
+      case_comments: {
+        Row: {
+          case_id: string
+          content: string
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          case_id: string
+          content: string
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          case_id?: string
+          content?: string
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "case_comments_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "inspiration_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      case_favorites: {
+        Row: {
+          case_id: string
+          created_at: string
+          user_id: string
+        }
+        Insert: {
+          case_id: string
+          created_at?: string
+          user_id: string
+        }
+        Update: {
+          case_id?: string
+          created_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "case_favorites_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "inspiration_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      case_likes: {
+        Row: {
+          case_id: string
+          created_at: string
+          user_id: string
+        }
+        Insert: {
+          case_id: string
+          created_at?: string
+          user_id: string
+        }
+        Update: {
+          case_id?: string
+          created_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "case_likes_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "inspiration_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       coupons: {
         Row: {
           amount: number
@@ -146,6 +230,66 @@ export type Database = {
           global_api_key?: string | null
           id?: number
           updated_at?: string
+        }
+        Relationships: []
+      }
+      inspiration_cases: {
+        Row: {
+          aspect_ratio: string | null
+          created_at: string
+          favorites_count: number
+          id: string
+          image_url: string
+          is_published: boolean
+          likes_count: number
+          model_key: string | null
+          model_name: string | null
+          prompt: string
+          size: string | null
+          style_id: string | null
+          tags: string[]
+          title: string
+          updated_at: string
+          user_id: string
+          views: number
+        }
+        Insert: {
+          aspect_ratio?: string | null
+          created_at?: string
+          favorites_count?: number
+          id?: string
+          image_url: string
+          is_published?: boolean
+          likes_count?: number
+          model_key?: string | null
+          model_name?: string | null
+          prompt?: string
+          size?: string | null
+          style_id?: string | null
+          tags?: string[]
+          title?: string
+          updated_at?: string
+          user_id: string
+          views?: number
+        }
+        Update: {
+          aspect_ratio?: string | null
+          created_at?: string
+          favorites_count?: number
+          id?: string
+          image_url?: string
+          is_published?: boolean
+          likes_count?: number
+          model_key?: string | null
+          model_name?: string | null
+          prompt?: string
+          size?: string | null
+          style_id?: string | null
+          tags?: string[]
+          title?: string
+          updated_at?: string
+          user_id?: string
+          views?: number
         }
         Relationships: []
       }
@@ -300,6 +444,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      increment_case_view: { Args: { _case_id: string }; Returns: undefined }
       redeem_coupon: {
         Args: { _code: string }
         Returns: {

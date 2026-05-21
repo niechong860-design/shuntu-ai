@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Sparkles, Zap, Plus, Bell, History } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { RedeemDialog } from "@/components/auth/RedeemDialog";
 import { AdBanner } from "./AdBanner";
+
 
 type Props = {
   credits: number;
@@ -29,10 +31,11 @@ export function TopBar({ credits, onOpenHistory, onSwitchAccount }: Props) {
 
       {/* Right: nav + actions */}
       <div className="flex items-center gap-1 pr-3">
-        <NavLink>在线生成</NavLink>
-        <NavLink>使用案例</NavLink>
+        <NavLinkTo to="/">在线生成</NavLinkTo>
+        <NavLinkTo to="/inspiration">使用案例</NavLinkTo>
         <NavLink>联系客服</NavLink>
       </div>
+
 
       <div className="flex items-center gap-2">
         <IconBtn title="历史记录" onClick={onOpenHistory}><History className="h-4 w-4" /></IconBtn>
@@ -83,3 +86,17 @@ function NavLink({ children, ...rest }: React.ButtonHTMLAttributes<HTMLButtonEle
     </button>
   );
 }
+
+function NavLinkTo({ to, children }: { to: "/" | "/inspiration"; children: React.ReactNode }) {
+  return (
+    <Link
+      to={to}
+      className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-white/[0.05] hover:text-foreground"
+      activeProps={{ className: "rounded-md px-3 py-1.5 text-xs font-medium text-foreground bg-white/[0.05]" }}
+    >
+      {children}
+    </Link>
+  );
+}
+
+
