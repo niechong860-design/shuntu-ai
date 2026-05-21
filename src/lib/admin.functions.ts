@@ -8,11 +8,22 @@ async function assertAdmin(userId: string) {
     .from("user_roles")
     .select("role")
     .eq("user_id", userId)
-    .eq("role", "admin")
+    .in("role", ["admin", "founder"]);
+  if (error) throw new Error(error.message);
+  if (!data || data.length === 0) throw new Error("无管理员权限");
+}
+
+async function assertFounder(userId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("role", "founder")
     .maybeSingle();
   if (error) throw new Error(error.message);
-  if (!data) throw new Error("无管理员权限");
+  if (!data) throw new Error("仅创始人可执行该操作");
 }
+
 
 // --- Users ---
 export const adminListUsers = createServerFn({ method: "POST" })
