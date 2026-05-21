@@ -7,7 +7,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { useServerFn } from "@tanstack/react-start";
-import { listModelsConfig, generateImage } from "@/lib/admin.functions";
+import { listModelsConfig, generateImage, checkImageStatus } from "@/lib/admin.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 
