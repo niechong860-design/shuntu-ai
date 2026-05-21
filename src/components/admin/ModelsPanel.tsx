@@ -280,6 +280,34 @@ function ModelFormDialog({
               <label className="text-[11px] text-muted-foreground">单次出图消耗点数</label>
               <Input type="number" min={0} step="0.1" value={state.cost} onChange={(e) => setState({ ...state, cost: e.target.value })} placeholder="2" />
             </div>
+
+            <div className="border-t border-border/40 pt-3">
+              <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">动态接口适配</div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">返回格式</label>
+                  <select
+                    value={state.request_format}
+                    onChange={(e) => setState({ ...state, request_format: e.target.value as "async_id" | "sync_url" })}
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-xs"
+                  >
+                    <option value="async_id">异步轮询（返回任务ID）</option>
+                    <option value="sync_url">同步直出（直接返回URL）</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">提示词参数名</label>
+                  <Input value={state.prompt_key} onChange={(e) => setState({ ...state, prompt_key: e.target.value })} placeholder="prompt" />
+                </div>
+              </div>
+              {state.request_format === "async_id" && (
+                <div className="mt-3 space-y-1">
+                  <label className="text-[11px] text-muted-foreground">查询结果接口（选填，留空将自动派生 /fetch_result）</label>
+                  <Input value={state.fetch_url} onChange={(e) => setState({ ...state, fetch_url: e.target.value })} placeholder="https://api.example.com/api/async/fetch_result" />
+                </div>
+              )}
+            </div>
+
             <Button className="w-full" onClick={onSubmit} disabled={busy}>保存</Button>
           </div>
         )}
