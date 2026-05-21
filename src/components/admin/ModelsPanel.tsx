@@ -91,6 +91,9 @@ export function ModelsPanel() {
         cost: n,
         api_url: editing.api_url.trim() || null,
         api_key: editing.api_key.trim() || null,
+        request_format: editing.request_format,
+        prompt_key: editing.prompt_key.trim() || "prompt",
+        fetch_url: editing.fetch_url.trim() || null,
       }});
       toast.success("模型已更新");
       setEditing(null);
