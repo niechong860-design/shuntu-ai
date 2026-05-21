@@ -280,25 +280,38 @@ function extractImageUrl(payload: any): string | null {
   const d0 = payload?.data?.[0];
   if (d0?.url) return d0.url;
   if (d0?.b64_json) return `data:image/png;base64,${d0.b64_json}`;
-  // Common variants
+  // Common variants, including wuyinkeji async detail payloads.
   const candidates = [
     payload?.url,
     payload?.image_url,
     payload?.image,
+    payload?.output,
+    payload?.result,
+    payload?.message,
+    payload?.data,
     payload?.output?.[0],
-     payload?.images?.[0]?.url,
-     payload?.images?.[0],
-     payload?.result?.url,
-     payload?.result?.image,
-     payload?.data?.url,
-     payload?.data?.image_url,
-     payload?.data?.image,
-     payload?.data?.images?.[0]?.url,
-     payload?.data?.images?.[0],
-     payload?.data?.result?.url,
-     payload?.data?.urls?.[0],
-     payload?.urls?.[0],
-   ];
+    payload?.images?.[0]?.url,
+    payload?.images?.[0],
+    payload?.result?.url,
+    payload?.result?.image,
+    payload?.result?.images?.[0]?.url,
+    payload?.result?.images?.[0],
+    payload?.data?.url,
+    payload?.data?.image_url,
+    payload?.data?.image,
+    payload?.data?.output,
+    payload?.data?.result,
+    payload?.data?.message,
+    payload?.data?.output?.[0],
+    payload?.data?.images?.[0]?.url,
+    payload?.data?.images?.[0],
+    payload?.data?.result?.url,
+    payload?.data?.result?.image,
+    payload?.data?.result?.images?.[0]?.url,
+    payload?.data?.result?.images?.[0],
+    payload?.data?.urls?.[0],
+    payload?.urls?.[0],
+  ];
    for (const c of candidates) {
      if (typeof c === "string" && /^https?:\/\//i.test(c)) return c;
    }
@@ -309,8 +322,10 @@ function extractImageUrl(payload: any): string | null {
      while (stack.length) {
        const v = stack.pop();
        if (!v || seen.has(v)) continue;
-       if (typeof v === "string") {
-         if (/^https?:\/\/\S+\.(png|jpe?g|webp|gif|bmp)/i.test(v)) return v;
+        if (typeof v === "string") {
+          const embedded = v.match(/https?:\/\/[^\s"'<>\\]+(?:png|jpe?g|webp|gif|bmp)(?:\?[^\s"'<>\\]*)?/i);
+          if (embedded) return embedded[0];
+          if (/^https?:\/\/\S+$/i.test(v)) return v;
          continue;
        }
        if (typeof v === "object") {
@@ -388,28 +403,62 @@ function extractImageUrl(payload: any): string | null {
    return `${base}${path}`;
  }
 
-   // Upstream (wuyinkeji) requires the pure key in both URL query string and Authorization.
-
-  function normalizeUpstreamApiKey(value: unknown): string {
-    if (typeof value !== "string") return "";
-    let v = value.replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
-    v = v.replace(/^['"]+|['"]+$/g, "");
-    while (/^Bearer\s+/i.test(v)) v = v.replace(/^Bearer\s+/i, "");
-    return v.trim();
+  function normalizeUpstreamApiKey(targetKey: unknown): string {
+    const pureApiKey = String(targetKey ?? "").replace(/Bearer\s+/i, "").trim();
+    return pureApiKey;
   }
 
-  function buildUpstreamHeaders(finalApiKey: string): Record<string, string> {
-    const clean = normalizeUpstreamApiKey(finalApiKey);
+  function buildUpstreamHeaders(pureApiKey: string): Record<string, string> {
     return {
       "Content-Type": "application/json",
-      Authorization: clean,
+      Authorization: pureApiKey,
     };
   }
 
-  function appendApiKeyToUrl(apiUrl: string, targetKey: string): string {
-    const finalApiKey = normalizeUpstreamApiKey(targetKey);
-    const joinChar = apiUrl.includes("?") ? "&" : "?";
-    return `${apiUrl}${joinChar}key=${finalApiKey}`;
+  function appendApiKeyToUrl(apiUrl: string, pureApiKey: string): string {
+    const cleanUrl = apiUrl.replace(/([?&])key=[^&]*&?/i, "$1").replace(/[?&]$/, "");
+    const joinChar = cleanUrl.includes("?") ? "&" : "?";
+    return `${cleanUrl}${joinChar}key=${pureApiKey}`;
+  }
+
+  function parseUpstreamJson(text: string): any {
+    try {
+      return JSON.parse(text);
+    } catch {
+      const cleaned = text.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
+      const start = cleaned.search(/[\[{]/);
+      const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
+      if (start < 0 || end < start) return null;
+      try { return JSON.parse(cleaned.slice(start, end + 1)); }
+      catch {
+        try {
+          return JSON.parse(
+            cleaned.slice(start, end + 1)
+              .replace(/,\s*}/g, "}")
+              .replace(/,\s*]/g, "]")
+              .replace(/[\x00-\x1F\x7F]/g, ""),
+          );
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+
+  function parseUpstreamResponse(text: string): any {
+    const parsed = parseUpstreamJson(text);
+    const normalizeNested = (value: any): any => {
+      if (typeof value === "string" && /^[\[{]/.test(value.trim())) {
+        const nested = parseUpstreamJson(value);
+        return nested == null ? value : normalizeNested(nested);
+      }
+      if (Array.isArray(value)) return value.map(normalizeNested);
+      if (value && typeof value === "object") {
+        for (const key of Object.keys(value)) value[key] = normalizeNested(value[key]);
+      }
+      return value;
+    };
+    return normalizeNested(parsed);
   }
 
  export const generateImage = createServerFn({ method: "POST" })
@@ -443,18 +492,17 @@ function extractImageUrl(payload: any): string | null {
        throw new Error("您的算力余额不足，请联系老板兑换充值卡密");
      }
 
-      // Key priority is strict: per-model API Key first, global API Key only as fallback.
-      const modelApiKey = normalizeUpstreamApiKey((model as any).api_key);
-      const globalApiKey = normalizeUpstreamApiKey(global_api_key);
-      const finalApiKey = modelApiKey || globalApiKey;
-      if (!finalApiKey) {
+       // Key priority is strict: per-model API Key first, global API Key only as fallback.
+       const targetKey = normalizeUpstreamApiKey((model as any).api_key) || normalizeUpstreamApiKey(global_api_key);
+       const pureApiKey = String(targetKey).replace(/Bearer\s+/i, "").trim();
+       if (!pureApiKey) {
         throw new Error("该模型或全局接口设置尚未配置 API Key，请联系管理员");
       }
 
-      const headers = buildUpstreamHeaders(finalApiKey);
+       const headers = buildUpstreamHeaders(pureApiKey);
 
       const submitUrl = resolveUrl(base_url, model.api_url);
-      const finalSubmitUrl = appendApiKeyToUrl(submitUrl, finalApiKey);
+       const finalSubmitUrl = appendApiKeyToUrl(submitUrl, pureApiKey);
 
      const size = VALID_SIZES.has(data.aspectRatio) ? data.aspectRatio : "auto";
      const httpRefs = (data.referenceImages ?? []).filter((u) => /^https?:\/\//i.test(u));
@@ -475,11 +523,11 @@ function extractImageUrl(payload: any): string | null {
        }
        const text = await res.text();
        let json: any = null;
-       try { json = JSON.parse(text); } catch { /* */ }
+        json = parseUpstreamResponse(text);
        if (!res.ok) {
          throw new Error(`上游接口返回 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
        }
-       if (json?.code && Number(json.code) !== 200) {
+        if (Number(json?.code) >= 400) {
          throw new Error(`上游接口失败: ${json?.msg ?? "未知错误"}`);
        }
        imageUrl = extractImageUrl(json ?? text);
@@ -487,36 +535,22 @@ function extractImageUrl(payload: any): string | null {
      } else {
         let taskId: string | null = null;
         try {
-          const finalHeaders = { ...headers };
-          console.log("=== 【调试暴漏】前端即将发出的最终请求包 ===");
-           console.log("1. 最终请求的完整 URL:", finalSubmitUrl);
-          console.log("2. 最终 Authorization 头的值 (前15位):", finalHeaders["Authorization"]?.substring(0, 15) + "...");
-          console.log("3. 最终 Authorization 头的总长度:", finalHeaders["Authorization"]?.length);
-          console.log("4. Key 来源:", modelApiKey ? "模型独立Key" : "全局Key", "| Key长度:", finalApiKey.length);
-          console.log("5. 最终发送给上游的 body 核心字段:", JSON.stringify({ prompt: (body as any)?.[promptKey], size: (body as any)?.size }));
-          console.log("========================================");
-           const res = await fetch(finalSubmitUrl, { method: "POST", headers: finalHeaders, body: JSON.stringify(body) });
+          const res = await fetch(finalSubmitUrl, { method: "POST", headers, body: JSON.stringify(body) });
          const text = await res.text();
-         let json: any = null;
-         try { json = JSON.parse(text); } catch { /* */ }
+          const json = parseUpstreamResponse(text);
          if (!res.ok) {
            throw new Error(`上游提交失败 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
          }
-         if (json?.code && Number(json.code) !== 200) {
+          if (Number(json?.code) >= 400) {
            throw new Error(`上游提交失败: ${json?.msg ?? "未知错误"}`);
          }
-         taskId = json?.data?.id ?? json?.id ?? json?.task_id ?? null;
+          taskId = json?.data?.id ?? json?.id ?? json?.task_id ?? (typeof json?.data === "string" ? json.data : null);
          if (!taskId) throw new Error("上游未返回任务ID");
        } catch (e: any) {
          throw new Error(e?.message ?? "提交任务失败");
        }
 
-        const configuredFetchUrl = String((model as any).fetch_url ?? "").trim();
-        let rawFetchUrl = configuredFetchUrl ? resolveUrl(base_url, configuredFetchUrl) : "";
-        // Defensive auto-correction: never allow empty or placeholder/example polling hosts.
-        if (!rawFetchUrl || rawFetchUrl.includes("api.example.com")) {
-          rawFetchUrl = "https://api.wuyinkeji.com/api/async/fetch_result";
-        }
+         const fetchResultUrl = "https://api.wuyinkeji.com/api/async/fetch_result";
         const start = Date.now();
        const TIMEOUT_MS = 60_000;
        const INTERVAL_MS = 3000;
@@ -524,11 +558,10 @@ function extractImageUrl(payload: any): string | null {
        while (Date.now() - start < TIMEOUT_MS) {
          await new Promise((r) => setTimeout(r, INTERVAL_MS));
          try {
-             const qUrl = `${rawFetchUrl}${rawFetchUrl.includes("?") ? "&" : "?"}id=${encodeURIComponent(taskId)}&key=${finalApiKey}`;
+             const qUrl = `${fetchResultUrl}?id=${taskId}&key=${pureApiKey}`;
             const r = await fetch(qUrl, { method: "GET", headers });
            const t = await r.text();
-           let j: any = null;
-           try { j = JSON.parse(t); } catch { /* */ }
+            const j = parseUpstreamResponse(t);
             if (!r.ok) {
               throw new Error(`上游查询失败 ${r.status}: ${(j?.msg ?? j?.error?.message ?? t).slice(0, 200)}`);
             }
@@ -536,7 +569,7 @@ function extractImageUrl(payload: any): string | null {
               throw new Error(`上游查询失败: ${j?.msg ?? j?.error?.message ?? "未知错误"}`);
             }
            const status = j?.data?.status ?? j?.status;
-           if (typeof status === "string" && /fail|error/i.test(status)) {
+            if (Number(status) === 3 || (typeof status === "string" && /fail|error|失败/i.test(status))) {
              throw new Error(`上游生成失败: ${j?.msg ?? j?.data?.message ?? status}`);
            }
            const url = extractImageUrl(j);
