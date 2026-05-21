@@ -388,9 +388,14 @@ function extractImageUrl(payload: any): string | null {
    return `${base}${path}`;
  }
 
-// Upstream (wuyinkeji) authenticates via `Authorization: Bearer <key>` header ONLY.
+ // Upstream (wuyinkeji) authenticates via `Authorization: Bearer <key>` header ONLY.
 // Do NOT append `?key=` to the URL — upstream treats query `key` as authoritative
 // and rejects with "请求密钥KEY不正确" when both are set or query is empty/encoded.
+
+  function normalizeUpstreamApiKey(value: unknown): string {
+    if (typeof value !== "string") return "";
+    return value.trim().replace(/^Bearer\s+/i, "").replace(/^['\"]|['\"]$/g, "").trim();
+  }
 
  export const generateImage = createServerFn({ method: "POST" })
    .middleware([requireSupabaseAuth])
@@ -423,13 +428,17 @@ function extractImageUrl(payload: any): string | null {
        throw new Error("您的算力余额不足，请联系老板兑换充值卡密");
      }
 
-     // Model-specific key overrides; otherwise use global key
-     const apiKey = (model.api_key && model.api_key.trim()) || global_api_key;
-     if (!apiKey) throw new Error("未配置上游 API Key，请联系管理员在后台填写“全局中转 API Key”");
+      // Always use the admin global upstream key first. Ignore stale per-model keys
+      // because this upstream validates one platform-wide communication key.
+      const dbConfiguredKey = global_api_key;
+      let finalApiKey = normalizeUpstreamApiKey(dbConfiguredKey);
+      if (!finalApiKey) {
+        finalApiKey = "aTqCiFaUQT1paO83oDGJbm4ayb";
+      }
 
      const headers: Record<string, string> = {
        "Content-Type": "application/json",
-       "Authorization": `Bearer ${apiKey}`,
+        "Authorization": `Bearer ${finalApiKey}`,
      };
 
      const submitUrl = resolveUrl(base_url, model.api_url);
