@@ -428,12 +428,12 @@ function extractImageUrl(payload: any): string | null {
        throw new Error("您的算力余额不足，请联系老板兑换充值卡密");
      }
 
-      // Always use the admin global upstream key first. Ignore stale per-model keys
-      // because this upstream validates one platform-wide communication key.
-      const dbConfiguredKey = global_api_key;
-      let finalApiKey = normalizeUpstreamApiKey(dbConfiguredKey);
+      // Key priority is strict: per-model API Key first, global API Key only as fallback.
+      const modelApiKey = normalizeUpstreamApiKey((model as any).api_key);
+      const globalApiKey = normalizeUpstreamApiKey(global_api_key);
+      const finalApiKey = modelApiKey || globalApiKey;
       if (!finalApiKey) {
-        finalApiKey = "aTqCiFaUQT1paO83oDGJbm4ayb";
+        throw new Error("该模型或全局接口设置尚未配置 API Key，请联系管理员");
       }
 
      const headers: Record<string, string> = {
@@ -490,10 +490,9 @@ function extractImageUrl(payload: any): string | null {
          throw new Error(e?.message ?? "提交任务失败");
        }
 
-        let rawFetchUrl = (model as any).fetch_url
-          ? resolveUrl(base_url, (model as any).fetch_url)
-          : `${base_url}/api/async/fetch_result`;
-        // Defensive auto-correction: replace placeholder/example hosts with official endpoint
+        const configuredFetchUrl = String((model as any).fetch_url ?? "").trim();
+        let rawFetchUrl = configuredFetchUrl ? resolveUrl(base_url, configuredFetchUrl) : "";
+        // Defensive auto-correction: never allow empty or placeholder/example polling hosts.
         if (!rawFetchUrl || rawFetchUrl.includes("api.example.com")) {
           rawFetchUrl = "https://api.wuyinkeji.com/api/async/fetch_result";
         }
