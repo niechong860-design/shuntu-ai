@@ -555,13 +555,11 @@ function extractImageUrl(payload: any): string | null {
 
         // 轮询查询任务结果：官方规范 POST /api/async/fetch_result，body = { key, id }
         // 返回 data.status: 0 初始化 / 1 进行中 / 2 成功 / 3 失败
+        // 无限等待：只要 status=0/1 就持续轮询，直到 status=2 成功或 status=3 失败
         const fetchResultUrl = "https://api.wuyinkeji.com/api/async/fetch_result";
-        const start = Date.now();
-        const TIMEOUT_MS = 240_000; // 4 分钟
-        const INTERVAL_MS = 4000;   // 每 4 秒轮询一次，最多 60 次
-        let lastErr: string | null = null;
+        const INTERVAL_MS = 8000; // 每 8 秒轮询一次，降低上游压力
 
-        while (Date.now() - start < TIMEOUT_MS) {
+        while (true) {
           await new Promise((r) => setTimeout(r, INTERVAL_MS));
           try {
             const r = await fetch(fetchResultUrl, {
@@ -572,7 +570,7 @@ function extractImageUrl(payload: any): string | null {
             const t = await r.text();
             const j = parseUpstreamResponse(t);
             if (!r.ok) {
-              lastErr = `HTTP ${r.status}: ${(j?.msg ?? t).slice(0, 200)}`;
+              // 网络/HTTP 错误不抛出，继续等待重试
               continue;
             }
             const code = Number(j?.code);
@@ -586,16 +584,16 @@ function extractImageUrl(payload: any): string | null {
             if (status === 2) {
               const url = extractImageUrl(j?.data) ?? extractImageUrl(j);
               if (url) { imageUrl = url; break; }
-              lastErr = `成功但未解析到图片URL: ${JSON.stringify(j).slice(0, 300)}`;
+              // 成功但暂未解析到 URL，继续轮询
               continue;
             }
-            lastErr = `处理中 status=${j?.data?.status ?? "?"}`;
+            // status 0 / 1 / NaN —— 仍在处理中，继续轮询
           } catch (e: any) {
             if (e?.message?.startsWith("上游生成失败") || e?.message?.startsWith("上游查询失败")) throw e;
-            lastErr = e?.message ?? String(e);
+            // 其他瞬时错误不抛出，继续等待
           }
         }
-        if (!imageUrl) throw new Error("服务器生图排队人数较多，请稍后重新提交");
+
       }
 
 
