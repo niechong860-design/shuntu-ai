@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import {
   Wand2, Eraser, Sparkles, Plus, X, Dices, Zap,
   ChevronDown, Square, RectangleHorizontal, RectangleVertical, Monitor,
-  Check,
+  Check, ImageIcon,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { useServerFn } from "@tanstack/react-start";
-import { listModelsConfig, generateImage, checkImageStatus } from "@/lib/admin.functions";
+import { listModelsConfig, generateImage, checkImageStatus, listStyleTemplates } from "@/lib/admin.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
