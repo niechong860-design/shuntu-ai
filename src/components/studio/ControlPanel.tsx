@@ -71,7 +71,7 @@ export function ControlPanel({ onGenerate, generating }: Props) {
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              rows={5}
+              rows={3}
               placeholder="Describe the image you want to create…"
               className="block w-full resize-none rounded-2xl bg-transparent px-4 py-3.5 text-sm font-light leading-relaxed placeholder:text-muted-foreground/50 focus:outline-none"
             />
