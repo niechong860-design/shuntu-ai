@@ -134,10 +134,10 @@ export function InspirationPage() {
             onChange={setStyleId}
           />
           {/* Model chips */}
-          {facets.models.length > 0 && (
+          {(allModels.length > 0 || facets.models.length > 0) && (
             <ChipRow
               label="模型"
-              items={[{ id: "", name: "全部" }, ...facets.models.map((m) => ({ id: m.key, name: m.name }))]}
+              items={[{ id: "", name: "全部" }, ...(allModels.length > 0 ? allModels : facets.models).map((m) => ({ id: m.key, name: m.name }))]}
               value={modelKey}
               onChange={setModelKey}
             />
