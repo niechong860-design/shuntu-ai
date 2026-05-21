@@ -24,7 +24,17 @@ export const adminListUsers = createServerFn({ method: "POST" })
       .select("id, email, display_name, credits, created_at")
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
-    return profiles;
+    const { data: history } = await supabaseAdmin
+      .from("generation_history")
+      .select("user_id, cost");
+    const sumMap = new Map<string, number>();
+    for (const r of (history ?? []) as Array<{ user_id: string; cost: number | string }>) {
+      sumMap.set(r.user_id, (sumMap.get(r.user_id) ?? 0) + Number(r.cost ?? 0));
+    }
+    return (profiles ?? []).map((p: any) => ({
+      ...p,
+      total_spent: sumMap.get(p.id) ?? 0,
+    }));
   });
 
 export const adminResetPassword = createServerFn({ method: "POST" })
