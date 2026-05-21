@@ -658,13 +658,23 @@ export const generateImage = createServerFn({ method: "POST" })
     const safeCost = Number(row?.cost ?? 0) || 0;
     const safeCredits = Number(row?.credits ?? 0) || 0;
 
+    // sync 模型立即拿到图片 URL，直接回填到最新一条历史
+    if (imageUrl) {
+      await supabase.rpc("set_latest_history_image", {
+        _model: model.name,
+        _image_url: imageUrl,
+      });
+    }
+
     return {
       success: true,
       imageUrl,            // sync 模型直接返回，async 模型为 null
       taskId,              // async 模型返回 taskId 供前端轮询
       cost: safeCost,
       credits: safeCredits,
+      modelName: model.name,
     };
+
   });
 
 // 前端主动轮询的任务状态查询。运行在浏览器侧，不受 Worker 单次请求超时限制。
