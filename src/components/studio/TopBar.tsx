@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Sparkles, Zap, Plus, Bell, History } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { RedeemDialog } from "@/components/auth/RedeemDialog";
 import { AdBanner } from "./AdBanner";
+
 
 type Props = {
   credits: number;
