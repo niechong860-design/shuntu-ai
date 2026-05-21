@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Heart, Bookmark, Eye, Search, Sparkles, X, Copy, Wand2,
-  MessageSquare, Send, Plus,
+  MessageSquare, Send, Plus, Upload, Image as ImageIcon, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -17,6 +17,7 @@ import {
 import { listStyleTemplates } from "@/lib/admin.functions";
 import { setStudioPrefill } from "@/lib/studio-prefill";
 import { useAuth } from "@/hooks/use-auth";
+import { supabase } from "@/integrations/supabase/client";
 
 type StyleTpl = { id: string; name: string; image_url: string | null };
 type CaseItem = CaseRow;
@@ -480,7 +481,9 @@ function PublishDialog({
   models: { key: string; name: string }[];
   onPublished: () => void;
 }) {
+  const { session } = useAuth();
   const publish = useServerFn(publishCase);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [title, setTitle] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -490,12 +493,43 @@ function PublishDialog({
   const [styleId, setStyleId] = useState("");
   const [tagsRaw, setTagsRaw] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
-  const tags = useMemo(() => tagsRaw.split(/[,，\s]+/).map((t) => t.trim()).filter(Boolean).slice(0, 8), [tagsRaw]);
+  const tags = useMemo(
+    () => tagsRaw.split(/[,，\s]+/).map((t) => t.trim()).filter(Boolean).slice(0, 8),
+    [tagsRaw]
+  );
+
+  const handleFile = async (f: File | null | undefined) => {
+    if (!f) return;
+    const uid = session?.user?.id;
+    if (!uid) { toast.error("请先登录"); return; }
+    if (!/^image\//i.test(f.type)) { toast.error("仅支持图片文件"); return; }
+    if (f.size > 10 * 1024 * 1024) { toast.error("图片需小于 10MB"); return; }
+    setUploading(true);
+    try {
+      const ext = (f.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
+      const path = `${uid}/cases/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from("reference-images")
+        .upload(path, f, { cacheControl: "3600", contentType: f.type, upsert: false });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from("reference-images").getPublicUrl(path);
+      setImageUrl(pub.publicUrl);
+      if (!title.trim()) {
+        setTitle(f.name.replace(/\.[a-z0-9]+$/i, "").slice(0, 60));
+      }
+      toast.success("图片已上传");
+    } catch (e: any) {
+      toast.error(e?.message ?? "上传失败");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const submit = async () => {
     if (!title.trim() || !imageUrl.trim()) {
-      toast.error("请填写标题和示例图链接");
+      toast.error("请填写标题并上传示例图");
       return;
     }
     setSubmitting(true);
@@ -516,7 +550,8 @@ function PublishDialog({
       });
       toast.success("发布成功");
       onOpenChange(false);
-      setTitle(""); setImageUrl(""); setPrompt(""); setModelKey(""); setAspectRatio(""); setSize(""); setStyleId(""); setTagsRaw("");
+      setTitle(""); setImageUrl(""); setPrompt(""); setModelKey("");
+      setAspectRatio(""); setSize(""); setStyleId(""); setTagsRaw("");
       onPublished();
     } catch (e: any) {
       toast.error(e?.message ?? "发布失败");
@@ -527,54 +562,180 @@ function PublishDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg border-border bg-card/95 backdrop-blur-2xl">
+      <DialogContent className="max-w-2xl border-border bg-card/95 backdrop-blur-2xl max-h-[88vh] overflow-y-auto scrollbar-light">
         <DialogTitle>发布灵感案例</DialogTitle>
-        <DialogDescription>把你满意的作品分享到广场，让更多人复用你的灵感。</DialogDescription>
-        <div className="space-y-3">
-          <Field label="标题"><input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full rounded-lg border border-border bg-input/40 px-3 py-2 text-sm focus:outline-none focus:border-primary/50" placeholder="给作品起个名字" maxLength={80} /></Field>
-          <Field label="示例图链接 (https)"><input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="w-full rounded-lg border border-border bg-input/40 px-3 py-2 text-xs focus:outline-none focus:border-primary/50" placeholder="https://..." /></Field>
-          {imageUrl && /^https?:\/\//.test(imageUrl) && (
-            <img src={imageUrl} alt="preview" className="max-h-48 w-full rounded-lg border border-border object-contain" />
-          )}
-          <Field label="Prompt"><textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} className="w-full resize-none rounded-lg border border-border bg-input/40 px-3 py-2 text-xs focus:outline-none focus:border-primary/50" placeholder="该作品使用的提示词" /></Field>
-          <div className="grid grid-cols-2 gap-2">
-            <Field label="模型">
-              <select value={modelKey} onChange={(e) => setModelKey(e.target.value)} className="w-full rounded-lg border border-border bg-input/40 px-2 py-2 text-xs">
-                <option value="">不指定</option>
-                {models.map((m) => <option key={m.key} value={m.key}>{m.name}</option>)}
-              </select>
-            </Field>
-            <Field label="风格">
-              <select value={styleId} onChange={(e) => setStyleId(e.target.value)} className="w-full rounded-lg border border-border bg-input/40 px-2 py-2 text-xs">
-                <option value="">不指定</option>
-                {styles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </Field>
-            <Field label="比例">
-              <select value={aspectRatio} onChange={(e) => setAspectRatio(e.target.value)} className="w-full rounded-lg border border-border bg-input/40 px-2 py-2 text-xs">
-                <option value="">不指定</option>
-                {["1:1","16:9","9:16","4:3","3:4","21:9","3:2","2:3","5:4","4:5"].map((r) => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </Field>
-            <Field label="清晰度">
-              <select value={size} onChange={(e) => setSize(e.target.value)} className="w-full rounded-lg border border-border bg-input/40 px-2 py-2 text-xs">
-                <option value="">不指定</option>
-                {["1K","2K","4K"].map((r) => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </Field>
+        <DialogDescription>上传图片即可自动生成链接，几秒钟分享你的作品。</DialogDescription>
+
+        <div className="space-y-4">
+          {/* Upload zone */}
+          <div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => { handleFile(e.target.files?.[0]); e.currentTarget.value = ""; }}
+            />
+            {imageUrl ? (
+              <div className="relative overflow-hidden rounded-xl border border-border bg-black/30">
+                <img src={imageUrl} alt="preview" className="max-h-64 w-full object-contain" />
+                <div className="flex items-center justify-between gap-2 border-t border-border/60 bg-background/60 px-3 py-2">
+                  <span className="truncate text-[10px] text-muted-foreground">{imageUrl}</span>
+                  <div className="flex shrink-0 gap-1">
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="rounded-md border border-border px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground"
+                    >
+                      重新上传
+                    </button>
+                    <button
+                      onClick={() => setImageUrl("")}
+                      className="rounded-md border border-border px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground"
+                    >
+                      移除
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="group flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-white/[0.02] py-10 text-muted-foreground transition-colors hover:border-primary/60 hover:text-foreground"
+              >
+                {uploading ? (
+                  <Loader2 className="h-7 w-7 animate-spin text-primary" />
+                ) : (
+                  <Upload className="h-7 w-7" />
+                )}
+                <div className="text-sm font-medium">
+                  {uploading ? "上传中…" : "点击上传示例图"}
+                </div>
+                <div className="text-[10px]">支持 JPG / PNG / WebP · 最大 10MB · 自动生成链接</div>
+              </button>
+            )}
           </div>
-          <Field label="标签（用空格或逗号分隔，最多 8 个）">
-            <input value={tagsRaw} onChange={(e) => setTagsRaw(e.target.value)} className="w-full rounded-lg border border-border bg-input/40 px-3 py-2 text-xs" placeholder="例如：电商 极简 复古" />
+
+          <Field label="标题">
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full rounded-lg border border-border bg-input/40 px-3 py-2 text-sm focus:outline-none focus:border-primary/50"
+              placeholder="给作品起个名字"
+              maxLength={80}
+            />
           </Field>
+
+          <Field label="Prompt">
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              rows={3}
+              className="w-full resize-none rounded-lg border border-border bg-input/40 px-3 py-2 text-xs focus:outline-none focus:border-primary/50"
+              placeholder="该作品使用的提示词（可选）"
+            />
+          </Field>
+
+          {/* Pill pickers — directly visible */}
+          <PillGroup
+            label="模型"
+            value={modelKey}
+            onChange={setModelKey}
+            options={[{ id: "", name: "不指定" }, ...models.map((m) => ({ id: m.key, name: m.name }))]}
+          />
+          <PillGroup
+            label="风格"
+            value={styleId}
+            onChange={setStyleId}
+            options={[{ id: "", name: "不指定" }, ...styles.map((s) => ({ id: s.id, name: s.name }))]}
+          />
+          <PillGroup
+            label="比例"
+            value={aspectRatio}
+            onChange={setAspectRatio}
+            options={[
+              { id: "", name: "不指定" },
+              ...["1:1","16:9","9:16","4:3","3:4","21:9","3:2","2:3","5:4","4:5"].map((r) => ({ id: r, name: r })),
+            ]}
+          />
+          <PillGroup
+            label="清晰度"
+            value={size}
+            onChange={setSize}
+            options={[
+              { id: "", name: "不指定" },
+              ...["1K","2K","4K"].map((r) => ({ id: r, name: r })),
+            ]}
+          />
+
+          <Field label="标签（空格或逗号分隔，最多 8 个）">
+            <input
+              value={tagsRaw}
+              onChange={(e) => setTagsRaw(e.target.value)}
+              className="w-full rounded-lg border border-border bg-input/40 px-3 py-2 text-xs"
+              placeholder="例如：电商 极简 复古"
+            />
+            {tags.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {tags.map((t) => (
+                  <span key={t} className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary">#{t}</span>
+                ))}
+              </div>
+            )}
+          </Field>
+
           <div className="flex justify-end gap-2 pt-2">
-            <button onClick={() => onOpenChange(false)} className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"><X className="mr-1 inline h-3 w-3" />取消</button>
-            <button onClick={submit} disabled={submitting} className="rounded-lg bg-gradient-aurora px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-glow disabled:opacity-50">
+            <button
+              onClick={() => onOpenChange(false)}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+            >
+              <X className="mr-1 inline h-3 w-3" />取消
+            </button>
+            <button
+              onClick={submit}
+              disabled={submitting || uploading || !imageUrl || !title.trim()}
+              className="rounded-lg bg-gradient-aurora px-4 py-1.5 text-xs font-semibold text-primary-foreground shadow-glow disabled:opacity-50"
+            >
               {submitting ? "提交中…" : "发布"}
             </button>
           </div>
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function PillGroup({
+  label, value, onChange, options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { id: string; name: string }[];
+}) {
+  return (
+    <div>
+      <div className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">{label}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((o) => {
+          const active = value === o.id;
+          return (
+            <button
+              key={o.id || "__none"}
+              type="button"
+              onClick={() => onChange(o.id)}
+              className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-all ${
+                active
+                  ? "border-primary/70 bg-primary/15 text-primary shadow-glow"
+                  : "border-border bg-white/[0.02] text-muted-foreground hover:border-primary/40 hover:text-foreground"
+              }`}
+            >
+              {o.name}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
