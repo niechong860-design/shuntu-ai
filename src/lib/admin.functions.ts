@@ -288,6 +288,7 @@ function extractImageUrl(payload: any): string | null {
     payload?.output,
     payload?.result,
     payload?.message,
+    payload?.data,
     payload?.output?.[0],
     payload?.images?.[0]?.url,
     payload?.images?.[0],
@@ -324,6 +325,7 @@ function extractImageUrl(payload: any): string | null {
         if (typeof v === "string") {
           const embedded = v.match(/https?:\/\/[^\s"'<>\\]+(?:png|jpe?g|webp|gif|bmp)(?:\?[^\s"'<>\\]*)?/i);
           if (embedded) return embedded[0];
+          if (/^https?:\/\/\S+$/i.test(v)) return v;
          continue;
        }
        if (typeof v === "object") {
