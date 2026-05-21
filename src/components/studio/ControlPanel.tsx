@@ -57,6 +57,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
   const [prompt, setPrompt] = useState("");
   const [styleId, setStyleId] = useState<string>("");
   const [styles, setStyles] = useState<StyleTpl[]>([]);
+  const [inspirationMode, setInspirationMode] = useState(false);
   const [cfg, setCfg] = useState([7.5]);
   const [steps, setSteps] = useState([32]);
 
