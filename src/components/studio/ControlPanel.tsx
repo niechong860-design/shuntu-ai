@@ -26,7 +26,7 @@ type Props = { onGenerate: () => void; generating: boolean };
 export function ControlPanel({ onGenerate, generating }: Props) {
   const [model, setModel] = useState("flux");
   const [ratio, setRatio] = useState("1:1");
-  const [refs, setRefs] = useState<(string | null)[]>([null, null, null, null, null]);
+  const [refs, setRefs] = useState<string[]>([]);
   const [prompt, setPrompt] = useState(
     "Surreal cyberpunk garden at dusk, bioluminescent flora pulsing with emerald light, cinematic wide angle, ultra-detailed",
   );
@@ -37,13 +37,12 @@ export function ControlPanel({ onGenerate, generating }: Props) {
   const activeRatio = RATIOS.find((r) => r.id === ratio)!;
   const ActiveRatioIcon = activeRatio.icon;
 
-  const setRef = (i: number, url: string | null) => {
-    setRefs((arr) => arr.map((v, idx) => (idx === i ? url : v)));
-  };
-  const onPick = (i: number) => (e: React.ChangeEvent<HTMLInputElement>) => {
+  const addRef = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
-    if (f) setRef(i, URL.createObjectURL(f));
+    if (f && refs.length < 5) setRefs((arr) => [...arr, URL.createObjectURL(f)]);
+    e.target.value = "";
   };
+  const removeRef = (i: number) => setRefs((arr) => arr.filter((_, idx) => idx !== i));
 
   return (
     <aside className="flex h-full min-h-0 flex-col overflow-hidden border-r border-border/60 bg-card/40">
@@ -54,13 +53,27 @@ export function ControlPanel({ onGenerate, generating }: Props) {
           <div className="mb-2 flex items-center justify-between">
             <Label>References · img2img</Label>
             <span className="text-[10px] font-light text-muted-foreground">
-              {refs.filter(Boolean).length}/5
+              {refs.length}/5
             </span>
           </div>
-          <div className="grid grid-cols-5 gap-2">
+          <div className="flex flex-wrap gap-2">
             {refs.map((url, i) => (
-              <RefSlot key={i} url={url} onPick={onPick(i)} onClear={() => setRef(i, null)} />
+              <div key={i} className="group relative h-20 w-20 overflow-hidden rounded-xl border border-border bg-surface">
+                <img src={url} alt="ref" className="h-full w-full object-cover" />
+                <button
+                  onClick={() => removeRef(i)}
+                  className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 hover:bg-destructive"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
             ))}
+            {refs.length < 5 && (
+              <label className="group flex h-20 w-20 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border bg-white/[0.015] transition-all hover:border-primary/50 hover:bg-primary/[0.04] hover:shadow-glow">
+                <Plus className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" strokeWidth={1.5} />
+                <input type="file" accept="image/*" className="hidden" onChange={addRef} />
+              </label>
+            )}
           </div>
         </section>
 
