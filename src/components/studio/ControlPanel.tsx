@@ -11,6 +11,7 @@ import { listModelsConfig, generateImage, checkImageStatus, listStyleTemplates, 
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { consumeStudioPrefill } from "@/lib/studio-prefill";
+import { processImage, validateImageFile } from "@/lib/image-processing";
 import { toast } from "sonner";
 
 
