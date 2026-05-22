@@ -513,25 +513,38 @@ function PublishDialog({
     if (!f) return;
     const uid = session?.user?.id;
     if (!uid) { toast.error("请先登录"); return; }
-    if (!/^image\//i.test(f.type)) { toast.error("仅支持图片文件"); return; }
-    if (f.size > 10 * 1024 * 1024) { toast.error("图片需小于 10MB"); return; }
+    const invalid = validateImageFile(f, { preset: "community", maxMB: 15 });
+    if (invalid) { toast.error(invalid); return; }
+
+    // Instant local preview while compression + upload run in the background.
+    const previewUrl = URL.createObjectURL(f);
+    setImageUrl(previewUrl);
+    if (!title.trim()) {
+      setTitle(f.name.replace(/\.[a-z0-9]+$/i, "").slice(0, 60));
+    }
     setUploading(true);
     try {
-      const ext = (f.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
-      const path = `${uid}/cases/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const processed = await processImage(f, "community");
+      const path = `${uid}/cases/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${processed.ext}`;
       const { error: upErr } = await supabase.storage
         .from("reference-images")
-        .upload(path, f, { cacheControl: "3600", contentType: f.type, upsert: false });
+        .upload(path, processed.blob, {
+          cacheControl: "3600",
+          contentType: processed.contentType,
+          upsert: false,
+        });
       if (upErr) throw upErr;
       const { data: pub } = supabase.storage.from("reference-images").getPublicUrl(path);
       setImageUrl(pub.publicUrl);
-      if (!title.trim()) {
-        setTitle(f.name.replace(/\.[a-z0-9]+$/i, "").slice(0, 60));
-      }
+      console.log(
+        `[case upload] ${(processed.originalSize / 1024).toFixed(0)}KB → ${(processed.processedSize / 1024).toFixed(0)}KB`,
+      );
       toast.success("图片已上传");
     } catch (e: any) {
+      setImageUrl("");
       toast.error(e?.message ?? "上传失败");
     } finally {
+      URL.revokeObjectURL(previewUrl);
       setUploading(false);
     }
   };
