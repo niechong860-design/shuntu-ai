@@ -154,9 +154,10 @@ export const redeemCoupon = createServerFn({ method: "POST" })
 // --- Models config (PUBLIC: safe columns only, no api_key) ---
 export const listModelsConfig = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const { supabase } = context;
-    const { data, error } = await supabase
+  .handler(async () => {
+    // Use supabaseAdmin with explicit safe-column projection so the public RLS
+    // policy can be removed (api_key / api_url / fetch_url are never returned).
+    const { data, error } = await supabaseAdmin
       .from("models_config")
       .select("id, model_key, name, description, cost, sort_order, updated_at")
       .eq("is_enabled", true)
