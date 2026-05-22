@@ -118,32 +118,57 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
       toast.error("请先登录后再上传参考图");
       return;
     }
-    if (!/^image\//i.test(f.type)) {
-      toast.error("仅支持图片文件");
+    const invalid = validateImageFile(f, { preset: "ai-model", maxMB: 15 });
+    if (invalid) {
+      toast.error(invalid);
       return;
     }
-    if (f.size > 10 * 1024 * 1024) {
-      toast.error("图片大小请小于 10MB");
-      return;
-    }
+
+    // Instant local preview — show immediately so the UI never feels blocked.
+    const previewUrl = URL.createObjectURL(f);
+    const placeholderIdx = refs.length;
+    setRefs((arr) => [...arr, previewUrl]);
     setUploadingRef(true);
-    try {
-      const ext = (f.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
-      const path = `${uid}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-      const { error: upErr } = await supabase.storage
-        .from("reference-images")
-        .upload(path, f, { cacheControl: "3600", contentType: f.type, upsert: false });
-      if (upErr) throw upErr;
-      const { data: pub } = supabase.storage.from("reference-images").getPublicUrl(path);
-      const url = pub.publicUrl;
-      console.log("[ref upload] uploaded →", url);
-      setRefs((arr) => [...arr, url]);
-    } catch (err) {
-      console.error("[ref upload] failed", err);
-      toast.error("参考图上传失败，请重试");
-    } finally {
-      setUploadingRef(false);
-    }
+
+    // Process + upload async — never blocks the UI thread for long.
+    (async () => {
+      try {
+        const processed = await processImage(f, "ai-model");
+        const path = `${uid}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${processed.ext}`;
+        const { error: upErr } = await supabase.storage
+          .from("reference-images")
+          .upload(path, processed.blob, {
+            cacheControl: "3600",
+            contentType: processed.contentType,
+            upsert: false,
+          });
+        if (upErr) throw upErr;
+        const { data: pub } = supabase.storage.from("reference-images").getPublicUrl(path);
+        const url = pub.publicUrl;
+        console.log(
+          `[ref upload] ${(processed.originalSize / 1024).toFixed(0)}KB → ${(processed.processedSize / 1024).toFixed(0)}KB →`,
+          url,
+        );
+        setRefs((arr) => {
+          const next = [...arr];
+          // Replace by index when possible; otherwise append.
+          if (next[placeholderIdx] === previewUrl) next[placeholderIdx] = url;
+          else {
+            const idx = next.indexOf(previewUrl);
+            if (idx >= 0) next[idx] = url;
+            else next.push(url);
+          }
+          return next;
+        });
+      } catch (err) {
+        console.error("[ref upload] failed", err);
+        toast.error("参考图上传失败，请重试");
+        setRefs((arr) => arr.filter((u) => u !== previewUrl));
+      } finally {
+        URL.revokeObjectURL(previewUrl);
+        setUploadingRef(false);
+      }
+    })();
   };
   const removeRef = (i: number) => setRefs((arr) => arr.filter((_, idx) => idx !== i));
 
