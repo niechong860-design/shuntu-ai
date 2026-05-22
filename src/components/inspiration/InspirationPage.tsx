@@ -18,6 +18,7 @@ import { listStyleTemplates, listModelsConfig } from "@/lib/admin.functions";
 import { setStudioPrefill } from "@/lib/studio-prefill";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
+import { processImage, validateImageFile } from "@/lib/image-processing";
 
 type StyleTpl = { id: string; name: string; image_url: string | null };
 type CaseItem = CaseRow;
