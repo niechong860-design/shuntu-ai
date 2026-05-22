@@ -554,6 +554,10 @@ function PublishDialog({
       toast.error("请填写标题并上传示例图");
       return;
     }
+    if (uploading || imageUrl.startsWith("blob:")) {
+      toast.error("图片仍在上传，请稍候");
+      return;
+    }
     setSubmitting(true);
     try {
       const modelName = models.find((m) => m.key === modelKey)?.name;
