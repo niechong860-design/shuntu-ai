@@ -74,10 +74,13 @@ export const createPaymentOrder = createServerFn({ method: "POST" })
 
     const sign = buildSign(params, key);
 
-    const query = Object.keys(params)
-      .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`)
+    // 易支付 submit.php 是 POST 接口，返回完整表单参数供前端构造 form 自动提交。
+    // 同时返回 payUrl 作为 GET 跳转的兜底（部分通道支持）。
+    const formParams: Record<string, string> = { ...params, sign, sign_type: "MD5" };
+    const query = Object.keys(formParams)
+      .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(formParams[k])}`)
       .join("&");
-    const payUrl = `${apiUrl}${apiUrl.includes("?") ? "&" : "?"}${query}&sign=${sign}&sign_type=MD5`;
+    const payUrl = `${apiUrl}${apiUrl.includes("?") ? "&" : "?"}${query}`;
 
-    return { payUrl, outTradeNo };
+    return { apiUrl, params: formParams, payUrl, outTradeNo };
   });
