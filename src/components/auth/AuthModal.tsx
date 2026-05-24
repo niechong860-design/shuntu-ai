@@ -277,3 +277,19 @@ function Field({ icon, children }: { icon: React.ReactNode; children: React.Reac
     </label>
   );
 }
+
+function ContactLine({ label, value, onCopy }: { label: string; value: string; onCopy: () => void }) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg bg-white/[0.02] px-2.5 py-1.5">
+      <span className="w-8 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="min-w-0 flex-1 truncate font-mono text-xs">{value}</span>
+      <button
+        type="button"
+        onClick={onCopy}
+        className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px] text-muted-foreground hover:bg-white/[0.05] hover:text-foreground"
+      >
+        <Copy className="h-3 w-3" />复制
+      </button>
+    </div>
+  );
+}
