@@ -110,7 +110,7 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
       {/* Main canvas — pure, full height */}
       <div className="group relative flex-1 min-h-0 overflow-hidden rounded-2xl border border-border bg-card">
         {generating ? (
-          <SkeletonShimmer />
+          <QueueProgress progress={progress ?? null} />
         ) : generatedUrl ? (
           <>
             <img src={generatedUrl} alt="生成结果" className="h-full w-full object-contain bg-black" />
