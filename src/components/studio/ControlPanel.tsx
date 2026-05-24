@@ -195,8 +195,11 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
             upsert: false,
           });
         if (upErr) throw upErr;
-        const { data: pub } = supabase.storage.from("reference-images").getPublicUrl(path);
-        const url = pub.publicUrl;
+        const { data: signed, error: signErr } = await supabase.storage
+          .from("reference-images")
+          .createSignedUrl(path, 60 * 60 * 24 * 7); // 7 days, long enough for generation
+        if (signErr) throw signErr;
+        const url = signed.signedUrl;
         console.log(
           `[ref upload] ${(processed.originalSize / 1024).toFixed(0)}KB → ${(processed.processedSize / 1024).toFixed(0)}KB →`,
           url,

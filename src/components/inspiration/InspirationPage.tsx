@@ -527,14 +527,14 @@ function PublishDialog({
       const processed = await processImage(f, "community");
       const path = `${uid}/cases/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${processed.ext}`;
       const { error: upErr } = await supabase.storage
-        .from("reference-images")
+        .from("case-images")
         .upload(path, processed.blob, {
           cacheControl: "3600",
           contentType: processed.contentType,
           upsert: false,
         });
       if (upErr) throw upErr;
-      const { data: pub } = supabase.storage.from("reference-images").getPublicUrl(path);
+      const { data: pub } = supabase.storage.from("case-images").getPublicUrl(path);
       setImageUrl(pub.publicUrl);
       console.log(
         `[case upload] ${(processed.originalSize / 1024).toFixed(0)}KB → ${(processed.processedSize / 1024).toFixed(0)}KB`,
