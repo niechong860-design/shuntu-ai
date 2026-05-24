@@ -482,7 +482,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                 placeholder="描述您想生成的画面、风格、光影与氛围…"
                 className="block w-full resize-none rounded-t-2xl bg-transparent px-4 py-3.5 text-sm font-light leading-relaxed text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
               />
-              <div className="flex items-center justify-between gap-2 border-t border-primary/15 px-2.5 py-2">
+              <div className="flex items-center justify-between gap-2 border-t border-white/[0.04] px-2.5 py-2">
                 <div className="flex items-center gap-1">
                   <Popover open={modelOpen} onOpenChange={setModelOpen}>
                     <PopoverTrigger asChild>
