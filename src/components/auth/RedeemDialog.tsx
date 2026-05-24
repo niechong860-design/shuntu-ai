@@ -89,7 +89,7 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     try {
       const r = await fn({ data: { code: code.trim() } });
       if (r.success) {
-        toast.success(`兑换成功！已为您充值 ${r.amount} 点数`);
+        toast.success(`积分已成功入账！本次到账 ${r.amount} 点`);
         await refreshProfile();
         onOpenChange(false);
       } else {
@@ -120,28 +120,45 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         </div>
 
         {/* 兑换码区 */}
-        <div className="mt-6 rounded-xl border border-border/60 bg-white/[0.02] p-4">
+        <div className="mt-8 w-full rounded-2xl border border-emerald-500/30 bg-gray-900/50 p-5 shadow-[0_0_15px_rgba(16,185,129,0.15)] backdrop-blur-sm">
           <div className="mb-3 flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium">兑换码充值</span>
-            <span className="text-xs text-muted-foreground">· 联系客服获取兑换码</span>
+            <span className="text-base font-bold text-emerald-400">⚡ 极速兑换，秒速到账</span>
           </div>
           <div className="flex gap-2">
             <Input
               value={code}
               onChange={(e) => setCode(e.target.value.toUpperCase())}
-              placeholder="LUMEN-XXXX-XXXX"
-              className="h-10 flex-1 font-mono tracking-wider"
+              placeholder="请输入您在发卡网购买的卡密..."
+              className="h-11 flex-1 border-emerald-500/20 bg-black/40 font-mono tracking-wider text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-emerald-500/40"
               onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+              disabled={loading}
             />
             <Button
               onClick={submit}
               disabled={loading || !code.trim()}
-              className="h-10 bg-gradient-aurora text-primary-foreground shadow-glow"
+              className="h-11 min-w-[110px] bg-emerald-500 font-semibold text-white shadow-[0_0_18px_rgba(16,185,129,0.45)] hover:bg-emerald-400"
             >
-              {loading ? "兑换中…" : "立即兑换"}
+              {loading ? (
+                <span className="flex items-center gap-1.5">
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  激活中…
+                </span>
+              ) : (
+                "激活权益"
+              )}
             </Button>
           </div>
+          <p className="mt-3 text-xs text-zinc-400">
+            还没有兑换码？
+            <a
+              href="https://www.kufaka.com/item/2tig9e"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-1 font-medium text-emerald-400 underline-offset-2 hover:text-emerald-300 hover:underline"
+            >
+              点击这里前往官方商城购买
+            </a>
+          </p>
         </div>
 
       </DialogContent>
