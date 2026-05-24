@@ -301,38 +301,40 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
     <aside className="flex h-full min-h-0 flex-col overflow-hidden border-r border-border/60 bg-card/40">
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 scrollbar-thin">
 
-        {/* Reference images — top */}
-        <section>
-          <div className="mb-2 flex items-center justify-between">
-            <Label>参考图 · 图生图</Label>
-            <span className="text-[10px] font-light text-muted-foreground">
-              {refs.length}/5
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {refs.map((url, i) => (
-              <div key={i} className="group relative h-20 w-20 overflow-hidden rounded-xl border border-border bg-surface">
-                <img src={url} alt="ref" className="h-full w-full object-cover" />
-                <button
-                  onClick={() => removeRef(i)}
-                  className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 hover:bg-destructive"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
-            {refs.length < 5 && (
-              <label className={`group flex h-20 w-20 ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"} flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border bg-white/[0.015] transition-all hover:border-primary/50 hover:bg-primary/[0.04] hover:shadow-glow`}>
-                {uploadingRef ? (
-                  <span className="text-[10px] text-muted-foreground">上传中…</span>
-                ) : (
-                  <Plus className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" strokeWidth={1.5} />
-                )}
-                <input type="file" accept="image/*" className="hidden" onChange={addRef} disabled={uploadingRef} />
-              </label>
-            )}
-          </div>
-        </section>
+        {/* Reference images — 仅文生图模型时隐藏 */}
+        {!isTextOnly && (
+          <section>
+            <div className="mb-2 flex items-center justify-between">
+              <Label>参考图 · 图生图</Label>
+              <span className="text-[10px] font-light text-muted-foreground">
+                {refs.length}/5
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {refs.map((url, i) => (
+                <div key={i} className="group relative h-20 w-20 overflow-hidden rounded-xl border border-border bg-surface">
+                  <img src={url} alt="ref" className="h-full w-full object-cover" />
+                  <button
+                    onClick={() => removeRef(i)}
+                    className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 hover:bg-destructive"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+              {refs.length < 5 && (
+                <label className={`group flex h-20 w-20 ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"} flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border bg-white/[0.015] transition-all hover:border-primary/50 hover:bg-primary/[0.04] hover:shadow-glow`}>
+                  {uploadingRef ? (
+                    <span className="text-[10px] text-muted-foreground">上传中…</span>
+                  ) : (
+                    <Plus className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" strokeWidth={1.5} />
+                  )}
+                  <input type="file" accept="image/*" className="hidden" onChange={addRef} disabled={uploadingRef} />
+                </label>
+              )}
+            </div>
+          </section>
+        )}
 
 
 
