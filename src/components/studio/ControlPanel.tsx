@@ -429,7 +429,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
       <div className="flex shrink-0 flex-col">
         {/* 参考图 — 紧凑横向条 */}
         {!isTextOnly && (
-          <section className="border-b border-border/60 bg-gradient-to-b from-white/[0.015] to-transparent px-4 py-4">
+          <section className="border-b border-primary/10 bg-gradient-to-b from-primary/[0.06] to-transparent px-4 py-4">
             <div className="mb-3 flex items-center justify-between">
               <Label>参考图 · 图生图 ({refs.length}/5)</Label>
               {refs.length > 0 && (
@@ -473,7 +473,8 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
         {/* 提示词 — frosted glass 卡片 */}
         <section className="px-4 pt-3 pb-2">
           <div className="relative group">
-            <div className="relative rounded-2xl border border-border/70 bg-black/30 shadow-inner backdrop-blur-xl transition-all focus-within:border-primary/40">
+            <div className="pointer-events-none absolute -inset-px rounded-2xl bg-gradient-to-br from-primary/25 via-primary/5 to-transparent opacity-60 transition-opacity group-focus-within:opacity-100" />
+            <div className="relative rounded-2xl border border-primary/25 bg-black/30 shadow-inner backdrop-blur-xl transition-all focus-within:border-primary/50 focus-within:shadow-glow">
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
@@ -481,7 +482,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                 placeholder="描述您想生成的画面、风格、光影与氛围…"
                 className="block w-full resize-none rounded-t-2xl bg-transparent px-4 py-3.5 text-sm font-light leading-relaxed text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
               />
-              <div className="flex items-center justify-between gap-2 border-t border-border/60 px-2.5 py-2">
+              <div className="flex items-center justify-between gap-2 border-t border-primary/15 px-2.5 py-2">
                 <div className="flex items-center gap-1">
                   <Popover open={modelOpen} onOpenChange={setModelOpen}>
                     <PopoverTrigger asChild>
