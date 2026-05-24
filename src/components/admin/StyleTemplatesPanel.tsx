@@ -161,8 +161,11 @@ function SystemPromptCard() {
 
 function TemplatesGrid() {
   const listFn = useServerFn(adminListStyleTemplates);
+  const createFn = useServerFn(adminCreateStyleTemplate);
   const [items, setItems] = useState<Tpl[]>([]);
   const [loading, setLoading] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -171,6 +174,19 @@ function TemplatesGrid() {
     finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
+
+  const create = async () => {
+    const name = newName.trim();
+    if (!name) return toast.error("请先填写模板名称");
+    setCreating(true);
+    try {
+      await createFn({ data: { name } });
+      toast.success(`已新增模板：${name}`);
+      setNewName("");
+      load();
+    } catch (e: any) { toast.error(e.message); }
+    finally { setCreating(false); }
+  };
 
   return (
     <div className="rounded-lg border border-border/60 bg-white/[0.03] p-4 space-y-3">
@@ -184,8 +200,21 @@ function TemplatesGrid() {
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        每个模板可单独修改示例图（9:16）和风格 Prompt。Prompt 仅控制视觉风格（灯光/背景/氛围/色调等），不要写比例或分辨率。
+        每个模板可单独修改名称、示例图（9:16）和风格 Prompt。Prompt 仅控制视觉风格（灯光/背景/氛围/色调等），不要写比例或分辨率。
       </p>
+      <div className="flex gap-2 rounded-lg border border-dashed border-primary/30 bg-primary/[0.04] p-3">
+        <Input
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          placeholder="新模板名称，例如：赛博朋克"
+          className="h-9"
+          onKeyDown={(e) => { if (e.key === "Enter") create(); }}
+        />
+        <Button size="sm" onClick={create} disabled={creating}>
+          <Plus className="mr-1.5 h-3.5 w-3.5" />
+          {creating ? "新增中…" : "新增模板"}
+        </Button>
+      </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((t) => (
           <TemplateCard key={t.id} tpl={t} onSaved={load} />
