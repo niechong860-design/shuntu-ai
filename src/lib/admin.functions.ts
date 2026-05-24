@@ -1377,5 +1377,5 @@ export const adminTestModel = createServerFn({ method: "POST" })
         }
       } catch { /* keep polling */ }
     }
-    return { ok: false, stage: "timeout", message: `任务已提交（taskId=${taskId}），但 25 秒内未生成完成`, elapsedMs: Date.now() - startedAt, imageUrl: null };
+    return { ok: false, stage: "timeout", message: `任务已提交（taskId=${taskId}），但 300 秒内未生成完成`, elapsedMs: Date.now() - startedAt, imageUrl: null };
   });
