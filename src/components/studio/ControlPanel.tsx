@@ -429,36 +429,39 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
       <div className="flex shrink-0 flex-col">
         {/* 参考图 — 紧凑横向条 */}
         {!isTextOnly && (
-          <section className="border-b border-primary/10 bg-gradient-to-b from-primary/[0.06] to-transparent px-4 py-3">
-            <div className="mb-2 flex items-center justify-between">
+          <section className="border-b border-primary/10 bg-gradient-to-b from-primary/[0.06] to-transparent px-4 py-4">
+            <div className="mb-3 flex items-center justify-between">
               <Label>参考图 · 图生图 ({refs.length}/5)</Label>
               {refs.length > 0 && (
                 <button
                   onClick={() => setRefs([])}
-                  className="text-[10px] text-muted-foreground transition-colors hover:text-primary"
+                  className="text-[11px] text-muted-foreground transition-colors hover:text-primary"
                 >
                   清空
                 </button>
               )}
             </div>
-            <div className="scrollbar-thin flex gap-2 overflow-x-auto pb-1">
+            <div className="scrollbar-thin flex gap-3 overflow-x-auto pb-1">
               {refs.map((url, i) => (
-                <div key={i} className="group relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-primary/15 bg-surface">
+                <div key={i} className="group relative h-24 w-24 shrink-0 overflow-hidden rounded-xl border border-primary/15 bg-surface">
                   <img src={url} alt="ref" className="h-full w-full object-cover" />
                   <button
                     onClick={() => removeRef(i)}
-                    className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/75 text-white opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 hover:bg-destructive"
+                    className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/75 text-white opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 hover:bg-destructive"
                   >
-                    <X className="h-2.5 w-2.5" />
+                    <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
               ))}
               {refs.length < 5 && (
-                <label className={`group flex h-12 w-12 shrink-0 ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"} items-center justify-center rounded-lg border border-dashed border-primary/30 bg-primary/[0.04] transition-all hover:border-primary/60 hover:bg-primary/[0.08]`}>
+                <label className={`group flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"} rounded-xl border border-dashed border-primary/30 bg-primary/[0.04] transition-all hover:border-primary/60 hover:bg-primary/[0.08]`}>
                   {uploadingRef ? (
-                    <span className="text-[9px] text-muted-foreground">…</span>
+                    <span className="text-[11px] text-muted-foreground">上传中…</span>
                   ) : (
-                    <Plus className="h-4 w-4 text-primary/70 transition-colors group-hover:text-primary" strokeWidth={1.75} />
+                    <>
+                      <Plus className="h-6 w-6 text-primary/70 transition-colors group-hover:text-primary" strokeWidth={1.75} />
+                      <span className="text-[10px] text-muted-foreground/80">上传参考图</span>
+                    </>
                   )}
                   <input type="file" accept="image/*" className="hidden" onChange={addRef} disabled={uploadingRef} />
                 </label>
