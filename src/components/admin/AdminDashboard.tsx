@@ -84,6 +84,8 @@ function UsersPanel() {
   const list = useServerFn(adminListUsers);
   const resetPw = useServerFn(adminResetPassword);
   const adjust = useServerFn(adminAdjustCredits);
+  const banFn = useServerFn(adminBanUser);
+  const delFn = useServerFn(adminDeleteUser);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [pwOpen, setPwOpen] = useState<UserRow | null>(null);
