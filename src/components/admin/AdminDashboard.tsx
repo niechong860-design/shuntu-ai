@@ -7,10 +7,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useServerFn } from "@tanstack/react-start";
 import {
   adminListUsers, adminResetPassword, adminAdjustCredits,
+  adminBanUser, adminDeleteUser,
   adminListCoupons, adminGenerateCoupons, adminDeleteCoupon,
 } from "@/lib/admin.functions";
 import { toast } from "sonner";
-import { Shield, KeyRound, Coins, Copy, Plus, RefreshCw, Users, Ticket, LayoutDashboard, Trash2, Sparkles, Megaphone, Crown, Lock, Palette } from "lucide-react";
+import { Shield, KeyRound, Coins, Copy, Plus, RefreshCw, Users, Ticket, LayoutDashboard, Trash2, Sparkles, Megaphone, Crown, Lock, Palette, Ban, CircleCheck } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { AnalyticsPanel } from "./AnalyticsPanel";
 import { ModelsPanel } from "./ModelsPanel";
