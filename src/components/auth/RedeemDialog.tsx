@@ -149,7 +149,7 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   );
 }
 
-function PlanCard({ plan, onBuy }: { plan: Plan; onBuy: (id: string, amount: number) => void }) {
+function PlanCard({ plan, onBuy }: { plan: Plan; onBuy: (id: string, amount: number, url?: string) => void }) {
   const { highlight } = plan;
   return (
     <div
