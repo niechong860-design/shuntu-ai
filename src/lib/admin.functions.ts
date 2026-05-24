@@ -396,10 +396,10 @@ function extractImageUrl(payload: any): string | null {
      .select("base_url, global_api_key")
      .eq("id", 1)
      .maybeSingle();
-   return {
-     base_url: (data?.base_url || "https://api.wuyinkeji.com").replace(/\/+$/, ""),
-     global_api_key: data?.global_api_key ?? null,
-   };
+    return {
+      base_url: (data?.base_url || "https://api.wuyinkeji.com").replace(/\/+$/, ""),
+      global_api_key: data?.global_api_key ?? process.env.WUYIN_API_KEY ?? null,
+    };
  }
 
  export const adminGetGlobalConfig = createServerFn({ method: "POST" })
