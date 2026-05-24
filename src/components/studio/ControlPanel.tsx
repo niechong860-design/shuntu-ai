@@ -429,7 +429,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
       <div className="flex shrink-0 flex-col">
         {/* 参考图 — 紧凑横向条 */}
         {!isTextOnly && (
-          <section className="border-b border-primary/10 bg-gradient-to-b from-primary/[0.06] to-transparent px-4 py-4">
+          <section className="border-b border-border/60 bg-gradient-to-b from-white/[0.015] to-transparent px-4 py-4">
             <div className="mb-3 flex items-center justify-between">
               <Label>参考图 · 图生图 ({refs.length}/5)</Label>
               {refs.length > 0 && (
