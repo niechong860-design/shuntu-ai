@@ -1139,6 +1139,46 @@ export const adminUpdateStyleTemplate = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const adminCreateStyleTemplate = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      name: z.string().min(1).max(64),
+      prompt: z.string().max(4000).optional().default(""),
+      image_url: z.string().max(1000).nullable().optional(),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const id = `tpl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+    const { data: maxRow } = await supabaseAdmin
+      .from("style_templates")
+      .select("sort_order")
+      .order("sort_order", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const sort_order = ((maxRow?.sort_order as number | undefined) ?? 0) + 10;
+    const { error } = await supabaseAdmin.from("style_templates").insert({
+      id,
+      name: data.name,
+      prompt: data.prompt ?? "",
+      image_url: data.image_url ?? null,
+      sort_order,
+    } as never);
+    if (error) throw new Error(error.message);
+    return { ok: true, id };
+  });
+
+export const adminDeleteStyleTemplate = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ id: z.string().min(1).max(64) }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const { error } = await supabaseAdmin.from("style_templates").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 export const adminGetSystemPrompt = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
