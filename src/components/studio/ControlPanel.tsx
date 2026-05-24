@@ -192,9 +192,11 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
   const handleGenerate = async () => {
     if (generating || !activeModel) return;
     onGenerateStart({ prompt: prompt.trim(), modelName: activeModel.name ?? activeModel.model_key });
+    const tStart = Date.now();
+    const elapsed = () => Math.floor((Date.now() - tStart) / 1000);
+    onProgress?.({ stage: "submitting", attempt: 0, elapsedSec: 0, message: "正在提交任务到生成队列…" });
     try {
       const httpRefs = isTextOnly ? [] : refs.filter((u) => /^https?:\/\//i.test(u));
-      // 风格模板的 prompt 与后台固定提示词由服务端拼接，不在客户端修改用户原始输入
       const payload = {
         modelKey: activeModel.model_key,
         prompt: prompt.trim(),
@@ -208,6 +210,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
 
       if (!r.success) {
         toast.error(r.message ?? "生成提交失败，请检查模型配置或稍后重试", { duration: 7000 });
+        onProgress?.(null);
         onGenerateDone(null);
         return;
       }
@@ -217,6 +220,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
 
       // 同步模型：直接拿到图片
       if (r.imageUrl) {
+        onProgress?.(null);
         onGenerateDone(r.imageUrl);
         return;
       }
@@ -225,60 +229,57 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
       if (!r.taskId) throw new Error("未获取到任务ID");
       const taskId = r.taskId;
       const POLL_INTERVAL = 5000;
-      const MAX_DURATION_MS = 5 * 60 * 1000; // 5 分钟硬性超时
+      const MAX_DURATION_MS = 5 * 60 * 1000;
       const MAX_TRANSIENT_RETRIES = 3;
-      const startedAt = Date.now();
       let transientRetries = 0;
+      let attempt = 0;
+      onProgress?.({ stage: "queued", attempt: 0, elapsedSec: elapsed(), taskId, message: "已进入队列，等待算力分配…" });
       // eslint-disable-next-line no-constant-condition
       while (true) {
-        if (Date.now() - startedAt > MAX_DURATION_MS) {
+        if (Date.now() - tStart > MAX_DURATION_MS) {
           toast.error(`AI 生成任务超时，请检查网络或稍后重新提交（任务 ID: ${taskId}）`, { duration: 8000 });
+          onProgress?.(null);
           onGenerateDone(null);
           return;
         }
         await new Promise((res) => setTimeout(res, POLL_INTERVAL));
+        attempt += 1;
         try {
           const s = await checkStatus({ data: { taskId, modelName: activeModel.name ?? activeModel.model_key } });
           if (s.status === "success" && s.imageUrl) {
+            onProgress?.(null);
             onGenerateDone(s.imageUrl);
             return;
           }
           if (s.status === "failed") {
-            // 打印原始返回，方便排查被哪个关键词拦截
-            console.warn("[checkImageStatus failed]", {
-              taskId,
-              reason: (s as any).reason,
-              code: (s as any).code,
-              taskStatus: (s as any).taskStatus,
-              msg: (s as any).rawMsg,
-              debug: (s as any).debug,
-              message: s.message,
-            });
+            console.warn("[checkImageStatus failed]", { taskId, reason: (s as any).reason, message: s.message });
             if ((s as any).reason === "ref_url") {
-              toast.error(
-                `参考图读取失败，请检查链接是否为公开的 HTTPS 链接${s.message ? ` · ${s.message}` : ""}`,
-                { duration: 8000 },
-              );
+              toast.error(`参考图读取失败，请检查链接是否为公开的 HTTPS 链接${s.message ? ` · ${s.message}` : ""}`, { duration: 8000 });
             } else if ((s as any).reason === "rejected" || (s as any).taskStatus === 3) {
-              toast.error(
-                `生成任务失败（原因：任务被拒绝或涉及合规限制，请尝试更换提示词）${s.message ? ` · ${s.message}` : ""}`,
-                { duration: 8000 },
-              );
+              toast.error(`生成任务失败（任务被拒绝或涉及合规限制，请尝试更换提示词）${s.message ? ` · ${s.message}` : ""}`, { duration: 8000 });
             } else {
               toast.error(`生成失败：${s.message ?? "上游服务异常，请稍后重试"}`, { duration: 6000 });
             }
-
+            onProgress?.(null);
             onGenerateDone(null);
             return;
           }
-          // pending — 重置瞬时错误计数，继续轮询
+          // pending — 进入渲染阶段提示
           transientRetries = 0;
+          onProgress?.({
+            stage: "rendering",
+            attempt,
+            elapsedSec: elapsed(),
+            taskId,
+            message: "AI 正在渲染图像，请稍候…",
+          });
         } catch (pollErr: any) {
           const msg = pollErr?.message ?? "";
           console.warn("[checkImageStatus network error]", pollErr);
           const isTransient = /network|fetch|timeout|500|502|503|504/i.test(msg) || !msg;
           if (isTransient && transientRetries < MAX_TRANSIENT_RETRIES) {
             transientRetries += 1;
+            onProgress?.({ stage: "polling", attempt, elapsedSec: elapsed(), taskId, message: `网络抖动，自动重试 (${transientRetries}/${MAX_TRANSIENT_RETRIES})…` });
             continue;
           }
           throw pollErr;
