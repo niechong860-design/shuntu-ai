@@ -472,9 +472,9 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
 
         {/* 提示词 — frosted glass 卡片 */}
         <section className="px-4 pt-3 pb-2">
-        <div className="relative group">
-          <div className="pointer-events-none absolute -inset-px rounded-2xl bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-50 transition-opacity group-focus-within:opacity-90" />
-          <div className="relative rounded-2xl border border-white/[0.04] bg-gradient-to-b from-white/[0.02] to-transparent shadow-inner backdrop-blur-xl transition-all focus-within:border-primary/40 focus-within:shadow-glow">
+        <div className="relative">
+          <div className="pointer-events-none absolute -inset-px rounded-2xl bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-50" />
+          <div className="relative rounded-2xl border border-white/[0.04] bg-gradient-to-b from-white/[0.02] to-transparent shadow-inner backdrop-blur-xl">
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
