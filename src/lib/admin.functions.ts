@@ -193,13 +193,19 @@ export const adminGenerateCoupons = createServerFn({ method: "POST" })
   });
 
 // --- Redeem (user) ---
+// Calls the secure RPC `redeem_gift_card`. The function runs inside a
+// transaction with FOR UPDATE row locking and writes an audit row to
+// `redeem_logs`. No direct table writes happen from the client.
 export const redeemCoupon = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ code: z.string().min(3).max(64) }).parse(d))
+  .inputValidator((d) => z.object({ code: z.string().min(3).max(64).regex(/^[A-Za-z0-9_-]+$/) }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
-    const { data: res, error } = await supabase.rpc("redeem_coupon", { _code: data.code.trim() });
-    if (error) throw new Error(error.message);
+    const { data: res, error } = await supabase.rpc("redeem_gift_card", { input_code: data.code.trim() });
+    if (error) {
+      // The RPC raises on every failure path; surface the human-readable message.
+      return { success: false, message: error.message || "兑换失败", amount: 0 };
+    }
     const row = Array.isArray(res) ? res[0] : res;
     return row as { success: boolean; message: string; amount: number };
   });

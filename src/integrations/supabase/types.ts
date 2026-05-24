@@ -386,6 +386,36 @@ export type Database = {
         }
         Relationships: []
       }
+      redeem_logs: {
+        Row: {
+          amount: number
+          code: string
+          error_message: string | null
+          id: string
+          redeemed_at: string
+          success: boolean
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          code: string
+          error_message?: string | null
+          id?: string
+          redeemed_at?: string
+          success?: boolean
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          code?: string
+          error_message?: string | null
+          id?: string
+          redeemed_at?: string
+          success?: boolean
+          user_id?: string
+        }
+        Relationships: []
+      }
       style_templates: {
         Row: {
           id: string
@@ -516,6 +546,14 @@ export type Database = {
       increment_case_view: { Args: { _case_id: string }; Returns: undefined }
       redeem_coupon: {
         Args: { _code: string }
+        Returns: {
+          amount: number
+          message: string
+          success: boolean
+        }[]
+      }
+      redeem_gift_card: {
+        Args: { input_code: string }
         Returns: {
           amount: number
           message: string

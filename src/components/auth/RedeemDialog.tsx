@@ -69,10 +69,18 @@ const PLANS: Plan[] = [
 export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
   const fn = useServerFn(redeemCoupon);
   const { refreshProfile } = useAuth();
 
   useEffect(() => { if (!open) setCode(""); }, [open]);
+
+  // 5s cooldown countdown to throttle repeated clicks
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
 
   const handlePurchase = (_planId: string, _amount: number, url?: string) => {
     if (url) {
@@ -84,8 +92,9 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
 
   const submit = async () => {
-    if (!code.trim()) return;
+    if (!code.trim() || loading || cooldown > 0) return;
     setLoading(true);
+    setCooldown(5);
     try {
       const r = await fn({ data: { code: code.trim() } });
       if (r.success) {
@@ -131,11 +140,11 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
               placeholder="请输入您在发卡网购买的卡密..."
               className="h-11 flex-1 border-emerald-500/20 bg-black/40 font-mono tracking-wider text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-emerald-500/40"
               onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
-              disabled={loading}
+              disabled={loading || cooldown > 0}
             />
             <Button
               onClick={submit}
-              disabled={loading || !code.trim()}
+              disabled={loading || cooldown > 0 || !code.trim()}
               className="h-11 min-w-[110px] bg-emerald-500 font-semibold text-white shadow-[0_0_18px_rgba(16,185,129,0.45)] hover:bg-emerald-400"
             >
               {loading ? (
@@ -143,6 +152,8 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                   <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                   激活中…
                 </span>
+              ) : cooldown > 0 ? (
+                `请稍候 ${cooldown}s`
               ) : (
                 "激活权益"
               )}
