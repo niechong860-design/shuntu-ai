@@ -72,7 +72,7 @@ async function copyToClipboard(text: string) {
   }
 }
 
-export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, historyOpen, onHistoryOpenChange, onSelectHistory }: Props) {
+export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, progress, historyOpen, onHistoryOpenChange, onSelectHistory }: Props) {
   const [lightbox, setLightbox] = useState<HistoryItem | null>(null);
   const [heroLightbox, setHeroLightbox] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
