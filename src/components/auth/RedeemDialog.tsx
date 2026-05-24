@@ -85,8 +85,21 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         },
       });
       toast.dismiss("pay");
-      if (r?.payUrl) {
-        window.location.href = r.payUrl;
+      if (r?.apiUrl && r?.params) {
+        // 易支付 submit.php 是 POST 接口，构造一个 form 自动提交跳转
+        const form = document.createElement("form");
+        form.method = "POST";
+        form.action = r.apiUrl;
+        form.style.display = "none";
+        Object.entries(r.params).forEach(([k, v]) => {
+          const input = document.createElement("input");
+          input.type = "hidden";
+          input.name = k;
+          input.value = String(v);
+          form.appendChild(input);
+        });
+        document.body.appendChild(form);
+        form.submit();
       } else {
         toast.error("生成支付链接失败");
       }
