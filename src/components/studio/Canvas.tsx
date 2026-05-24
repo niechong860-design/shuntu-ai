@@ -34,6 +34,7 @@ type Props = {
   generatedUrl?: string | null;
   currentPrompt?: string;
   currentModel?: string;
+  progress?: GenProgress | null;
   historyOpen: boolean;
   onHistoryOpenChange: (v: boolean) => void;
   onSelectHistory: (url: string, prompt: string, model: string) => void;
