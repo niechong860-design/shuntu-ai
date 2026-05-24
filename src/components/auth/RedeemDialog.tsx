@@ -74,8 +74,12 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
   useEffect(() => { if (!open) setCode(""); }, [open]);
 
-  const handlePurchase = async (_planId: string, _amount: number) => {
-    toast.info("支付通道正在升级，敬请期待。如需充值请使用兑换码或联系客服。");
+  const handlePurchase = (_planId: string, _amount: number, url?: string) => {
+    if (url) {
+      window.open(url, "_blank", "noopener,noreferrer");
+    } else {
+      toast.info("支付链接暂未配置，请联系客服。");
+    }
   };
 
 
