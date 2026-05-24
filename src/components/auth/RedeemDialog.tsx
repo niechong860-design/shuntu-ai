@@ -89,7 +89,7 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     try {
       const r = await fn({ data: { code: code.trim() } });
       if (r.success) {
-        toast.success(`兑换成功！已为您充值 ${r.amount} 点数`);
+        toast.success(`积分已成功入账！本次到账 ${r.amount} 点`);
         await refreshProfile();
         onOpenChange(false);
       } else {
