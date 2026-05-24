@@ -60,11 +60,17 @@ export function ModelsPanel() {
   const update = useServerFn(adminUpdateModel);
   const create = useServerFn(adminCreateModel);
   const del = useServerFn(adminDeleteModel);
+  const testFn = useServerFn(adminTestModel);
   const [rows, setRows] = useState<ModelCfg[]>([]);
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState<EditState | null>(null);
   const [creating, setCreating] = useState<EditState | null>(null);
   const [busy, setBusy] = useState(false);
+  const [testingKey, setTestingKey] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<
+    | { modelName: string; ok: boolean; stage: string; message: string; elapsedMs: number; imageUrl: string | null }
+    | null
+  >(null);
 
   const load = async () => {
     setLoading(true);
