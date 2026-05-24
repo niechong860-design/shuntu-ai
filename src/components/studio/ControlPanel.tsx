@@ -102,6 +102,14 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
   const activeRatio = RATIOS.find((r) => r.id === ratio)!;
   const ActiveRatioIcon = activeRatio.icon;
   const activeCost = Number(activeModel?.cost ?? 0);
+  // 仅文生图的模型：禁止参考图（前端隐藏入口 + 提交时不带 refs）
+  const TEXT_ONLY_MODELS = new Set(["wan26"]);
+  const isTextOnly = activeModel ? TEXT_ONLY_MODELS.has(activeModel.model_key) : false;
+  // 切换到仅文生图模型时，自动清空已有参考图，避免残留
+  useEffect(() => {
+    if (isTextOnly && refs.length > 0) setRefs([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTextOnly]);
 
   const [uploadingRef, setUploadingRef] = useState(false);
 
@@ -176,7 +184,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
     if (generating || !activeModel) return;
     onGenerateStart({ prompt: prompt.trim(), modelName: activeModel.name ?? activeModel.model_key });
     try {
-      const httpRefs = refs.filter((u) => /^https?:\/\//i.test(u));
+      const httpRefs = isTextOnly ? [] : refs.filter((u) => /^https?:\/\//i.test(u));
       // 风格模板的 prompt 与后台固定提示词由服务端拼接，不在客户端修改用户原始输入
       const payload = {
         modelKey: activeModel.model_key,
@@ -293,38 +301,40 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
     <aside className="flex h-full min-h-0 flex-col overflow-hidden border-r border-border/60 bg-card/40">
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 scrollbar-thin">
 
-        {/* Reference images — top */}
-        <section>
-          <div className="mb-2 flex items-center justify-between">
-            <Label>参考图 · 图生图</Label>
-            <span className="text-[10px] font-light text-muted-foreground">
-              {refs.length}/5
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {refs.map((url, i) => (
-              <div key={i} className="group relative h-20 w-20 overflow-hidden rounded-xl border border-border bg-surface">
-                <img src={url} alt="ref" className="h-full w-full object-cover" />
-                <button
-                  onClick={() => removeRef(i)}
-                  className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 hover:bg-destructive"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
-            {refs.length < 5 && (
-              <label className={`group flex h-20 w-20 ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"} flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border bg-white/[0.015] transition-all hover:border-primary/50 hover:bg-primary/[0.04] hover:shadow-glow`}>
-                {uploadingRef ? (
-                  <span className="text-[10px] text-muted-foreground">上传中…</span>
-                ) : (
-                  <Plus className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" strokeWidth={1.5} />
-                )}
-                <input type="file" accept="image/*" className="hidden" onChange={addRef} disabled={uploadingRef} />
-              </label>
-            )}
-          </div>
-        </section>
+        {/* Reference images — 仅文生图模型时隐藏 */}
+        {!isTextOnly && (
+          <section>
+            <div className="mb-2 flex items-center justify-between">
+              <Label>参考图 · 图生图</Label>
+              <span className="text-[10px] font-light text-muted-foreground">
+                {refs.length}/5
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {refs.map((url, i) => (
+                <div key={i} className="group relative h-20 w-20 overflow-hidden rounded-xl border border-border bg-surface">
+                  <img src={url} alt="ref" className="h-full w-full object-cover" />
+                  <button
+                    onClick={() => removeRef(i)}
+                    className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 hover:bg-destructive"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+              {refs.length < 5 && (
+                <label className={`group flex h-20 w-20 ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"} flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border bg-white/[0.015] transition-all hover:border-primary/50 hover:bg-primary/[0.04] hover:shadow-glow`}>
+                  {uploadingRef ? (
+                    <span className="text-[10px] text-muted-foreground">上传中…</span>
+                  ) : (
+                    <Plus className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" strokeWidth={1.5} />
+                  )}
+                  <input type="file" accept="image/*" className="hidden" onChange={addRef} disabled={uploadingRef} />
+                </label>
+              )}
+            </div>
+          </section>
+        )}
 
 
 

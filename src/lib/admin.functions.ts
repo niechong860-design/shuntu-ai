@@ -572,7 +572,12 @@ export const generateImage = createServerFn({ method: "POST" })
     const submitUrl = resolveUrl(base_url, model.api_url);
 
     const size = VALID_SIZES.has(data.aspectRatio) ? data.aspectRatio : "auto";
-    const httpRefs = (data.referenceImages ?? []).filter((u) => /^https?:\/\//i.test(u));
+    // 后端硬性限制：仅文生图模型不允许带参考图
+    const TEXT_ONLY_MODELS = new Set(["wan26"]);
+    const isTextOnly = TEXT_ONLY_MODELS.has(model.model_key);
+    const httpRefs = isTextOnly
+      ? []
+      : (data.referenceImages ?? []).filter((u) => /^https?:\/\//i.test(u));
     const promptKey = (model as any).prompt_key || "prompt";
     const requestFormat = (model as any).request_format || "async_id";
 
@@ -629,6 +634,11 @@ export const generateImage = createServerFn({ method: "POST" })
         else delete extra[k];
         urlsHandledByExtra = true;
       }
+    }
+
+    // grok_imagine：带参考图时 aspect_ratio 会被上游忽略，主动清掉以降低 400 风险
+    if (model.model_key === "grok_imagine" && httpRefs.length > 0) {
+      delete (extra as any).aspect_ratio;
     }
 
     const body: Record<string, unknown> = {
