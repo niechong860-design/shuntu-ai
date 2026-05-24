@@ -473,8 +473,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
         {/* 提示词 — frosted glass 卡片 */}
         <section className="px-4 pt-3 pb-2">
           <div className="relative group">
-            <div className="pointer-events-none absolute -inset-px rounded-2xl bg-gradient-to-br from-primary/25 via-primary/5 to-transparent opacity-60 transition-opacity group-focus-within:opacity-100" />
-            <div className="relative rounded-2xl border border-primary/25 bg-black/30 shadow-inner backdrop-blur-xl transition-all focus-within:border-primary/50 focus-within:shadow-glow">
+            <div className="relative rounded-2xl border border-border/70 bg-black/30 shadow-inner backdrop-blur-xl transition-all focus-within:border-primary/40">
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
@@ -482,7 +481,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                 placeholder="描述您想生成的画面、风格、光影与氛围…"
                 className="block w-full resize-none rounded-t-2xl bg-transparent px-4 py-3.5 text-sm font-light leading-relaxed text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
               />
-              <div className="flex items-center justify-between gap-2 border-t border-primary/15 px-2.5 py-2">
+              <div className="flex items-center justify-between gap-2 border-t border-border/60 px-2.5 py-2">
                 <div className="flex items-center gap-1">
                   <Popover open={modelOpen} onOpenChange={setModelOpen}>
                     <PopoverTrigger asChild>
