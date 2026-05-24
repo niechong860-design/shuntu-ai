@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Sparkles, Loader2, Mail, Lock } from "lucide-react";
+import { Sparkles, Loader2, Mail, Lock, Headphones, Copy } from "lucide-react";
 import { toast } from "sonner";
+import { useServerFn } from "@tanstack/react-start";
+import { getContactInfo } from "@/lib/admin.functions";
 
 type Tab = "login" | "signup" | "forgot";
 
@@ -73,6 +75,22 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
+  const [contact, setContact] = useState<{ wechat: string; qq: string }>({ wechat: "", qq: "" });
+  const fetchContact = useServerFn(getContactInfo);
+
+  useEffect(() => {
+    if (tab !== "forgot") return;
+    fetchContact().then((r: any) => setContact({ wechat: r?.wechat ?? "", qq: r?.qq ?? "" })).catch(() => {});
+  }, [tab]);
+
+  const copy = async (val: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(val);
+      toast.success(`${label} 已复制`);
+    } catch {
+      toast.error("复制失败");
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -215,6 +233,26 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
             </button>
           </form>
 
+          {tab === "forgot" && (
+            <div className="mt-4 rounded-xl border border-border bg-white/[0.03] p-3">
+              <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                <Headphones className="h-3.5 w-3.5 text-primary" />
+                收不到邮件？联系客服帮你重置
+              </div>
+              <div className="space-y-1.5">
+                {contact.wechat && (
+                  <ContactLine label="微信" value={contact.wechat} onCopy={() => copy(contact.wechat, "微信号")} />
+                )}
+                {contact.qq && (
+                  <ContactLine label="QQ" value={contact.qq} onCopy={() => copy(contact.qq, "QQ 号")} />
+                )}
+                {!contact.wechat && !contact.qq && (
+                  <div className="text-[11px] text-muted-foreground">暂未配置联系方式</div>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="mt-4 flex items-center justify-between text-[11px] text-muted-foreground">
             {tab === "login" ? (
               <>
@@ -237,5 +275,21 @@ function Field({ icon, children }: { icon: React.ReactNode; children: React.Reac
       <span className="text-muted-foreground transition-colors group-focus-within:text-primary">{icon}</span>
       {children}
     </label>
+  );
+}
+
+function ContactLine({ label, value, onCopy }: { label: string; value: string; onCopy: () => void }) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg bg-white/[0.02] px-2.5 py-1.5">
+      <span className="w-8 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="min-w-0 flex-1 truncate font-mono text-xs">{value}</span>
+      <button
+        type="button"
+        onClick={onCopy}
+        className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px] text-muted-foreground hover:bg-white/[0.05] hover:text-foreground"
+      >
+        <Copy className="h-3 w-3" />复制
+      </button>
+    </div>
   );
 }
