@@ -21,7 +21,7 @@ import { AccessGate } from "./AccessGate";
 import { AccessPasswordPanel } from "./AccessPasswordPanel";
 import { StyleTemplatesPanel } from "./StyleTemplatesPanel";
 
-type UserRow = { id: string; email: string | null; display_name: string | null; credits: number; created_at: string; total_spent: number };
+type UserRow = { id: string; email: string | null; display_name: string | null; credits: number; created_at: string; total_spent: number; is_banned?: boolean };
 type Coupon = {
   id: string; code: string; amount: number; is_used: boolean;
   used_by_email: string | null; used_at: string | null; created_at: string;
