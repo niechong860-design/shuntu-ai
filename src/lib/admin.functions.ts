@@ -1358,7 +1358,7 @@ export const adminTestModel = createServerFn({ method: "POST" })
       return { ok: false, stage: "submit", message: `提交成功但未返回任务 ID：${text.slice(0, 200)}`, elapsedMs: Date.now() - startedAt, imageUrl: null };
     }
 
-    const deadline = Date.now() + 25_000; // 最多轮询 25s
+    const deadline = Date.now() + 300_000; // 最多轮询 300s
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 2500));
       const detailUrl = `https://api.wuyinkeji.com/api/async/detail?id=${encodeURIComponent(taskId)}`;
