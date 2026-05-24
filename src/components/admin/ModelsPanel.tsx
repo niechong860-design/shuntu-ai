@@ -315,6 +315,41 @@ export function ModelsPanel() {
         title="添加新模型"
         state={creating} setState={setCreating} onSubmit={submitCreate} busy={busy}
       />
+
+      <Dialog open={!!testResult} onOpenChange={(v) => !v && setTestResult(null)}>
+        <DialogContent className="max-w-md border-border/70 bg-card/80 backdrop-blur-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {testResult?.ok
+                ? <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                : <XCircle className="h-4 w-4 text-destructive" />}
+              测试结果 · {testResult?.modelName}
+            </DialogTitle>
+          </DialogHeader>
+          {testResult && (
+            <div className="space-y-3 pt-1 text-xs">
+              <div className="flex items-center gap-2">
+                <span className={`rounded-full px-2 py-0.5 text-[10px] ${testResult.ok ? "bg-emerald-500/15 text-emerald-400" : "bg-destructive/15 text-destructive"}`}>
+                  {testResult.ok ? "通过" : "失败"}
+                </span>
+                <span className="text-muted-foreground">阶段：{testResult.stage}</span>
+                <span className="text-muted-foreground">耗时 {(testResult.elapsedMs / 1000).toFixed(1)}s</span>
+              </div>
+              <p className="break-words text-foreground/90">{testResult.message}</p>
+              {testResult.imageUrl && (
+                <div className="overflow-hidden rounded-md border border-border/60">
+                  <img src={testResult.imageUrl} alt="测试输出" className="block w-full" />
+                </div>
+              )}
+              {!testResult.ok && (
+                <p className="text-[11px] text-muted-foreground">
+                  提示：常见原因包括 API 接口地址错误、Key 无权限或额度不足、extra_params 与上游契约不一致。
+                </p>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
