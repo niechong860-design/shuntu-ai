@@ -69,10 +69,18 @@ const PLANS: Plan[] = [
 export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
   const fn = useServerFn(redeemCoupon);
   const { refreshProfile } = useAuth();
 
   useEffect(() => { if (!open) setCode(""); }, [open]);
+
+  // 5s cooldown countdown to throttle repeated clicks
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
 
   const handlePurchase = (_planId: string, _amount: number, url?: string) => {
     if (url) {
