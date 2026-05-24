@@ -66,8 +66,8 @@ export const createPaymentOrder = createServerFn({ method: "POST" })
       pid,
       type: payType,
       out_trade_no: outTradeNo,
-      notify_url: "https://api.example.com/notify",
-      return_url: `${returnOrigin}/payment/success`,
+      notify_url: `${returnOrigin}/api/public/ezfpy-notify`,
+      return_url: `${returnOrigin}/payment/success?out_trade_no=${outTradeNo}`,
       name,
       money,
     };
