@@ -425,35 +425,40 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
 
   return (
     <aside className="flex h-full min-h-0 flex-col overflow-hidden border-r border-border/60 bg-card/40">
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 scrollbar-thin">
-
-        {/* Reference images — 仅文生图模型时隐藏 */}
+      {/* 上半部分：参考图 + 提示词 — 固定高度，不参与滚动 */}
+      <div className="flex shrink-0 flex-col">
+        {/* 参考图 — 紧凑横向条 */}
         {!isTextOnly && (
-          <section>
+          <section className="border-b border-primary/10 bg-gradient-to-b from-primary/[0.06] to-transparent px-4 py-3">
             <div className="mb-2 flex items-center justify-between">
-              <Label>参考图 · 图生图</Label>
-              <span className="text-[10px] font-light text-muted-foreground">
-                {refs.length}/5
-              </span>
+              <Label>参考图 · 图生图 ({refs.length}/5)</Label>
+              {refs.length > 0 && (
+                <button
+                  onClick={() => setRefs([])}
+                  className="text-[10px] text-muted-foreground transition-colors hover:text-primary"
+                >
+                  清空
+                </button>
+              )}
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="scrollbar-thin flex gap-2 overflow-x-auto pb-1">
               {refs.map((url, i) => (
-                <div key={i} className="group relative h-20 w-20 overflow-hidden rounded-xl border border-border bg-surface">
+                <div key={i} className="group relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-primary/15 bg-surface">
                   <img src={url} alt="ref" className="h-full w-full object-cover" />
                   <button
                     onClick={() => removeRef(i)}
-                    className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 hover:bg-destructive"
+                    className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/75 text-white opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 hover:bg-destructive"
                   >
-                    <X className="h-3 w-3" />
+                    <X className="h-2.5 w-2.5" />
                   </button>
                 </div>
               ))}
               {refs.length < 5 && (
-                <label className={`group flex h-20 w-20 ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"} flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border bg-white/[0.015] transition-all hover:border-primary/50 hover:bg-primary/[0.04] hover:shadow-glow`}>
+                <label className={`group flex h-12 w-12 shrink-0 ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"} items-center justify-center rounded-lg border border-dashed border-primary/30 bg-primary/[0.04] transition-all hover:border-primary/60 hover:bg-primary/[0.08]`}>
                   {uploadingRef ? (
-                    <span className="text-[10px] text-muted-foreground">上传中…</span>
+                    <span className="text-[9px] text-muted-foreground">…</span>
                   ) : (
-                    <Plus className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" strokeWidth={1.5} />
+                    <Plus className="h-4 w-4 text-primary/70 transition-colors group-hover:text-primary" strokeWidth={1.75} />
                   )}
                   <input type="file" accept="image/*" className="hidden" onChange={addRef} disabled={uploadingRef} />
                 </label>
@@ -462,242 +467,218 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
           </section>
         )}
 
-
-
-        {/* Prompt core */}
-        <section>
-          <Label>提示词</Label>
-          <div className="group rounded-2xl border border-border bg-input/40 transition-all focus-within:border-primary/50 focus-within:shadow-glow">
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              rows={3}
-              placeholder="让您的想法，创造无限可能"
-              className="block w-full resize-none rounded-2xl bg-transparent px-4 py-3.5 text-sm font-light leading-relaxed placeholder:text-muted-foreground/50 focus:outline-none"
-            />
-            <div className="flex items-center justify-between gap-2 border-t border-border/50 px-2.5 py-2">
-              <div className="flex items-center gap-1">
-                {/* Model popover */}
-                <Popover open={modelOpen} onOpenChange={setModelOpen}>
-                  <PopoverTrigger asChild>
-                    <button className="flex items-center gap-1.5 rounded-lg border border-border bg-white/[0.03] px-2.5 py-1.5 text-[11px] font-medium transition-colors hover:border-primary/40 hover:bg-primary/[0.05]">
-                      <Sparkles className="h-3 w-3 text-primary" />
-                      {activeModel?.name ?? "选择模型"}
-                      <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent align="start" className="w-72 border-border bg-popover/95 p-1.5 backdrop-blur-xl">
-                    <div className="px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                      选择模型
-                    </div>
-                    {models.length === 0 && (
-                      <div className="px-2 py-3 text-center text-[11px] text-muted-foreground">加载中…</div>
-                    )}
-                    {models.map((m) => {
-                      const active = m.model_key === modelKey;
-                      return (
-                        <button
-                          key={m.id}
-                          onClick={() => { setModelKey(m.model_key); setModelOpen(false); }}
-                          className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors ${
-                            active ? "bg-primary/10" : "hover:bg-white/5"
-                          }`}
-                        >
-                          <div className={`flex h-7 w-7 items-center justify-center rounded-md ${
-                            active ? "bg-gradient-aurora text-primary-foreground" : "bg-white/5 text-muted-foreground"
-                          }`}>
-                            <Sparkles className="h-3.5 w-3.5" />
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-center gap-1.5">
-                              <span className={`text-xs font-medium ${active ? "text-primary" : ""}`}>{m.name}</span>
-                              <span className="ml-auto rounded bg-white/5 px-1.5 py-px font-mono text-[9px] text-primary">
-                                {Number(m.cost)} 点
-                              </span>
+        {/* 提示词 — frosted glass 卡片 */}
+        <section className="px-4 pt-3 pb-2">
+          <div className="relative group">
+            <div className="pointer-events-none absolute -inset-px rounded-2xl bg-gradient-to-br from-primary/25 via-primary/5 to-transparent opacity-60 transition-opacity group-focus-within:opacity-100" />
+            <div className="relative rounded-2xl border border-primary/25 bg-black/30 shadow-inner backdrop-blur-xl transition-all focus-within:border-primary/50 focus-within:shadow-glow">
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                rows={4}
+                placeholder="描述您想生成的画面、风格、光影与氛围…"
+                className="block w-full resize-none rounded-t-2xl bg-transparent px-4 py-3.5 text-sm font-light leading-relaxed text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
+              />
+              <div className="flex items-center justify-between gap-2 border-t border-primary/15 px-2.5 py-2">
+                <div className="flex items-center gap-1">
+                  <Popover open={modelOpen} onOpenChange={setModelOpen}>
+                    <PopoverTrigger asChild>
+                      <button className="flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/[0.05] px-2.5 py-1.5 text-[11px] font-medium transition-colors hover:border-primary/45 hover:bg-primary/[0.1]">
+                        <Sparkles className="h-3 w-3 text-primary" />
+                        {activeModel?.name ?? "选择模型"}
+                        <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-72 border-border bg-popover/95 p-1.5 backdrop-blur-xl">
+                      <div className="px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">选择模型</div>
+                      {models.length === 0 && (
+                        <div className="px-2 py-3 text-center text-[11px] text-muted-foreground">加载中…</div>
+                      )}
+                      {models.map((m) => {
+                        const active = m.model_key === modelKey;
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => { setModelKey(m.model_key); setModelOpen(false); }}
+                            className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors ${active ? "bg-primary/10" : "hover:bg-white/5"}`}
+                          >
+                            <div className={`flex h-7 w-7 items-center justify-center rounded-md ${active ? "bg-gradient-aurora text-primary-foreground" : "bg-white/5 text-muted-foreground"}`}>
+                              <Sparkles className="h-3.5 w-3.5" />
                             </div>
-                            {m.description && (
-                              <div className="text-[10px] font-light text-muted-foreground">{m.description}</div>
-                            )}
-                          </div>
-                          {active && <Check className="h-3.5 w-3.5 text-primary" />}
-                        </button>
-                      );
-                    })}
-                  </PopoverContent>
-                </Popover>
-
-                {/* Ratio popover */}
-                <Popover open={ratioOpen} onOpenChange={setRatioOpen}>
-                  <PopoverTrigger asChild>
-                    <button className="flex items-center gap-1.5 rounded-lg border border-border bg-white/[0.03] px-2.5 py-1.5 text-[11px] font-medium transition-colors hover:border-primary/40 hover:bg-primary/[0.05]">
-                      <ActiveRatioIcon className="h-3 w-3" />
-                      {ratio}
-                      <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent align="start" className="w-auto max-w-[360px] border-border bg-popover/95 p-2 backdrop-blur-xl">
-                    <div className="mb-1.5 px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                      画面比例
-                    </div>
-                    <div className="grid grid-cols-4 gap-1.5">
-                      {RATIOS.map((r) => {
-                        const Icon = r.icon;
-                        const active = ratio === r.id;
-                        return (
-                          <button
-                            key={r.id}
-                            onClick={() => { setRatio(r.id); setRatioOpen(false); }}
-                            className={`flex flex-col items-center gap-1 rounded-lg border px-2 py-2 transition-all ${
-                              active ? "border-primary/50 bg-primary/10 text-primary"
-                              : "border-border bg-white/[0.02] text-muted-foreground hover:bg-white/5"
-                            }`}
-                          >
-                            <Icon className="h-3.5 w-3.5" strokeWidth={1.5} />
-                            <span className="font-mono text-[9px] leading-none">{r.id}</span>
-                            <span className="text-[9px] font-light leading-none">{r.label}</span>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-xs font-medium ${active ? "text-primary" : ""}`}>{m.name}</span>
+                                <span className="ml-auto rounded bg-white/5 px-1.5 py-px font-mono text-[9px] text-primary">{Number(m.cost)} 点</span>
+                              </div>
+                              {m.description && (
+                                <div className="text-[10px] font-light text-muted-foreground">{m.description}</div>
+                              )}
+                            </div>
+                            {active && <Check className="h-3.5 w-3.5 text-primary" />}
                           </button>
                         );
                       })}
-                    </div>
-                  </PopoverContent>
-                </Popover>
+                    </PopoverContent>
+                  </Popover>
 
-                {/* Size popover (1K / 2K / 4K) */}
-                <Popover open={sizeOpen} onOpenChange={setSizeOpen}>
-                  <PopoverTrigger asChild>
-                    <button className="flex items-center gap-1.5 rounded-lg border border-border bg-white/[0.03] px-2.5 py-1.5 text-[11px] font-medium transition-colors hover:border-primary/40 hover:bg-primary/[0.05]">
-                      <Zap className="h-3 w-3" />
-                      {size}
-                      <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent align="start" className="w-auto border-border bg-popover/95 p-2 backdrop-blur-xl">
-                    <div className="mb-1.5 px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                      输出像素
-                    </div>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {(["1K", "2K", "4K"] as const).map((s) => {
-                        const active = size === s;
-                        return (
-                          <button
-                            key={s}
-                            onClick={() => { setSize(s); setSizeOpen(false); }}
-                            className={`flex flex-col items-center gap-1 rounded-lg border px-3 py-2 transition-all ${
-                              active
-                                ? "border-primary/50 bg-primary/10 text-primary"
-                                : "border-border bg-white/[0.02] text-muted-foreground hover:bg-white/5"
-                            }`}
-                          >
-                            <span className="font-mono text-[11px] font-semibold">{s}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div className="mt-2 px-1 text-[9px] font-light text-muted-foreground">
-                      像素越高生成越慢，仅部分模型支持（如 NanoBanana2）
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              </div>
+                  <Popover open={ratioOpen} onOpenChange={setRatioOpen}>
+                    <PopoverTrigger asChild>
+                      <button className="flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/[0.05] px-2.5 py-1.5 text-[11px] font-medium transition-colors hover:border-primary/45 hover:bg-primary/[0.1]">
+                        <ActiveRatioIcon className="h-3 w-3" />
+                        {ratio}
+                        <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-auto max-w-[360px] border-border bg-popover/95 p-2 backdrop-blur-xl">
+                      <div className="mb-1.5 px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">画面比例</div>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {RATIOS.map((r) => {
+                          const Icon = r.icon;
+                          const active = ratio === r.id;
+                          return (
+                            <button
+                              key={r.id}
+                              onClick={() => { setRatio(r.id); setRatioOpen(false); }}
+                              className={`flex flex-col items-center gap-1 rounded-lg border px-2 py-2 transition-all ${active ? "border-primary/50 bg-primary/10 text-primary" : "border-border bg-white/[0.02] text-muted-foreground hover:bg-white/5"}`}
+                            >
+                              <Icon className="h-3.5 w-3.5" strokeWidth={1.5} />
+                              <span className="font-mono text-[9px] leading-none">{r.id}</span>
+                              <span className="text-[9px] font-light leading-none">{r.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
 
-              <div className="flex items-center gap-1">
-                <span className="px-1 font-mono text-[10px] font-light text-muted-foreground">
-                  {prompt.length}
-                </span>
-                <IconBtn onClick={() => setPrompt("")} title="清空"><Eraser className="h-3.5 w-3.5" /></IconBtn>
-                <IconBtn
-                  title="灵感 · 点击随机生成提示词"
-                  disabled={inspiring}
-                  onClick={async () => {
-                    if (inspiring) return;
-                    setInspiring(true);
-                    setPrompt("");
-                    try {
-                      const r: any = await randomPromptFn({});
-                      if (r?.prompt) setPrompt(r.prompt);
-                    } catch (e: any) {
-                      toast.error(e?.message ?? "灵感生成失败");
-                    } finally {
-                      setInspiring(false);
-                    }
-                  }}
-                >
-                  <Dices className={`h-3.5 w-3.5 text-primary ${inspiring ? "animate-spin" : ""}`} />
-                </IconBtn>
+                  <Popover open={sizeOpen} onOpenChange={setSizeOpen}>
+                    <PopoverTrigger asChild>
+                      <button className="flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/[0.05] px-2.5 py-1.5 text-[11px] font-medium transition-colors hover:border-primary/45 hover:bg-primary/[0.1]">
+                        <Zap className="h-3 w-3" />
+                        {size}
+                        <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-auto border-border bg-popover/95 p-2 backdrop-blur-xl">
+                      <div className="mb-1.5 px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">输出像素</div>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {(["1K", "2K", "4K"] as const).map((s) => {
+                          const active = size === s;
+                          return (
+                            <button
+                              key={s}
+                              onClick={() => { setSize(s); setSizeOpen(false); }}
+                              className={`flex flex-col items-center gap-1 rounded-lg border px-3 py-2 transition-all ${active ? "border-primary/50 bg-primary/10 text-primary" : "border-border bg-white/[0.02] text-muted-foreground hover:bg-white/5"}`}
+                            >
+                              <span className="font-mono text-[11px] font-semibold">{s}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-2 px-1 text-[9px] font-light text-muted-foreground">像素越高生成越慢，仅部分模型支持</div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <span className="px-1 font-mono text-[10px] font-light text-muted-foreground">{prompt.length}</span>
+                  <IconBtn onClick={() => setPrompt("")} title="清空"><Eraser className="h-3.5 w-3.5" /></IconBtn>
+                  <IconBtn
+                    title="灵感 · 点击随机生成提示词"
+                    disabled={inspiring}
+                    onClick={async () => {
+                      if (inspiring) return;
+                      setInspiring(true);
+                      setPrompt("");
+                      try {
+                        const r: any = await randomPromptFn({});
+                        if (r?.prompt) setPrompt(r.prompt);
+                      } catch (e: any) {
+                        toast.error(e?.message ?? "灵感生成失败");
+                      } finally {
+                        setInspiring(false);
+                      }
+                    }}
+                  >
+                    <Dices className={`h-3.5 w-3.5 text-primary ${inspiring ? "animate-spin" : ""}`} />
+                  </IconBtn>
+                </div>
               </div>
             </div>
           </div>
         </section>
-
-        {/* Style templates — 9:16 image-only horizontal gallery */}
-        <section>
-          <div className="mb-2 flex items-center justify-between">
-            <Label>风格模板</Label>
-            <span className="text-[10px] font-light text-muted-foreground">
-              {inspirationMode ? "已使用灵感广场案例 · 风格模板已禁用" : "左右滑动浏览 · 仅影响视觉风格"}
-            </span>
-          </div>
-          {inspirationMode && (
-            <div className="mb-2 flex items-center justify-between rounded-lg border border-primary/30 bg-primary/[0.06] px-3 py-2 text-[11px]">
-              <span className="text-primary/90">灵感广场提示词优先，避免与风格模板冲突</span>
-              <button
-                onClick={() => setInspirationMode(false)}
-                className="rounded-md border border-primary/40 px-2 py-0.5 text-[10px] text-primary transition-colors hover:bg-primary/10"
-              >
-                取消复用
-              </button>
-            </div>
-          )}
-          <div className={`-mx-1 flex gap-3 overflow-x-auto px-1 pb-3 scrollbar-light ${inspirationMode ? "pointer-events-none opacity-40" : ""}`}>
-            {styles.map((s) => {
-              const active = !inspirationMode && s.id === styleId;
-              return (
-                <button
-                  key={s.id}
-                  onClick={() => setStyleId((prev) => (prev === s.id ? "" : s.id))}
-                  title={s.name}
-                  className={`group relative aspect-[9/16] w-[120px] shrink-0 overflow-hidden rounded-2xl border transition-all ${
-                    active
-                      ? "border-primary/70 shadow-glow ring-2 ring-primary/40"
-                      : "border-border hover:border-primary/40"
-                  }`}
-                >
-                  {s.image_url ? (
-                    <img
-                      src={s.image_url}
-                      alt={s.name}
-                      className="h-full w-full object-cover transition-transform group-hover:scale-105"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-white/[0.04] to-white/[0.01] text-muted-foreground">
-                      <ImageIcon className="h-6 w-6" strokeWidth={1.5} />
-                      <span className="px-2 text-center text-[11px] font-medium">{s.name}</span>
-                    </div>
-                  )}
-                  {active && (
-                    <div className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
-                      <Check className="h-3 w-3" strokeWidth={3} />
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-            {styles.length === 0 && (
-              <div className="flex h-[213px] items-center justify-center text-xs text-muted-foreground">
-                加载中…
-              </div>
-            )}
-          </div>
-        </section>
-
-
-
-
       </div>
 
-      {/* Generate */}
-      <div className="sticky bottom-0 mt-auto border-t border-border/60 bg-background/85 p-4 backdrop-blur-xl">
+      {/* 风格模板 — 自动填满剩余高度 */}
+      <section className="flex min-h-0 flex-1 flex-col px-4 pt-2">
+        <div className="mb-2 flex items-center justify-between">
+          <Label>风格模板</Label>
+          <span className="text-[10px] font-light text-muted-foreground">
+            {inspirationMode ? "已使用灵感案例 · 已禁用" : "仅影响视觉风格"}
+          </span>
+        </div>
+        {inspirationMode && (
+          <div className="mb-2 flex items-center justify-between rounded-lg border border-primary/30 bg-primary/[0.06] px-3 py-2 text-[11px]">
+            <span className="text-primary/90">灵感广场提示词优先</span>
+            <button
+              onClick={() => setInspirationMode(false)}
+              className="rounded-md border border-primary/40 px-2 py-0.5 text-[10px] text-primary transition-colors hover:bg-primary/10"
+            >
+              取消复用
+            </button>
+          </div>
+        )}
+        <div className={`scrollbar-thin min-h-0 flex-1 overflow-y-auto pb-3 ${inspirationMode ? "pointer-events-none opacity-40" : ""}`}>
+          {styles.length === 0 ? (
+            <div className="flex h-full items-center justify-center text-xs text-muted-foreground">加载中…</div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2.5">
+              {styles.map((s) => {
+                const active = !inspirationMode && s.id === styleId;
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => setStyleId((prev) => (prev === s.id ? "" : s.id))}
+                    title={s.name}
+                    className={`group relative aspect-[3/4] overflow-hidden rounded-xl border transition-all ${
+                      active
+                        ? "border-primary/70 shadow-glow ring-2 ring-primary/40"
+                        : "border-border hover:border-primary/50 hover:-translate-y-0.5"
+                    }`}
+                  >
+                    {s.image_url ? (
+                      <img
+                        src={s.image_url}
+                        alt={s.name}
+                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-white/[0.04] to-white/[0.01] text-muted-foreground">
+                        <ImageIcon className="h-6 w-6" strokeWidth={1.5} />
+                      </div>
+                    )}
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent px-2 pb-1.5 pt-4">
+                      <div className="flex items-center gap-1.5">
+                        {active && <div className="h-3 w-1 rounded-full bg-primary" />}
+                        <span className={`text-[11px] font-medium ${active ? "text-white" : "text-white/85"}`}>{s.name}</span>
+                      </div>
+                    </div>
+                    {active && (
+                      <div className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
+                        <Check className="h-3 w-3" strokeWidth={3} />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* 立即生成 — 紧贴风格模板 */}
+      <div className="shrink-0 border-t border-primary/15 bg-gradient-to-b from-primary/[0.04] to-background/85 p-3 backdrop-blur-xl">
         <button
           onClick={handleGenerate}
           disabled={generating || !activeModel}
@@ -724,6 +705,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
     </aside>
   );
 }
+
 
 
 function Label({ children }: { children: React.ReactNode }) {
