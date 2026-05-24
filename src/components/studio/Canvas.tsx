@@ -297,8 +297,13 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
   const stage = progress?.stage ?? "submitting";
   const elapsed = progress?.elapsedSec ?? 0;
 
-  // 模拟"队列位置"：每个任务初始位置 18~42，随时间均匀递减；渲染阶段=0
-  const [initialPos] = useState(() => 18 + Math.floor(Math.random() * 25));
+  // initialPos / renderBudget 优先从 progress 中读取（已在 ControlPanel 持久化），
+  // 这样刷新页面恢复任务时，UI 显示的"第 N 位"和渲染百分比保持一致。
+  const [fallbackPos] = useState(() => 18 + Math.floor(Math.random() * 25));
+  const [fallbackBudget] = useState(() => 12 + Math.floor(Math.random() * 10));
+  const initialPos = progress?.initialPos ?? fallbackPos;
+  const renderBudget = progress?.renderBudget ?? fallbackBudget;
+
   const SEC_PER_TICK = 1.6; // 每 1.6 秒前进一位
   const queuePos = useMemo(() => {
     if (stage === "rendering") return 0;
@@ -325,9 +330,8 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
     logEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [logs]);
 
-  // 模拟渲染时长（秒）：12~22 秒之间
-  const [renderBudget] = useState(() => 12 + Math.floor(Math.random() * 10));
   // 记录进入"渲染中"那一刻的已用秒，避免渲染百分比受排队时长影响
+
   const renderStartRef = useRef<number | null>(null);
   useEffect(() => {
     if (stage === "rendering" && renderStartRef.current === null) {
