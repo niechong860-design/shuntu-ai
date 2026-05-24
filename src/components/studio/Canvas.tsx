@@ -487,7 +487,8 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
           {progress?.attempt ? <span>· 第 {progress.attempt} 次查询</span> : null}
           {progress?.taskId ? <span>· 任务 {progress.taskId.slice(0, 8)}…</span> : null}
         </div>
-        <div className="text-[10px] font-light text-muted-foreground">您可以继续浏览历史记录，结果会在这里自动显示</div>
+        <div className="text-[10px] font-light text-emerald-200/50">您可以继续浏览历史记录，结果会在这里自动显示</div>
+        </div>
       </div>
     </div>
   );
