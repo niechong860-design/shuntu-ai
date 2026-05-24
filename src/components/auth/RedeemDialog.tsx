@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useServerFn } from "@tanstack/react-start";
 import { redeemCoupon } from "@/lib/admin.functions";
+import { createPaymentOrder } from "@/lib/payment.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { Gift, Sparkles, Check, Zap, Crown } from "lucide-react";
@@ -64,16 +65,35 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const fn = useServerFn(redeemCoupon);
+  const createOrder = useServerFn(createPaymentOrder);
   const { refreshProfile } = useAuth();
 
   useEffect(() => { if (!open) setCode(""); }, [open]);
 
-  const handlePurchase = (planId: string, amount: number) => {
-    // TODO: 接入真实支付通道。当前仅做占位提示。
-    toast.info(`已选择套餐 ${planId} · ¥${amount}`, {
-      description: "支付通道接入中，请联系客服完成充值。",
-    });
-    console.log("[purchase]", { planId, amount });
+  const handlePurchase = async (planId: string, amount: number) => {
+    const plan = PLANS.find((p) => p.id === planId);
+    // 测试通道（planId === "dev_test"）使用 990 等不会发放积分，仅做链路测试
+    const credits = plan ? Number(String(plan.features[0]).replace(/[^\d]/g, "")) : 0;
+    try {
+      toast.loading("正在创建订单...", { id: "pay" });
+      const r = await createOrder({
+        data: {
+          amount,
+          credits,
+          payType: "alipay",
+          returnOrigin: typeof window !== "undefined" ? window.location.origin : undefined,
+        },
+      });
+      toast.dismiss("pay");
+      if (r?.payUrl) {
+        window.location.href = r.payUrl;
+      } else {
+        toast.error("生成支付链接失败");
+      }
+    } catch (e: any) {
+      toast.dismiss("pay");
+      toast.error(e?.message || "支付下单失败");
+    }
   };
 
   const submit = async () => {
