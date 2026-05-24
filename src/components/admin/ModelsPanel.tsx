@@ -254,6 +254,31 @@ export function ModelsPanel() {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={testingKey === r.model_key}
+                      onClick={async () => {
+                        setTestingKey(r.model_key);
+                        setTestResult(null);
+                        try {
+                          const res = await testFn({ data: { modelKey: r.model_key } });
+                          setTestResult({ modelName: r.name, ...res });
+                          if (res.ok) toast.success(`「${r.name}」测试通过 · ${(res.elapsedMs / 1000).toFixed(1)}s`);
+                          else toast.error(`「${r.name}」测试失败：${res.message}`);
+                        } catch (e: any) {
+                          setTestResult({ modelName: r.name, ok: false, stage: "exception", message: e.message ?? "调用失败", elapsedMs: 0, imageUrl: null });
+                          toast.error(e.message ?? "测试调用失败");
+                        } finally {
+                          setTestingKey(null);
+                        }
+                      }}
+                    >
+                      {testingKey === r.model_key
+                        ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                        : <FlaskConical className="mr-1 h-3.5 w-3.5" />}
+                      测试
+                    </Button>
                     <Button variant="ghost" size="sm" onClick={() => openEdit(r)}>
                       <Pencil className="mr-1 h-3.5 w-3.5" />修改
                     </Button>
