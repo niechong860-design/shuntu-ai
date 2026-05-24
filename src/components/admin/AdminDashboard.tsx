@@ -305,6 +305,7 @@ function CouponsPanel() {
   const [count, setCount] = useState("10");
   const [amount, setAmount] = useState("200");
   const [busy, setBusy] = useState(false);
+  const [justGenerated, setJustGenerated] = useState<{ code: string; amount: number }[] | null>(null);
 
   const load = async () => {
     try { setCoupons((await list({})) as Coupon[]); } catch (e: any) { toast.error(e.message); }
@@ -315,7 +316,17 @@ function CouponsPanel() {
     const c = parseInt(count, 10); const a = parseInt(amount, 10);
     if (!c || !a) return toast.error("请填写数量与面额");
     setBusy(true);
-    try { await gen({ data: { count: c, amount: a } }); toast.success(`已生成 ${c} 张卡密`); load(); }
+    try {
+      const inserted = (await gen({ data: { count: c, amount: a } })) as { code: string; amount: number }[];
+      toast.success(`已生成 ${c} 张卡密`);
+      setJustGenerated(inserted ?? []);
+      // Try to auto-copy immediately (works while user gesture context still active)
+      try {
+        await navigator.clipboard.writeText((inserted ?? []).map(x => x.code).join("\n"));
+        toast.success("已自动复制到剪贴板");
+      } catch { /* user can click copy in dialog */ }
+      load();
+    }
     catch (e: any) { toast.error(e.message); }
     finally { setBusy(false); }
   };
@@ -324,6 +335,16 @@ function CouponsPanel() {
     const unused = coupons.filter(c => !c.is_used).map(c => c.code).join("\n");
     navigator.clipboard.writeText(unused);
     toast.success("已复制全部未使用卡密");
+  };
+
+  const copyJustGenerated = async () => {
+    if (!justGenerated?.length) return;
+    try {
+      await navigator.clipboard.writeText(justGenerated.map(x => x.code).join("\n"));
+      toast.success(`已复制 ${justGenerated.length} 张卡密`);
+    } catch {
+      toast.error("复制失败，请手动选择文本复制");
+    }
   };
 
   return (
