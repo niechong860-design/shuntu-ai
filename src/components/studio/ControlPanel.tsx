@@ -103,7 +103,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Pr
   const ActiveRatioIcon = activeRatio.icon;
   const activeCost = Number(activeModel?.cost ?? 0);
   // 仅文生图的模型：禁止参考图（前端隐藏入口 + 提交时不带 refs）
-  const TEXT_ONLY_MODELS = new Set(["wan26"]);
+  const TEXT_ONLY_MODELS = new Set<string>([]);
   const isTextOnly = activeModel ? TEXT_ONLY_MODELS.has(activeModel.model_key) : false;
   // 切换到仅文生图模型时，自动清空已有参考图，避免残留
   useEffect(() => {

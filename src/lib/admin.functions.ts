@@ -573,7 +573,7 @@ export const generateImage = createServerFn({ method: "POST" })
 
     const size = VALID_SIZES.has(data.aspectRatio) ? data.aspectRatio : "auto";
     // 后端硬性限制：仅文生图模型不允许带参考图
-    const TEXT_ONLY_MODELS = new Set(["wan26"]);
+    const TEXT_ONLY_MODELS = new Set<string>([]);
     const isTextOnly = TEXT_ONLY_MODELS.has(model.model_key);
     const httpRefs = isTextOnly
       ? []
