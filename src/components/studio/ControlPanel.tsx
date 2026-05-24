@@ -705,7 +705,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
     </aside>
   );
 }
-}
+
 
 
 function Label({ children }: { children: React.ReactNode }) {
