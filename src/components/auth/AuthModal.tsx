@@ -75,6 +75,22 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
+  const [contact, setContact] = useState<{ wechat: string; qq: string }>({ wechat: "", qq: "" });
+  const fetchContact = useServerFn(getContactInfo);
+
+  useEffect(() => {
+    if (tab !== "forgot") return;
+    fetchContact().then((r: any) => setContact({ wechat: r?.wechat ?? "", qq: r?.qq ?? "" })).catch(() => {});
+  }, [tab]);
+
+  const copy = async (val: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(val);
+      toast.success(`${label} 已复制`);
+    } catch {
+      toast.error("复制失败");
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
