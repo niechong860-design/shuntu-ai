@@ -4,7 +4,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useServerFn } from "@tanstack/react-start";
 import { redeemCoupon } from "@/lib/admin.functions";
-import { createPaymentOrder } from "@/lib/payment.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { Gift, Sparkles, Check, Zap, Crown } from "lucide-react";
