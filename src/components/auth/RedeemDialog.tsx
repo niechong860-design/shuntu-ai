@@ -92,8 +92,9 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
 
   const submit = async () => {
-    if (!code.trim()) return;
+    if (!code.trim() || loading || cooldown > 0) return;
     setLoading(true);
+    setCooldown(5);
     try {
       const r = await fn({ data: { code: code.trim() } });
       if (r.success) {
