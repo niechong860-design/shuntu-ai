@@ -185,10 +185,10 @@ function PlanCard({ plan, onBuy }: { plan: Plan; onBuy: (id: string, amount: num
         </>
       )}
 
-      {/* 角标 */}
+      {/* 角标：右上角 */}
       {highlight && (
-        <div className="absolute -top-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-gradient-to-r from-emerald-400 to-cyan-500 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-[0_4px_14px_rgba(16,185,129,0.45)]">
-          最受欢迎 · Most Popular
+        <div className="absolute -top-2.5 -right-2 z-10 rounded-full bg-gradient-to-r from-emerald-400 to-cyan-500 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-[0_4px_14px_rgba(16,185,129,0.45)]">
+          最受欢迎
         </div>
       )}
 
