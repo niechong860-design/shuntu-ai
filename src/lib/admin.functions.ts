@@ -42,10 +42,63 @@ export const adminListUsers = createServerFn({ method: "POST" })
     for (const r of (history ?? []) as Array<{ user_id: string; cost: number | string }>) {
       sumMap.set(r.user_id, (sumMap.get(r.user_id) ?? 0) + Number(r.cost ?? 0));
     }
+    const banMap = new Map<string, boolean>();
+    try {
+      let page = 1;
+      while (page < 20) {
+        const { data: au, error: aerr } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 1000 });
+        if (aerr) break;
+        for (const u of au?.users ?? []) {
+          const until = (u as any).banned_until as string | null | undefined;
+          banMap.set(u.id, !!until && new Date(until).getTime() > Date.now());
+        }
+        if (!au || au.users.length < 1000) break;
+        page++;
+      }
+    } catch { /* ignore */ }
     return (profiles ?? []).map((p: any) => ({
       ...p,
       total_spent: sumMap.get(p.id) ?? 0,
+      is_banned: banMap.get(p.id) ?? false,
     }));
+  });
+
+export const adminBanUser = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ userId: z.string().uuid(), banned: z.boolean() }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const { data: roles } = await supabaseAdmin
+      .from("user_roles").select("role").eq("user_id", data.userId);
+    if ((roles ?? []).some((r: any) => r.role === "founder")) {
+      throw new Error("不能封禁创始人账号");
+    }
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(data.userId, {
+      ban_duration: data.banned ? "876000h" : "none",
+    } as any);
+    if (error) throw new Error(error.message);
+    return { ok: true, banned: data.banned };
+  });
+
+export const adminDeleteUser = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ userId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    if (data.userId === context.userId) throw new Error("不能删除自己");
+    const { data: roles } = await supabaseAdmin
+      .from("user_roles").select("role").eq("user_id", data.userId);
+    if ((roles ?? []).some((r: any) => r.role === "founder")) {
+      throw new Error("不能删除创始人账号");
+    }
+    await supabaseAdmin.from("user_roles").delete().eq("user_id", data.userId);
+    await supabaseAdmin.from("generation_history").delete().eq("user_id", data.userId);
+    await supabaseAdmin.from("profiles").delete().eq("id", data.userId);
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(data.userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
   });
 
 export const adminResetPassword = createServerFn({ method: "POST" })
