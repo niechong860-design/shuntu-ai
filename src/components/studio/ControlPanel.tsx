@@ -480,7 +480,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                 onChange={(e) => setPrompt(e.target.value)}
                 rows={4}
                 placeholder="描述您想生成的画面、风格、光影与氛围…"
-                className="block w-full resize-none rounded-t-2xl bg-transparent px-4 py-3.5 text-sm font-light leading-relaxed text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
+                className="block w-full resize-none rounded-t-2xl border-0 bg-transparent px-4 py-3.5 text-sm font-light leading-relaxed text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus-visible:!border-transparent focus-visible:!shadow-none focus-visible:!ring-0"
               />
               <div className="flex items-center justify-between gap-2 border-t border-white/[0.04] px-2.5 py-2">
                 <div className="flex items-center gap-1">
