@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Copy, Maximize2, Sparkles, ArrowUpRight, X, Clock, ImageIcon, ListOrdered, Loader2, CheckCircle2 } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
