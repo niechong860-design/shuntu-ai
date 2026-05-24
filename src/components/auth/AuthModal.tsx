@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Sparkles, Loader2, Mail, Lock } from "lucide-react";
+import { Sparkles, Loader2, Mail, Lock, Headphones, Copy } from "lucide-react";
 import { toast } from "sonner";
+import { useServerFn } from "@tanstack/react-start";
+import { getContactInfo } from "@/lib/admin.functions";
 
 type Tab = "login" | "signup" | "forgot";
 
