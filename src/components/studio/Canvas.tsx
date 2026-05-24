@@ -373,8 +373,60 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
   const stageIndex = stage === "polling" ? 1 : steps.findIndex((s) => s.key === stage);
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-gradient-to-br from-surface to-surface-elevated">
-      <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-primary/15 to-transparent" />
+    <div className="relative h-full w-full overflow-hidden bg-[#03110c]">
+      {/* 背景：网格 + 径向光晕 + 扫描线 */}
+      <div
+        className="absolute inset-0 opacity-[0.35]"
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(74,222,128,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(74,222,128,0.08) 1px, transparent 1px)",
+          backgroundSize: "32px 32px",
+        }}
+      />
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(ellipse at 50% 40%, rgba(34,197,94,0.18), transparent 60%), radial-gradient(ellipse at 80% 90%, rgba(16,185,129,0.12), transparent 55%)",
+        }}
+      />
+      <div
+        className="pointer-events-none absolute inset-0 mix-blend-overlay opacity-30"
+        style={{
+          backgroundImage:
+            "repeating-linear-gradient(0deg, rgba(255,255,255,0.04) 0 1px, transparent 1px 3px)",
+        }}
+      />
+      {/* 终端日志滚动 */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="scrollbar-thin absolute inset-x-0 bottom-0 top-0 overflow-hidden px-6 py-4 font-mono text-[10.5px] leading-relaxed text-emerald-300/55">
+          <div className="flex flex-col">
+            {logs.map((line, idx) => {
+              const isLast = idx === logs.length - 1;
+              const dim = idx < logs.length - 8;
+              return (
+                <div
+                  key={idx}
+                  className={`whitespace-pre tracking-tight ${dim ? "opacity-30" : "opacity-90"} ${isLast ? "text-emerald-200" : ""}`}
+                >
+                  <span className="text-emerald-500/60">{String(idx).padStart(4, "0")}</span>
+                  <span className="mx-2 text-emerald-500/40">│</span>
+                  <span>{line}</span>
+                  {isLast && <span className="ml-1 inline-block h-3 w-1.5 -mb-[2px] animate-pulse bg-emerald-300/80" />}
+                </div>
+              );
+            })}
+            <div ref={logEndRef} />
+          </div>
+          {/* 顶部渐隐遮罩 */}
+          <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-[#03110c] to-transparent" />
+        </div>
+      </div>
+      {/* 中心信息卡 */}
+      <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-emerald-400/10 to-transparent" />
+      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-5 px-6">
+        <div className="glass-elevated flex w-full max-w-md flex-col items-center gap-5 rounded-2xl border border-emerald-400/20 bg-black/40 px-6 py-6 shadow-glow backdrop-blur-xl">
+
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 px-6">
         <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-aurora shadow-glow">
           <Sparkles className="h-7 w-7 animate-pulse text-primary-foreground" />
