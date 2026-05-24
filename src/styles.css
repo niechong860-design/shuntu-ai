@@ -94,9 +94,17 @@
   }
   body {
     background-image:
-      radial-gradient(ellipse 80% 50% at 20% -10%, oklch(0.86 0.21 155 / 0.08), transparent),
-      radial-gradient(ellipse 60% 50% at 90% 10%, oklch(0.78 0.18 175 / 0.06), transparent);
+      radial-gradient(ellipse 80% 50% at 20% -10%, oklch(0.88 0.24 158 / 0.07), transparent),
+      radial-gradient(ellipse 60% 50% at 90% 10%, oklch(0.78 0.16 210 / 0.06), transparent);
     background-attachment: fixed;
+  }
+  /* Mint focus ring on inputs/textareas globally */
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    border-color: #00FF9D !important;
+    box-shadow: 0 0 0 1px #00FF9D, 0 0 14px -2px rgba(0, 255, 157, 0.45);
+    outline: none;
   }
 }
 
