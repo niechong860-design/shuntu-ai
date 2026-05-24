@@ -11,6 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as InspirationRouteImport } from './routes/inspiration'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as PaymentSuccessRouteImport } from './routes/payment.success'
+import { Route as ApiPublicEzfpyNotifyRouteImport } from './routes/api/public/ezfpy-notify'
 
 const InspirationRoute = InspirationRouteImport.update({
   id: '/inspiration',
@@ -22,31 +24,58 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PaymentSuccessRoute = PaymentSuccessRouteImport.update({
+  id: '/payment/success',
+  path: '/payment/success',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicEzfpyNotifyRoute = ApiPublicEzfpyNotifyRouteImport.update({
+  id: '/api/public/ezfpy-notify',
+  path: '/api/public/ezfpy-notify',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/inspiration': typeof InspirationRoute
+  '/payment/success': typeof PaymentSuccessRoute
+  '/api/public/ezfpy-notify': typeof ApiPublicEzfpyNotifyRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/inspiration': typeof InspirationRoute
+  '/payment/success': typeof PaymentSuccessRoute
+  '/api/public/ezfpy-notify': typeof ApiPublicEzfpyNotifyRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/inspiration': typeof InspirationRoute
+  '/payment/success': typeof PaymentSuccessRoute
+  '/api/public/ezfpy-notify': typeof ApiPublicEzfpyNotifyRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/inspiration'
+  fullPaths:
+    | '/'
+    | '/inspiration'
+    | '/payment/success'
+    | '/api/public/ezfpy-notify'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/inspiration'
-  id: '__root__' | '/' | '/inspiration'
+  to: '/' | '/inspiration' | '/payment/success' | '/api/public/ezfpy-notify'
+  id:
+    | '__root__'
+    | '/'
+    | '/inspiration'
+    | '/payment/success'
+    | '/api/public/ezfpy-notify'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   InspirationRoute: typeof InspirationRoute
+  PaymentSuccessRoute: typeof PaymentSuccessRoute
+  ApiPublicEzfpyNotifyRoute: typeof ApiPublicEzfpyNotifyRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,23 +94,29 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/payment/success': {
+      id: '/payment/success'
+      path: '/payment/success'
+      fullPath: '/payment/success'
+      preLoaderRoute: typeof PaymentSuccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/ezfpy-notify': {
+      id: '/api/public/ezfpy-notify'
+      path: '/api/public/ezfpy-notify'
+      fullPath: '/api/public/ezfpy-notify'
+      preLoaderRoute: typeof ApiPublicEzfpyNotifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   InspirationRoute: InspirationRoute,
+  PaymentSuccessRoute: PaymentSuccessRoute,
+  ApiPublicEzfpyNotifyRoute: ApiPublicEzfpyNotifyRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

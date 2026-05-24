@@ -481,6 +481,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      complete_paid_order: {
+        Args: { _out_trade_no: string; _trade_no: string }
+        Returns: {
+          applied: boolean
+          credits: number
+          user_id: string
+        }[]
+      }
       consume_credits_for_generation: {
         Args: { _model_key: string; _prompt: string }
         Returns: {
