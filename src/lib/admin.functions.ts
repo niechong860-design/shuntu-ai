@@ -636,6 +636,11 @@ export const generateImage = createServerFn({ method: "POST" })
       }
     }
 
+    // grok_imagine：带参考图时 aspect_ratio 会被上游忽略，主动清掉以降低 400 风险
+    if (model.model_key === "grok_imagine" && httpRefs.length > 0) {
+      delete (extra as any).aspect_ratio;
+    }
+
     const body: Record<string, unknown> = {
       [promptKey]: finalPrompt,
       ...extra, // 每个模型自定义参数（如 size、image_weight、aspect_ratio 等）
