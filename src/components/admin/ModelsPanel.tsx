@@ -7,6 +7,7 @@ import {
   adminDeleteModel,
   adminGetGlobalConfig,
   adminUpdateGlobalConfig,
+  adminTestModel,
 } from "@/lib/admin.functions";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
-import { Pencil, RefreshCw, Sparkles, Plus, Trash2, KeyRound, Link as LinkIcon, Globe, Save } from "lucide-react";
+import { Pencil, RefreshCw, Sparkles, Plus, Trash2, KeyRound, Link as LinkIcon, Globe, Save, FlaskConical, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 type ModelCfg = {
@@ -59,11 +60,17 @@ export function ModelsPanel() {
   const update = useServerFn(adminUpdateModel);
   const create = useServerFn(adminCreateModel);
   const del = useServerFn(adminDeleteModel);
+  const testFn = useServerFn(adminTestModel);
   const [rows, setRows] = useState<ModelCfg[]>([]);
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState<EditState | null>(null);
   const [creating, setCreating] = useState<EditState | null>(null);
   const [busy, setBusy] = useState(false);
+  const [testingKey, setTestingKey] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<
+    | { modelName: string; ok: boolean; stage: string; message: string; elapsedMs: number; imageUrl: string | null }
+    | null
+  >(null);
 
   const load = async () => {
     setLoading(true);
@@ -247,6 +254,31 @@ export function ModelsPanel() {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={testingKey === r.model_key}
+                      onClick={async () => {
+                        setTestingKey(r.model_key);
+                        setTestResult(null);
+                        try {
+                          const res = await testFn({ data: { modelKey: r.model_key } });
+                          setTestResult({ modelName: r.name, ...res });
+                          if (res.ok) toast.success(`「${r.name}」测试通过 · ${(res.elapsedMs / 1000).toFixed(1)}s`);
+                          else toast.error(`「${r.name}」测试失败：${res.message}`);
+                        } catch (e: any) {
+                          setTestResult({ modelName: r.name, ok: false, stage: "exception", message: e.message ?? "调用失败", elapsedMs: 0, imageUrl: null });
+                          toast.error(e.message ?? "测试调用失败");
+                        } finally {
+                          setTestingKey(null);
+                        }
+                      }}
+                    >
+                      {testingKey === r.model_key
+                        ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                        : <FlaskConical className="mr-1 h-3.5 w-3.5" />}
+                      测试
+                    </Button>
                     <Button variant="ghost" size="sm" onClick={() => openEdit(r)}>
                       <Pencil className="mr-1 h-3.5 w-3.5" />修改
                     </Button>
@@ -283,6 +315,41 @@ export function ModelsPanel() {
         title="添加新模型"
         state={creating} setState={setCreating} onSubmit={submitCreate} busy={busy}
       />
+
+      <Dialog open={!!testResult} onOpenChange={(v) => !v && setTestResult(null)}>
+        <DialogContent className="max-w-md border-border/70 bg-card/80 backdrop-blur-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {testResult?.ok
+                ? <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                : <XCircle className="h-4 w-4 text-destructive" />}
+              测试结果 · {testResult?.modelName}
+            </DialogTitle>
+          </DialogHeader>
+          {testResult && (
+            <div className="space-y-3 pt-1 text-xs">
+              <div className="flex items-center gap-2">
+                <span className={`rounded-full px-2 py-0.5 text-[10px] ${testResult.ok ? "bg-emerald-500/15 text-emerald-400" : "bg-destructive/15 text-destructive"}`}>
+                  {testResult.ok ? "通过" : "失败"}
+                </span>
+                <span className="text-muted-foreground">阶段：{testResult.stage}</span>
+                <span className="text-muted-foreground">耗时 {(testResult.elapsedMs / 1000).toFixed(1)}s</span>
+              </div>
+              <p className="break-words text-foreground/90">{testResult.message}</p>
+              {testResult.imageUrl && (
+                <div className="overflow-hidden rounded-md border border-border/60">
+                  <img src={testResult.imageUrl} alt="测试输出" className="block w-full" />
+                </div>
+              )}
+              {!testResult.ok && (
+                <p className="text-[11px] text-muted-foreground">
+                  提示：常见原因包括 API 接口地址错误、Key 无权限或额度不足、extra_params 与上游契约不一致。
+                </p>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
