@@ -302,7 +302,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
         msg = String(e?.message ?? e ?? "生成失败");
       }
       toast.error(msg, { duration: 6000 });
-      // 关键：无论失败原因，强制解除 Loading，恢复按钮可点击
+      onProgress?.(null);
       onGenerateDone(null);
     }
   };
