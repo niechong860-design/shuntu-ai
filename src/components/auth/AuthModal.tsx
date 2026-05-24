@@ -233,6 +233,26 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
             </button>
           </form>
 
+          {tab === "forgot" && (
+            <div className="mt-4 rounded-xl border border-border bg-white/[0.03] p-3">
+              <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                <Headphones className="h-3.5 w-3.5 text-primary" />
+                收不到邮件？联系客服帮你重置
+              </div>
+              <div className="space-y-1.5">
+                {contact.wechat && (
+                  <ContactLine label="微信" value={contact.wechat} onCopy={() => copy(contact.wechat, "微信号")} />
+                )}
+                {contact.qq && (
+                  <ContactLine label="QQ" value={contact.qq} onCopy={() => copy(contact.qq, "QQ 号")} />
+                )}
+                {!contact.wechat && !contact.qq && (
+                  <div className="text-[11px] text-muted-foreground">暂未配置联系方式</div>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="mt-4 flex items-center justify-between text-[11px] text-muted-foreground">
             {tab === "login" ? (
               <>
