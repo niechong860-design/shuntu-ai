@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Copy, Maximize2, Sparkles, ArrowUpRight, X, Clock, ImageIcon, ListOrdered, Loader2, CheckCircle2 } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
@@ -265,16 +265,56 @@ function EmptyPlaceholder() {
 
 function QueueProgress({ progress }: { progress: GenProgress | null }) {
   const stage = progress?.stage ?? "submitting";
-  const stageMeta: Record<GenProgress["stage"], { label: string; pct: number; hint: string }> = {
-    submitting: { label: "提交中", pct: 15, hint: "正在把请求提交到生成队列" },
-    queued: { label: "排队中", pct: 35, hint: "已进入算力队列，等待 GPU 空闲" },
-    rendering: { label: "渲染中", pct: 70, hint: "AI 正在为你绘制图像" },
-    polling: { label: "网络重试", pct: 50, hint: "网络抖动，自动重试中" },
-  };
-  const meta = stageMeta[stage];
   const elapsed = progress?.elapsedSec ?? 0;
+
+  // 模拟"队列位置"：每个任务初始位置 18~42，随时间均匀递减；渲染阶段=0
+  const [initialPos] = useState(() => 18 + Math.floor(Math.random() * 25));
+  const SEC_PER_TICK = 1.6; // 每 1.6 秒前进一位
+  const queuePos = useMemo(() => {
+    if (stage === "rendering") return 0;
+    const advanced = Math.floor(elapsed / SEC_PER_TICK);
+    return Math.max(1, initialPos - advanced);
+  }, [stage, elapsed, initialPos]);
+
+  // 模拟渲染时长（秒）：12~22 秒之间
+  const [renderBudget] = useState(() => 12 + Math.floor(Math.random() * 10));
+  // 记录进入"渲染中"那一刻的已用秒，避免渲染百分比受排队时长影响
+  const renderStartRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (stage === "rendering" && renderStartRef.current === null) {
+      renderStartRef.current = elapsed;
+    }
+    if (stage !== "rendering") renderStartRef.current = null;
+  }, [stage, elapsed]);
+
+  // 总进度百分比
+  let pct = 8;
+  if (stage === "submitting") pct = 8;
+  else if (stage === "queued" || stage === "polling") {
+    const queueProgress = 1 - queuePos / initialPos; // 0 → 1
+    pct = Math.min(60, 15 + queueProgress * 45);
+  } else if (stage === "rendering") {
+    const rStart = renderStartRef.current ?? elapsed;
+    const renderElapsed = Math.max(0, elapsed - rStart);
+    // 60% → 99%，使用对数避免到 100% 卡住
+    const rp = Math.min(1, renderElapsed / renderBudget);
+    pct = 60 + rp * 39;
+  }
+
+  // 预计剩余时间（秒）
+  let etaSec: number;
+  if (stage === "rendering") {
+    const rStart = renderStartRef.current ?? elapsed;
+    etaSec = Math.max(1, renderBudget - (elapsed - rStart));
+  } else {
+    etaSec = Math.max(1, queuePos * 2 + renderBudget);
+  }
+
   const mm = String(Math.floor(elapsed / 60)).padStart(1, "0");
   const ss = String(elapsed % 60).padStart(2, "0");
+
+  const stageLabel =
+    stage === "rendering" ? "生成中" : stage === "polling" ? "网络重试" : stage === "submitting" ? "提交中" : "排队中";
 
   const steps: Array<{ key: GenProgress["stage"]; label: string }> = [
     { key: "submitting", label: "提交" },
@@ -294,14 +334,37 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
         {/* Stage badge */}
         <div className="flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1">
           <ListOrdered className="h-3.5 w-3.5 text-primary" />
-          <span className="text-[11px] font-semibold tracking-wide text-primary">{meta.label}</span>
+          <span className="text-[11px] font-semibold tracking-wide text-primary">{stageLabel}</span>
           <Loader2 className="h-3 w-3 animate-spin text-primary" />
         </div>
 
-        <div className="text-sm font-medium text-foreground/90">{progress?.message ?? meta.hint}</div>
+        {/* 主信息：排队位次 / 生成百分比 */}
+        {stage === "rendering" ? (
+          <div className="text-center">
+            <div className="font-display text-3xl font-semibold tracking-tight text-foreground">{Math.round(pct)}%</div>
+            <div className="mt-1 text-xs font-light text-muted-foreground">AI 正在渲染图像，马上完成</div>
+          </div>
+        ) : (
+          <div className="text-center">
+            <div className="font-display text-3xl font-semibold tracking-tight text-foreground">
+              正在排队 · 第 <span className="text-primary">{queuePos}</span> 位
+            </div>
+            <div className="mt-1 text-xs font-light text-muted-foreground">
+              预计等待 <span className="font-mono text-foreground/90">{etaSec}</span> 秒
+            </div>
+          </div>
+        )}
+
+        {/* 进度条 */}
+        <div className="h-2 w-full max-w-md overflow-hidden rounded-full bg-white/5">
+          <div
+            className="h-full rounded-full bg-gradient-aurora shadow-glow transition-all duration-700 ease-out"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
 
         {/* Steps tracker */}
-        <div className="flex w-full max-w-sm items-center justify-between gap-2">
+        <div className="flex w-full max-w-md items-center justify-between gap-2">
           {steps.map((s, i) => {
             const done = i < stageIndex;
             const active = i === stageIndex;
@@ -315,14 +378,6 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
               </div>
             );
           })}
-        </div>
-
-        {/* Progress bar */}
-        <div className="h-1.5 w-full max-w-sm overflow-hidden rounded-full bg-white/5">
-          <div
-            className="h-full rounded-full bg-gradient-aurora shadow-glow transition-all duration-700 ease-out"
-            style={{ width: `${meta.pct}%` }}
-          />
         </div>
 
         {/* Meta line */}
