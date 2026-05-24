@@ -156,42 +156,64 @@ function PlanCard({ plan, onBuy }: { plan: Plan; onBuy: (id: string, amount: num
   return (
     <div
       className={cn(
-        "group relative flex flex-col rounded-2xl border bg-card/60 p-5 transition-all duration-300",
-        "hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10",
+        "group relative flex flex-col rounded-2xl p-5 transition-all duration-300",
+        "hover:-translate-y-1",
         highlight
-          ? "scale-[1.03] border-transparent bg-gradient-to-b from-primary/10 to-card/80 shadow-glow lg:scale-[1.06]"
-          : "border-border/60 hover:border-primary/40",
+          ? "scale-[1.03] bg-zinc-900 shadow-[0_0_28px_rgba(16,185,129,0.28)] lg:scale-[1.06]"
+          : "border border-zinc-800 bg-zinc-900/50 hover:border-zinc-600 hover:shadow-lg hover:shadow-black/30",
       )}
     >
-      {/* 渐变描边（高亮卡片） */}
+      {/* 高亮卡片：径向翡翠光晕 + 2px 渐变描边 */}
       {highlight && (
-        <div className="pointer-events-none absolute inset-0 rounded-2xl p-[1.5px] bg-gradient-aurora opacity-90 [mask:linear-gradient(#000_0_0)_content-box,linear-gradient(#000_0_0)] [mask-composite:exclude]" />
+        <>
+          <div
+            className="pointer-events-none absolute inset-0 rounded-2xl"
+            style={{
+              background:
+                "radial-gradient(120% 80% at 50% 0%, rgba(16,185,129,0.18) 0%, rgba(16,185,129,0.06) 35%, rgba(0,0,0,0) 70%)",
+            }}
+          />
+          <div
+            className="pointer-events-none absolute inset-0 rounded-2xl p-[2px] bg-gradient-to-br from-emerald-400 to-cyan-500"
+            style={{
+              WebkitMask:
+                "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
+              WebkitMaskComposite: "xor",
+              maskComposite: "exclude",
+            }}
+          />
+        </>
       )}
 
       {/* 角标 */}
       {highlight && (
-        <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-aurora px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-primary-foreground shadow-glow">
+        <div className="absolute -top-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-gradient-to-r from-emerald-400 to-cyan-500 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-[0_4px_14px_rgba(16,185,129,0.45)]">
           最受欢迎 · Most Popular
         </div>
       )}
 
       <div className="relative flex items-center gap-2">
-        {plan.icon && <span className="text-primary">{plan.icon}</span>}
-        <h3 className="text-base font-semibold">{plan.name}</h3>
+        {plan.icon && <span className={highlight ? "text-emerald-400" : "text-zinc-400"}>{plan.icon}</span>}
+        <h3 className={cn("text-base font-semibold", highlight ? "text-white" : "text-zinc-100")}>{plan.name}</h3>
       </div>
-      <p className="relative mt-1 text-xs text-muted-foreground">{plan.desc}</p>
+      <p className="relative mt-1 text-xs text-zinc-400">{plan.desc}</p>
 
       <div className="relative mt-4 flex items-baseline gap-1">
-        <span className="text-sm text-muted-foreground">¥</span>
-        <span className={cn("text-4xl font-bold tabular-nums", highlight && "bg-gradient-aurora bg-clip-text text-transparent")}>
+        <span className={cn("text-sm", highlight ? "text-zinc-300" : "text-zinc-500")}>¥</span>
+        <span
+          className={cn(
+            "font-bold tabular-nums leading-none",
+            highlight ? "text-5xl text-white drop-shadow-[0_2px_8px_rgba(16,185,129,0.35)]" : "text-4xl text-zinc-100",
+          )}
+        >
           {plan.price}
         </span>
       </div>
 
       <ul className="relative mt-4 flex-1 space-y-2">
         {plan.features.map((f) => (
-          <li key={f} className="flex items-start gap-2 text-xs text-foreground/80">
-            <Check className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", highlight ? "text-primary" : "text-primary/70")} />
+          <li key={f} className="flex items-start gap-2 text-xs text-zinc-300">
+            <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />
             <span>{f}</span>
           </li>
         ))}
@@ -200,10 +222,10 @@ function PlanCard({ plan, onBuy }: { plan: Plan; onBuy: (id: string, amount: num
       <Button
         onClick={() => onBuy(plan.id, plan.price)}
         className={cn(
-          "relative mt-5 w-full",
+          "relative mt-5 w-full font-semibold",
           highlight
-            ? "bg-gradient-aurora text-primary-foreground shadow-glow hover:opacity-95"
-            : "bg-white/[0.04] text-foreground hover:bg-white/[0.08] border border-border/60",
+            ? "bg-emerald-500 text-white shadow-[0_0_18px_rgba(16,185,129,0.45)] hover:bg-emerald-400"
+            : "border border-zinc-700 bg-zinc-800/60 text-zinc-100 shadow-none hover:border-emerald-500/60 hover:bg-zinc-800",
         )}
       >
         立即购买
