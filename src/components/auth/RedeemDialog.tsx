@@ -140,11 +140,11 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
               placeholder="请输入您在发卡网购买的卡密..."
               className="h-11 flex-1 border-emerald-500/20 bg-black/40 font-mono tracking-wider text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-emerald-500/40"
               onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
-              disabled={loading}
+              disabled={loading || cooldown > 0}
             />
             <Button
               onClick={submit}
-              disabled={loading || !code.trim()}
+              disabled={loading || cooldown > 0 || !code.trim()}
               className="h-11 min-w-[110px] bg-emerald-500 font-semibold text-white shadow-[0_0_18px_rgba(16,185,129,0.45)] hover:bg-emerald-400"
             >
               {loading ? (
@@ -152,6 +152,8 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                   <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                   激活中…
                 </span>
+              ) : cooldown > 0 ? (
+                `请稍候 ${cooldown}s`
               ) : (
                 "激活权益"
               )}
