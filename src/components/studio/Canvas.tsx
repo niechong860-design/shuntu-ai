@@ -263,6 +263,36 @@ function EmptyPlaceholder() {
   );
 }
 
+const TERMINAL_LINES_POOL = [
+  "[boot] initializing inference pipeline...",
+  "[cuda] detected 8x NVIDIA H100 80GB HBM3",
+  "[alloc] reserving 73.4 GiB VRAM on node-07",
+  "[model] loading GPT-Image-2 weights (12.7B params)",
+  "[model] mmap shards: 0001/0042 ... 0042/0042 OK",
+  "[vae] warming latent decoder (f8, ch=4)",
+  "[clip] tokenizing prompt → 87 tokens",
+  "[clip] encoding text embeddings [1, 77, 768]",
+  "[ref] parsing reference image features...",
+  "[ref] extracting style codes via DINOv2-L/14",
+  "[ref] semantic similarity = 0.913",
+  "[sched] dispatching to GPU cluster (region: ap-east-1)",
+  "[queue] task accepted, priority=high",
+  "[diffuse] sampler=DPM++ 2M Karras, steps=28",
+  "[diffuse] cfg=7.5, seed=0x8f3a1c92",
+  "[diffuse] step 04/28 σ=14.61 loss=0.0823",
+  "[diffuse] step 12/28 σ=6.42  loss=0.0411",
+  "[diffuse] step 20/28 σ=2.18  loss=0.0192",
+  "[refine] high-frequency detail denoising...",
+  "[refine] edge-aware sharpening kernel applied",
+  "[refine] color tone calibration ΔE=1.23",
+  "[upscale] ESRGAN x2 → 2048×2048",
+  "[safety] NSFW classifier: clean (0.002)",
+  "[safety] watermark embedded (invisible)",
+  "[encode] PNG quality=95, optimizing palette",
+  "[upload] streaming to CDN edge node...",
+  "[done] artifact ready, finalizing handoff",
+];
+
 function QueueProgress({ progress }: { progress: GenProgress | null }) {
   const stage = progress?.stage ?? "submitting";
   const elapsed = progress?.elapsedSec ?? 0;
@@ -275,6 +305,25 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
     const advanced = Math.floor(elapsed / SEC_PER_TICK);
     return Math.max(1, initialPos - advanced);
   }, [stage, elapsed, initialPos]);
+
+  // 终端滚动日志：每 ~450ms 追加一行
+  const [logs, setLogs] = useState<string[]>(() => [TERMINAL_LINES_POOL[0]]);
+  useEffect(() => {
+    let i = 1;
+    const id = setInterval(() => {
+      setLogs((prev) => {
+        const line = TERMINAL_LINES_POOL[i % TERMINAL_LINES_POOL.length];
+        i++;
+        const next = [...prev, line];
+        return next.length > 60 ? next.slice(next.length - 60) : next;
+      });
+    }, 420);
+    return () => clearInterval(id);
+  }, []);
+  const logEndRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [logs]);
 
   // 模拟渲染时长（秒）：12~22 秒之间
   const [renderBudget] = useState(() => 12 + Math.floor(Math.random() * 10));
@@ -324,9 +373,59 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
   const stageIndex = stage === "polling" ? 1 : steps.findIndex((s) => s.key === stage);
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-gradient-to-br from-surface to-surface-elevated">
-      <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-primary/15 to-transparent" />
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 px-6">
+    <div className="relative h-full w-full overflow-hidden bg-[#03110c]">
+      {/* 背景：网格 + 径向光晕 + 扫描线 */}
+      <div
+        className="absolute inset-0 opacity-[0.35]"
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(74,222,128,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(74,222,128,0.08) 1px, transparent 1px)",
+          backgroundSize: "32px 32px",
+        }}
+      />
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(ellipse at 50% 40%, rgba(34,197,94,0.18), transparent 60%), radial-gradient(ellipse at 80% 90%, rgba(16,185,129,0.12), transparent 55%)",
+        }}
+      />
+      <div
+        className="pointer-events-none absolute inset-0 mix-blend-overlay opacity-30"
+        style={{
+          backgroundImage:
+            "repeating-linear-gradient(0deg, rgba(255,255,255,0.04) 0 1px, transparent 1px 3px)",
+        }}
+      />
+      {/* 终端日志滚动 */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="scrollbar-thin absolute inset-x-0 bottom-0 top-0 overflow-hidden px-6 py-4 font-mono text-[10.5px] leading-relaxed text-emerald-300/55">
+          <div className="flex flex-col">
+            {logs.map((line, idx) => {
+              const isLast = idx === logs.length - 1;
+              const dim = idx < logs.length - 8;
+              return (
+                <div
+                  key={idx}
+                  className={`whitespace-pre tracking-tight ${dim ? "opacity-30" : "opacity-90"} ${isLast ? "text-emerald-200" : ""}`}
+                >
+                  <span className="text-emerald-500/60">{String(idx).padStart(4, "0")}</span>
+                  <span className="mx-2 text-emerald-500/40">│</span>
+                  <span>{line}</span>
+                  {isLast && <span className="ml-1 inline-block h-3 w-1.5 -mb-[2px] animate-pulse bg-emerald-300/80" />}
+                </div>
+              );
+            })}
+            <div ref={logEndRef} />
+          </div>
+          {/* 顶部渐隐遮罩 */}
+          <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-[#03110c] to-transparent" />
+        </div>
+      </div>
+      {/* 中心信息卡 */}
+      <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-emerald-400/10 to-transparent" />
+      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-5 px-6">
+        <div className="glass-elevated flex w-full max-w-md flex-col items-center gap-5 rounded-2xl border border-emerald-400/20 bg-black/40 px-6 py-6 shadow-glow backdrop-blur-xl">
         <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-aurora shadow-glow">
           <Sparkles className="h-7 w-7 animate-pulse text-primary-foreground" />
         </div>
@@ -386,7 +485,8 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
           {progress?.attempt ? <span>· 第 {progress.attempt} 次查询</span> : null}
           {progress?.taskId ? <span>· 任务 {progress.taskId.slice(0, 8)}…</span> : null}
         </div>
-        <div className="text-[10px] font-light text-muted-foreground">您可以继续浏览历史记录，结果会在这里自动显示</div>
+        <div className="text-[10px] font-light text-emerald-200/50">您可以继续浏览历史记录，结果会在这里自动显示</div>
+        </div>
       </div>
     </div>
   );
