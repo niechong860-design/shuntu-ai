@@ -35,13 +35,22 @@ const RATIOS = [
 
 type StyleTpl = { id: string; name: string; image_url: string | null; sort_order: number };
 
+export type GenProgress = {
+  stage: "submitting" | "queued" | "rendering" | "polling";
+  attempt: number;
+  elapsedSec: number;
+  taskId?: string;
+  message?: string;
+};
+
 type Props = {
  onGenerateStart: (info: { prompt: string; modelName: string }) => void;
  onGenerateDone: (imageUrl: string | null) => void;
+  onProgress?: (p: GenProgress | null) => void;
   generating: boolean;
 };
 
-export function ControlPanel({ onGenerateStart, onGenerateDone, generating }: Props) {
+export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, generating }: Props) {
   const fetchModels = useServerFn(listModelsConfig);
   const generate = useServerFn(generateImage);
   const checkStatus = useServerFn(checkImageStatus);
