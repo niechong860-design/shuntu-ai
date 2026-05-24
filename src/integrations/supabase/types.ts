@@ -14,16 +14,471 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      admin_settings: {
+        Row: {
+          access_password: string
+          contact_qq: string
+          contact_wechat: string
+          id: number
+          system_prompt: string
+          updated_at: string
+        }
+        Insert: {
+          access_password?: string
+          contact_qq?: string
+          contact_wechat?: string
+          id?: number
+          system_prompt?: string
+          updated_at?: string
+        }
+        Update: {
+          access_password?: string
+          contact_qq?: string
+          contact_wechat?: string
+          id?: number
+          system_prompt?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ads: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          link_url: string | null
+          sort_order: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          link_url?: string | null
+          sort_order?: number
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          link_url?: string | null
+          sort_order?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      case_comments: {
+        Row: {
+          case_id: string
+          content: string
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          case_id: string
+          content: string
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          case_id?: string
+          content?: string
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "case_comments_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "inspiration_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      case_favorites: {
+        Row: {
+          case_id: string
+          created_at: string
+          user_id: string
+        }
+        Insert: {
+          case_id: string
+          created_at?: string
+          user_id: string
+        }
+        Update: {
+          case_id?: string
+          created_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "case_favorites_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "inspiration_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      case_likes: {
+        Row: {
+          case_id: string
+          created_at: string
+          user_id: string
+        }
+        Insert: {
+          case_id: string
+          created_at?: string
+          user_id: string
+        }
+        Update: {
+          case_id?: string
+          created_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "case_likes_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "inspiration_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coupons: {
+        Row: {
+          amount: number
+          code: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_used: boolean
+          used_at: string | null
+          used_by: string | null
+          used_by_email: string | null
+        }
+        Insert: {
+          amount: number
+          code: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_used?: boolean
+          used_at?: string | null
+          used_by?: string | null
+          used_by_email?: string | null
+        }
+        Update: {
+          amount?: number
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_used?: boolean
+          used_at?: string | null
+          used_by?: string | null
+          used_by_email?: string | null
+        }
+        Relationships: []
+      }
+      generation_history: {
+        Row: {
+          cost: number
+          created_at: string
+          id: string
+          image_url: string | null
+          model: string
+          prompt: string | null
+          user_id: string
+        }
+        Insert: {
+          cost?: number
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          model: string
+          prompt?: string | null
+          user_id: string
+        }
+        Update: {
+          cost?: number
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          model?: string
+          prompt?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      global_config: {
+        Row: {
+          base_url: string
+          global_api_key: string | null
+          id: number
+          updated_at: string
+        }
+        Insert: {
+          base_url?: string
+          global_api_key?: string | null
+          id?: number
+          updated_at?: string
+        }
+        Update: {
+          base_url?: string
+          global_api_key?: string | null
+          id?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      inspiration_cases: {
+        Row: {
+          aspect_ratio: string | null
+          created_at: string
+          favorites_count: number
+          id: string
+          image_url: string
+          is_published: boolean
+          likes_count: number
+          model_key: string | null
+          model_name: string | null
+          prompt: string
+          size: string | null
+          style_id: string | null
+          tags: string[]
+          title: string
+          updated_at: string
+          user_id: string
+          views: number
+        }
+        Insert: {
+          aspect_ratio?: string | null
+          created_at?: string
+          favorites_count?: number
+          id?: string
+          image_url: string
+          is_published?: boolean
+          likes_count?: number
+          model_key?: string | null
+          model_name?: string | null
+          prompt?: string
+          size?: string | null
+          style_id?: string | null
+          tags?: string[]
+          title?: string
+          updated_at?: string
+          user_id: string
+          views?: number
+        }
+        Update: {
+          aspect_ratio?: string | null
+          created_at?: string
+          favorites_count?: number
+          id?: string
+          image_url?: string
+          is_published?: boolean
+          likes_count?: number
+          model_key?: string | null
+          model_name?: string | null
+          prompt?: string
+          size?: string | null
+          style_id?: string | null
+          tags?: string[]
+          title?: string
+          updated_at?: string
+          user_id?: string
+          views?: number
+        }
+        Relationships: []
+      }
+      models_config: {
+        Row: {
+          api_key: string | null
+          api_url: string | null
+          cost: number
+          created_at: string
+          description: string | null
+          extra_params: Json
+          fetch_url: string | null
+          id: string
+          is_enabled: boolean
+          model_key: string
+          name: string
+          prompt_key: string
+          request_format: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          api_key?: string | null
+          api_url?: string | null
+          cost?: number
+          created_at?: string
+          description?: string | null
+          extra_params?: Json
+          fetch_url?: string | null
+          id?: string
+          is_enabled?: boolean
+          model_key: string
+          name: string
+          prompt_key?: string
+          request_format?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          api_key?: string | null
+          api_url?: string | null
+          cost?: number
+          created_at?: string
+          description?: string | null
+          extra_params?: Json
+          fetch_url?: string | null
+          id?: string
+          is_enabled?: boolean
+          model_key?: string
+          name?: string
+          prompt_key?: string
+          request_format?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          credits: number
+          display_name: string | null
+          email: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          credits?: number
+          display_name?: string | null
+          email?: string | null
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          credits?: number
+          display_name?: string | null
+          email?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      style_templates: {
+        Row: {
+          id: string
+          image_url: string | null
+          name: string
+          prompt: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          image_url?: string | null
+          name: string
+          prompt?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          image_url?: string | null
+          name?: string
+          prompt?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      consume_credits_for_generation: {
+        Args: { _model_key: string; _prompt: string }
+        Returns: {
+          cost: number
+          credits: number
+          message: string
+          success: boolean
+        }[]
+      }
+      get_contact_info: {
+        Args: never
+        Returns: {
+          contact_qq: string
+          contact_wechat: string
+        }[]
+      }
+      has_admin_access: { Args: { _user_id: string }; Returns: boolean }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      increment_case_view: { Args: { _case_id: string }; Returns: undefined }
+      redeem_coupon: {
+        Args: { _code: string }
+        Returns: {
+          amount: number
+          message: string
+          success: boolean
+        }[]
+      }
+      set_latest_history_image: {
+        Args: { _image_url: string; _model: string }
+        Returns: undefined
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "user" | "founder"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +605,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "user", "founder"],
+    },
   },
 } as const
