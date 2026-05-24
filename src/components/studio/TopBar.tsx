@@ -30,7 +30,7 @@ export function TopBar({ credits, onOpenHistory, onSwitchAccount }: Props) {
             window.location.assign("/");
           }
         }}
-        className="flex items-center gap-2.5 rounded-lg p-1 transition-all hover:bg-white/[0.05] active:scale-95"
+        className="flex items-center gap-2.5 bg-transparent p-1 focus:outline-none focus-visible:outline-none"
       >
         <img src={shuntuLogo} alt="ShunTu 返回主页" className="h-9 w-auto object-contain" />
       </button>
