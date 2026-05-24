@@ -1257,3 +1257,125 @@ export const generateRandomPrompt = createServerFn({ method: "POST" })
     if (!text) throw new Error("AI 未返回内容");
     return { prompt: text };
   });
+
+// --- Admin: Test a model end-to-end (submit + poll for async) ---
+export const adminTestModel = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      modelKey: z.string().min(1).max(64),
+      prompt: z.string().min(1).max(500).optional(),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const startedAt = Date.now();
+    await assertAdmin(context.userId);
+
+    const { base_url, global_api_key } = await loadGlobalConfig();
+    const { data: model, error: mErr } = await supabaseAdmin
+      .from("models_config")
+      .select("model_key, name, api_url, api_key, request_format, prompt_key, extra_params, is_enabled")
+      .eq("model_key", data.modelKey)
+      .maybeSingle();
+    if (mErr) throw new Error(mErr.message);
+    if (!model) throw new Error("模型不存在");
+    if (!model.api_url) {
+      return { ok: false, stage: "config", message: "未配置 API 接口地址", elapsedMs: Date.now() - startedAt, imageUrl: null as string | null };
+    }
+
+    const targetKey = normalizeUpstreamApiKey((model as any).api_key) || normalizeUpstreamApiKey(global_api_key);
+    const pureApiKey = String(targetKey).replace(/Bearer\s+/i, "").trim();
+    if (!pureApiKey) {
+      return { ok: false, stage: "config", message: "未配置该模型或全局 API Key", elapsedMs: Date.now() - startedAt, imageUrl: null };
+    }
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "Authorization": pureApiKey,
+    };
+    const submitUrl = resolveUrl(base_url, model.api_url);
+    const promptKey = (model as any).prompt_key || "prompt";
+    const requestFormat = (model as any).request_format || "async_id";
+    const testPrompt = (data.prompt && data.prompt.trim()) || "a cute orange tabby kitten sitting in a sunny garden, soft natural light, high detail";
+
+    // 占位符替换（同 generateImage 的精简版，不带参考图）
+    const WAN_SIZE_MAP: Record<string, string> = { "1:1": "1280*1280" };
+    const wanSize = WAN_SIZE_MAP["1:1"];
+    const substitute = (v: any): any => {
+      if (typeof v === "string") {
+        return v
+          .replace(/\{\{\s*wan_size\s*\}\}/g, wanSize)
+          .replace(/\{\{\s*grok_aspect\s*\}\}/g, "1:1")
+          .replace(/\{\{\s*size\s*\}\}/g, "1K")
+          .replace(/\{\{\s*aspect\s*\}\}/g, "1:1")
+          .replace(/\{\{\s*prompt\s*\}\}/g, testPrompt)
+          .replace(/\{\{\s*urls\s*\}\}/g, "");
+      }
+      if (Array.isArray(v)) return v.map(substitute);
+      if (v && typeof v === "object") {
+        const o: Record<string, any> = {};
+        for (const k of Object.keys(v)) o[k] = substitute(v[k]);
+        return o;
+      }
+      return v;
+    };
+    const extra = substitute((model as any).extra_params ?? {}) as Record<string, unknown>;
+    // 清掉空字符串占位（urls）
+    for (const k of Object.keys(extra)) {
+      if (extra[k] === "" || (Array.isArray(extra[k]) && (extra[k] as any[]).length === 0)) {
+        delete extra[k];
+      }
+    }
+    const body: Record<string, unknown> = { [promptKey]: testPrompt, ...extra };
+
+    // 提交
+    let res: Response;
+    try {
+      res = await fetch(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
+    } catch (e: any) {
+      return { ok: false, stage: "submit", message: `网络错误：${e?.message ?? "fetch 失败"}`, elapsedMs: Date.now() - startedAt, imageUrl: null };
+    }
+    const text = await res.text();
+    const json: any = parseUpstreamResponse(text);
+    if (!res.ok) {
+      const msg = (json?.msg ?? json?.error?.message ?? text ?? "").toString().slice(0, 300);
+      return { ok: false, stage: "submit", message: `HTTP ${res.status}: ${msg || "(空响应)"}`, elapsedMs: Date.now() - startedAt, imageUrl: null };
+    }
+    if (Number(json?.code) >= 400) {
+      return { ok: false, stage: "submit", message: `上游 code=${json?.code}: ${(json?.msg ?? "").toString().slice(0, 200)}`, elapsedMs: Date.now() - startedAt, imageUrl: null };
+    }
+
+    if (requestFormat === "sync_url") {
+      const url = extractImageUrl(json ?? text);
+      if (!url) return { ok: false, stage: "result", message: "上游未返回图片 URL", elapsedMs: Date.now() - startedAt, imageUrl: null };
+      return { ok: true, stage: "result", message: "测试成功", elapsedMs: Date.now() - startedAt, imageUrl: url };
+    }
+
+    // 异步：轮询任务
+    const taskId: string | null =
+      json?.data?.id ?? json?.id ?? json?.task_id ?? (typeof json?.data === "string" ? json.data : null);
+    if (!taskId) {
+      return { ok: false, stage: "submit", message: `提交成功但未返回任务 ID：${text.slice(0, 200)}`, elapsedMs: Date.now() - startedAt, imageUrl: null };
+    }
+
+    const deadline = Date.now() + 25_000; // 最多轮询 25s
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 2500));
+      const detailUrl = `https://api.wuyinkeji.com/api/async/detail?id=${encodeURIComponent(taskId)}`;
+      try {
+        const r = await fetch(detailUrl, { method: "GET", headers });
+        const t = await r.text();
+        const j: any = parseUpstreamResponse(t);
+        if (!r.ok) continue;
+        const status = Number(j?.data?.status);
+        if (status === 2) {
+          const url = extractImageUrl(j?.data) ?? extractImageUrl(j);
+          if (url) return { ok: true, stage: "result", message: "测试成功", elapsedMs: Date.now() - startedAt, imageUrl: url };
+        }
+        if (status === 3) {
+          return { ok: false, stage: "result", message: `任务失败：${(j?.data?.message ?? j?.msg ?? "").toString().slice(0, 200) || "上游拒绝"}`, elapsedMs: Date.now() - startedAt, imageUrl: null };
+        }
+      } catch { /* keep polling */ }
+    }
+    return { ok: false, stage: "timeout", message: `任务已提交（taskId=${taskId}），但 25 秒内未生成完成`, elapsedMs: Date.now() - startedAt, imageUrl: null };
+  });
