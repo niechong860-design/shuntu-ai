@@ -7,6 +7,7 @@ import {
   adminDeleteModel,
   adminGetGlobalConfig,
   adminUpdateGlobalConfig,
+  adminTestModel,
 } from "@/lib/admin.functions";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
-import { Pencil, RefreshCw, Sparkles, Plus, Trash2, KeyRound, Link as LinkIcon, Globe, Save } from "lucide-react";
+import { Pencil, RefreshCw, Sparkles, Plus, Trash2, KeyRound, Link as LinkIcon, Globe, Save, FlaskConical, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 type ModelCfg = {
