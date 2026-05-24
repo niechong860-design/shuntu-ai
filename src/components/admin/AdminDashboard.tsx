@@ -7,10 +7,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useServerFn } from "@tanstack/react-start";
 import {
   adminListUsers, adminResetPassword, adminAdjustCredits,
+  adminBanUser, adminDeleteUser,
   adminListCoupons, adminGenerateCoupons, adminDeleteCoupon,
 } from "@/lib/admin.functions";
 import { toast } from "sonner";
-import { Shield, KeyRound, Coins, Copy, Plus, RefreshCw, Users, Ticket, LayoutDashboard, Trash2, Sparkles, Megaphone, Crown, Lock, Palette } from "lucide-react";
+import { Shield, KeyRound, Coins, Copy, Plus, RefreshCw, Users, Ticket, LayoutDashboard, Trash2, Sparkles, Megaphone, Crown, Lock, Palette, Ban, CircleCheck } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { AnalyticsPanel } from "./AnalyticsPanel";
 import { ModelsPanel } from "./ModelsPanel";
@@ -20,7 +21,7 @@ import { AccessGate } from "./AccessGate";
 import { AccessPasswordPanel } from "./AccessPasswordPanel";
 import { StyleTemplatesPanel } from "./StyleTemplatesPanel";
 
-type UserRow = { id: string; email: string | null; display_name: string | null; credits: number; created_at: string; total_spent: number };
+type UserRow = { id: string; email: string | null; display_name: string | null; credits: number; created_at: string; total_spent: number; is_banned?: boolean };
 type Coupon = {
   id: string; code: string; amount: number; is_used: boolean;
   used_by_email: string | null; used_at: string | null; created_at: string;
@@ -83,6 +84,8 @@ function UsersPanel() {
   const list = useServerFn(adminListUsers);
   const resetPw = useServerFn(adminResetPassword);
   const adjust = useServerFn(adminAdjustCredits);
+  const banFn = useServerFn(adminBanUser);
+  const delFn = useServerFn(adminDeleteUser);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [pwOpen, setPwOpen] = useState<UserRow | null>(null);
@@ -131,19 +134,90 @@ function UsersPanel() {
           </TableHeader>
           <TableBody>
             {filtered.map(u => (
-              <TableRow key={u.id}>
-                <TableCell className="font-medium">{u.email ?? "—"}</TableCell>
+              <TableRow key={u.id} className={u.is_banned ? "opacity-60" : undefined}>
+                <TableCell className="font-medium">
+                  <div className="flex items-center gap-2">
+                    <span>{u.email ?? "—"}</span>
+                    {u.is_banned && (
+                      <span className="rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] text-destructive">已封禁</span>
+                    )}
+                  </div>
+                </TableCell>
                 <TableCell className="font-mono text-[11px] text-muted-foreground">{u.id.slice(0, 8)}…</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{new Date(u.created_at).toLocaleString()}</TableCell>
                 <TableCell className="text-right font-mono tabular-nums">{u.credits.toLocaleString()}</TableCell>
                 <TableCell className="text-right font-mono tabular-nums text-primary">{Number(u.total_spent ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
                 <TableCell className="text-right">
-                  <Button variant="ghost" size="sm" onClick={() => setPwOpen(u)}>
-                    <KeyRound className="mr-1 h-3.5 w-3.5" />重置密码
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => setCreditOpen(u)}>
-                    <Coins className="mr-1 h-3.5 w-3.5" />控制余额
-                  </Button>
+                  <div className="flex items-center justify-end gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => setPwOpen(u)}>
+                      <KeyRound className="mr-1 h-3.5 w-3.5" />重置密码
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setCreditOpen(u)}>
+                      <Coins className="mr-1 h-3.5 w-3.5" />控制余额
+                    </Button>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className={u.is_banned ? "text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-400" : "text-amber-400 hover:bg-amber-500/10 hover:text-amber-400"}
+                        >
+                          {u.is_banned ? <CircleCheck className="mr-1 h-3.5 w-3.5" /> : <Ban className="mr-1 h-3.5 w-3.5" />}
+                          {u.is_banned ? "解封" : "封禁"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="end" className="w-64 border-border/70 bg-card/90 backdrop-blur-xl">
+                        <p className="text-xs text-foreground">
+                          确定要{u.is_banned ? "解封" : "封禁"}用户 <span className="font-medium">{u.email}</span> 吗？
+                        </p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          {u.is_banned ? "解封后用户可以重新登录使用。" : "封禁后用户将无法登录或使用平台。"}
+                        </p>
+                        <div className="mt-3 flex justify-end">
+                          <Button
+                            size="sm"
+                            variant={u.is_banned ? "default" : "destructive"}
+                            onClick={async () => {
+                              const next = !u.is_banned;
+                              setUsers(prev => prev.map(x => x.id === u.id ? { ...x, is_banned: next } : x));
+                              try {
+                                await banFn({ data: { userId: u.id, banned: next } });
+                                toast.success(next ? "已封禁用户" : "已解封用户");
+                              } catch (e: any) { toast.error(e.message); load(); }
+                            }}
+                          >确认{u.is_banned ? "解封" : "封禁"}</Button>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive">
+                          <Trash2 className="mr-1 h-3.5 w-3.5" />删除
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="end" className="w-72 border-border/70 bg-card/90 backdrop-blur-xl">
+                        <p className="text-xs text-foreground">
+                          确定要彻底删除用户 <span className="font-medium">{u.email}</span> 吗？
+                        </p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          将同时删除该用户的资料、生成记录与登录账号，操作不可恢复。
+                        </p>
+                        <div className="mt-3 flex justify-end">
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={async () => {
+                              setUsers(prev => prev.filter(x => x.id !== u.id));
+                              try {
+                                await delFn({ data: { userId: u.id } });
+                                toast.success("用户已删除");
+                              } catch (e: any) { toast.error(e.message); load(); }
+                            }}
+                          >确认删除</Button>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
