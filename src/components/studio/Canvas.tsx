@@ -263,6 +263,36 @@ function EmptyPlaceholder() {
   );
 }
 
+const TERMINAL_LINES_POOL = [
+  "[boot] initializing inference pipeline...",
+  "[cuda] detected 8x NVIDIA H100 80GB HBM3",
+  "[alloc] reserving 73.4 GiB VRAM on node-07",
+  "[model] loading GPT-Image-2 weights (12.7B params)",
+  "[model] mmap shards: 0001/0042 ... 0042/0042 OK",
+  "[vae] warming latent decoder (f8, ch=4)",
+  "[clip] tokenizing prompt → 87 tokens",
+  "[clip] encoding text embeddings [1, 77, 768]",
+  "[ref] parsing reference image features...",
+  "[ref] extracting style codes via DINOv2-L/14",
+  "[ref] semantic similarity = 0.913",
+  "[sched] dispatching to GPU cluster (region: ap-east-1)",
+  "[queue] task accepted, priority=high",
+  "[diffuse] sampler=DPM++ 2M Karras, steps=28",
+  "[diffuse] cfg=7.5, seed=0x8f3a1c92",
+  "[diffuse] step 04/28 σ=14.61 loss=0.0823",
+  "[diffuse] step 12/28 σ=6.42  loss=0.0411",
+  "[diffuse] step 20/28 σ=2.18  loss=0.0192",
+  "[refine] high-frequency detail denoising...",
+  "[refine] edge-aware sharpening kernel applied",
+  "[refine] color tone calibration ΔE=1.23",
+  "[upscale] ESRGAN x2 → 2048×2048",
+  "[safety] NSFW classifier: clean (0.002)",
+  "[safety] watermark embedded (invisible)",
+  "[encode] PNG quality=95, optimizing palette",
+  "[upload] streaming to CDN edge node...",
+  "[done] artifact ready, finalizing handoff",
+];
+
 function QueueProgress({ progress }: { progress: GenProgress | null }) {
   const stage = progress?.stage ?? "submitting";
   const elapsed = progress?.elapsedSec ?? 0;
@@ -275,6 +305,25 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
     const advanced = Math.floor(elapsed / SEC_PER_TICK);
     return Math.max(1, initialPos - advanced);
   }, [stage, elapsed, initialPos]);
+
+  // 终端滚动日志：每 ~450ms 追加一行
+  const [logs, setLogs] = useState<string[]>(() => [TERMINAL_LINES_POOL[0]]);
+  useEffect(() => {
+    let i = 1;
+    const id = setInterval(() => {
+      setLogs((prev) => {
+        const line = TERMINAL_LINES_POOL[i % TERMINAL_LINES_POOL.length];
+        i++;
+        const next = [...prev, line];
+        return next.length > 60 ? next.slice(next.length - 60) : next;
+      });
+    }, 420);
+    return () => clearInterval(id);
+  }, []);
+  const logEndRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [logs]);
 
   // 模拟渲染时长（秒）：12~22 秒之间
   const [renderBudget] = useState(() => 12 + Math.floor(Math.random() * 10));
