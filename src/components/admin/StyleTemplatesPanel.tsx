@@ -226,23 +226,41 @@ function TemplatesGrid() {
 
 function TemplateCard({ tpl, onSaved }: { tpl: Tpl; onSaved: () => void }) {
   const updateFn = useServerFn(adminUpdateStyleTemplate);
+  const deleteFn = useServerFn(adminDeleteStyleTemplate);
   const { session } = useAuth();
+  const [name, setName] = useState(tpl.name ?? "");
   const [imageUrl, setImageUrl] = useState(tpl.image_url ?? "");
   const [prompt, setPrompt] = useState(tpl.prompt ?? "");
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const dirty = (imageUrl || "") !== (tpl.image_url ?? "") || prompt !== (tpl.prompt ?? "");
+  const dirty =
+    name !== (tpl.name ?? "") ||
+    (imageUrl || "") !== (tpl.image_url ?? "") ||
+    prompt !== (tpl.prompt ?? "");
 
   const save = async () => {
+    if (!name.trim()) return toast.error("模板名称不能为空");
     setBusy(true);
     try {
-      await updateFn({ data: { id: tpl.id, image_url: imageUrl || null, prompt } });
-      toast.success(`已保存：${tpl.name}`);
+      await updateFn({ data: { id: tpl.id, name: name.trim(), image_url: imageUrl || null, prompt } });
+      toast.success(`已保存：${name}`);
       onSaved();
     } catch (e: any) { toast.error(e.message); }
     finally { setBusy(false); }
+  };
+
+  const remove = async () => {
+    if (!confirm(`确定删除模板「${tpl.name}」？此操作不可恢复。`)) return;
+    setDeleting(true);
+    try {
+      await deleteFn({ data: { id: tpl.id } });
+      toast.success(`已删除：${tpl.name}`);
+      onSaved();
+    } catch (e: any) { toast.error(e.message); }
+    finally { setDeleting(false); }
   };
 
   const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -273,9 +291,14 @@ function TemplateCard({ tpl, onSaved }: { tpl: Tpl; onSaved: () => void }) {
 
   return (
     <div className="rounded-xl border border-border bg-white/[0.02] p-3 space-y-2">
-      <div className="flex items-center justify-between">
-        <div className="text-sm font-medium">{tpl.name}</div>
-        <span className="font-mono text-[10px] text-muted-foreground">{tpl.id}</span>
+      <div className="flex items-center justify-between gap-2">
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="模板名称"
+          className="h-8 text-sm font-medium"
+        />
+        <span className="font-mono text-[10px] text-muted-foreground shrink-0">{tpl.id.slice(0, 12)}</span>
       </div>
 
       <div className="flex gap-3">
@@ -316,9 +339,15 @@ function TemplateCard({ tpl, onSaved }: { tpl: Tpl; onSaved: () => void }) {
         className="font-mono text-[11px]"
       />
 
-      <Button size="sm" className="w-full" onClick={save} disabled={busy || !dirty}>
-        <Save className="mr-1.5 h-3.5 w-3.5" />保存
-      </Button>
+      <div className="flex gap-2">
+        <Button size="sm" className="flex-1" onClick={save} disabled={busy || !dirty}>
+          <Save className="mr-1.5 h-3.5 w-3.5" />保存
+        </Button>
+        <Button size="sm" variant="outline" onClick={remove} disabled={deleting}
+          className="text-destructive hover:bg-destructive/10 hover:text-destructive">
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
     </div>
   );
 }
