@@ -134,15 +134,6 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           </div>
         </div>
 
-        {/* 隐藏的开发者支付测试入口 · 测试通过后可直接删除该按钮 */}
-        <div className="mt-4 flex justify-center">
-          <button
-            onClick={() => handlePurchase("dev_test", 0.01)}
-            className="text-[11px] text-muted-foreground/50 underline-offset-4 transition-colors hover:text-muted-foreground hover:underline"
-          >
-            开发者支付链路测试
-          </button>
-        </div>
       </DialogContent>
     </Dialog>
   );
