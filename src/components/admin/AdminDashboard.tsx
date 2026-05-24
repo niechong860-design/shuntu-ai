@@ -436,6 +436,29 @@ function CouponsPanel() {
           </TableBody>
         </Table>
       </div>
+
+      <Dialog open={!!justGenerated} onOpenChange={(v) => !v && setJustGenerated(null)}>
+        <DialogContent className="max-w-lg border-border/70 bg-card/90 backdrop-blur-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Ticket className="h-4 w-4 text-primary" />
+              本次生成的卡密（{justGenerated?.length ?? 0} 张 · 每张 {justGenerated?.[0]?.amount ?? 0} 点）
+            </DialogTitle>
+          </DialogHeader>
+          <textarea
+            readOnly
+            value={(justGenerated ?? []).map(x => x.code).join("\n")}
+            className="h-64 w-full resize-none rounded-md border border-border/60 bg-black/40 p-3 font-mono text-xs text-foreground focus:outline-none"
+            onFocus={(e) => e.currentTarget.select()}
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setJustGenerated(null)}>关闭</Button>
+            <Button size="sm" className="bg-gradient-aurora text-primary-foreground" onClick={copyJustGenerated}>
+              <Copy className="mr-1.5 h-3.5 w-3.5" />一键复制全部
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
