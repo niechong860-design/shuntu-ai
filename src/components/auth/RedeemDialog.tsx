@@ -151,7 +151,7 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           <p className="mt-3 text-xs text-zinc-400">
             还没有兑换码？
             <a
-              href="https://www.kufaka.com/item/2tig9e"
+              href="https://www.kufaka.com/shop/ATG0OHM3"
               target="_blank"
               rel="noopener noreferrer"
               className="ml-1 font-medium text-emerald-400 underline-offset-2 hover:text-emerald-300 hover:underline"
