@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { Download, Copy, Maximize2, Sparkles, ArrowUpRight, X, Clock, ImageIcon } from "lucide-react";
+import { Download, Copy, Maximize2, Sparkles, ArrowUpRight, X, Clock, ImageIcon, ListOrdered, Loader2, CheckCircle2 } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { getMyGenerationHistory } from "@/lib/admin.functions";
+import type { GenProgress } from "./ControlPanel";
 
 type HistoryItem = {
   id: string;
@@ -33,6 +34,7 @@ type Props = {
   generatedUrl?: string | null;
   currentPrompt?: string;
   currentModel?: string;
+  progress?: GenProgress | null;
   historyOpen: boolean;
   onHistoryOpenChange: (v: boolean) => void;
   onSelectHistory: (url: string, prompt: string, model: string) => void;
@@ -70,7 +72,7 @@ async function copyToClipboard(text: string) {
   }
 }
 
-export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, historyOpen, onHistoryOpenChange, onSelectHistory }: Props) {
+export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, progress, historyOpen, onHistoryOpenChange, onSelectHistory }: Props) {
   const [lightbox, setLightbox] = useState<HistoryItem | null>(null);
   const [heroLightbox, setHeroLightbox] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -108,7 +110,7 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
       {/* Main canvas — pure, full height */}
       <div className="group relative flex-1 min-h-0 overflow-hidden rounded-2xl border border-border bg-card">
         {generating ? (
-          <SkeletonShimmer />
+          <QueueProgress progress={progress ?? null} />
         ) : generatedUrl ? (
           <>
             <img src={generatedUrl} alt="生成结果" className="h-full w-full object-contain bg-black" />
@@ -261,19 +263,75 @@ function EmptyPlaceholder() {
   );
 }
 
-function SkeletonShimmer() {
+function QueueProgress({ progress }: { progress: GenProgress | null }) {
+  const stage = progress?.stage ?? "submitting";
+  const stageMeta: Record<GenProgress["stage"], { label: string; pct: number; hint: string }> = {
+    submitting: { label: "提交中", pct: 15, hint: "正在把请求提交到生成队列" },
+    queued: { label: "排队中", pct: 35, hint: "已进入算力队列，等待 GPU 空闲" },
+    rendering: { label: "渲染中", pct: 70, hint: "AI 正在为你绘制图像" },
+    polling: { label: "网络重试", pct: 50, hint: "网络抖动，自动重试中" },
+  };
+  const meta = stageMeta[stage];
+  const elapsed = progress?.elapsedSec ?? 0;
+  const mm = String(Math.floor(elapsed / 60)).padStart(1, "0");
+  const ss = String(elapsed % 60).padStart(2, "0");
+
+  const steps: Array<{ key: GenProgress["stage"]; label: string }> = [
+    { key: "submitting", label: "提交" },
+    { key: "queued", label: "排队" },
+    { key: "rendering", label: "渲染" },
+  ];
+  const stageIndex = stage === "polling" ? 1 : steps.findIndex((s) => s.key === stage);
+
   return (
     <div className="relative h-full w-full overflow-hidden bg-gradient-to-br from-surface to-surface-elevated">
       <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-primary/15 to-transparent" />
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 px-6">
         <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-aurora shadow-glow">
           <Sparkles className="h-7 w-7 animate-pulse text-primary-foreground" />
         </div>
-        <div className="text-sm font-medium text-foreground/90">AI 正在拼命绘制中，请稍候…</div>
-        <div className="text-[11px] font-light text-muted-foreground">异步任务轮询中 · 最长 60 秒</div>
-        <div className="mt-1 h-1 w-48 overflow-hidden rounded-full bg-white/5">
-          <div className="h-full w-1/2 animate-[shimmer_2s_infinite] rounded-full bg-gradient-aurora shadow-glow" />
+
+        {/* Stage badge */}
+        <div className="flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1">
+          <ListOrdered className="h-3.5 w-3.5 text-primary" />
+          <span className="text-[11px] font-semibold tracking-wide text-primary">{meta.label}</span>
+          <Loader2 className="h-3 w-3 animate-spin text-primary" />
         </div>
+
+        <div className="text-sm font-medium text-foreground/90">{progress?.message ?? meta.hint}</div>
+
+        {/* Steps tracker */}
+        <div className="flex w-full max-w-sm items-center justify-between gap-2">
+          {steps.map((s, i) => {
+            const done = i < stageIndex;
+            const active = i === stageIndex;
+            return (
+              <div key={s.key} className="flex flex-1 items-center gap-2">
+                <div className={`flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-semibold transition-colors ${done ? "border-primary bg-primary text-primary-foreground" : active ? "border-primary bg-primary/20 text-primary" : "border-border bg-white/[0.03] text-muted-foreground"}`}>
+                  {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : i + 1}
+                </div>
+                <span className={`text-[11px] ${active ? "text-foreground" : done ? "text-foreground/80" : "text-muted-foreground"}`}>{s.label}</span>
+                {i < steps.length - 1 && <div className={`mx-1 h-px flex-1 ${done ? "bg-primary" : "bg-border"}`} />}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Progress bar */}
+        <div className="h-1.5 w-full max-w-sm overflow-hidden rounded-full bg-white/5">
+          <div
+            className="h-full rounded-full bg-gradient-aurora shadow-glow transition-all duration-700 ease-out"
+            style={{ width: `${meta.pct}%` }}
+          />
+        </div>
+
+        {/* Meta line */}
+        <div className="flex items-center gap-3 font-mono text-[10px] text-muted-foreground">
+          <span>已用时 {mm}:{ss}</span>
+          {progress?.attempt ? <span>· 第 {progress.attempt} 次查询</span> : null}
+          {progress?.taskId ? <span>· 任务 {progress.taskId.slice(0, 8)}…</span> : null}
+        </div>
+        <div className="text-[10px] font-light text-muted-foreground">您可以继续浏览历史记录，结果会在这里自动显示</div>
       </div>
     </div>
   );
