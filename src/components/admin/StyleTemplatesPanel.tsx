@@ -6,6 +6,8 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   adminListStyleTemplates,
   adminUpdateStyleTemplate,
+  adminCreateStyleTemplate,
+  adminDeleteStyleTemplate,
   adminGetSystemPrompt,
   adminSetSystemPrompt,
   adminGetContactInfo,
@@ -14,7 +16,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
-import { Save, Upload, RefreshCw, ImageIcon, FileText, Palette, Headphones } from "lucide-react";
+import { Save, Upload, RefreshCw, ImageIcon, FileText, Palette, Headphones, Plus, Trash2 } from "lucide-react";
 
 type Tpl = {
   id: string;
