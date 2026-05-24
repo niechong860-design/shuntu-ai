@@ -635,7 +635,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
           {styles.length === 0 ? (
             <div className="flex h-full items-center justify-center text-xs text-muted-foreground">加载中…</div>
           ) : (
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-6 gap-2">
               {styles.map((s) => {
                 const active = !inspirationMode && s.id === styleId;
                 return (
