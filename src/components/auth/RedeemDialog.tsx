@@ -218,7 +218,7 @@ function PlanCard({ plan, onBuy }: { plan: Plan; onBuy: (id: string, amount: num
       </ul>
 
       <Button
-        onClick={() => onBuy(plan.id, plan.price)}
+        onClick={() => onBuy(plan.id, plan.price, plan.url)}
         className={cn(
           "relative mt-5 w-full font-semibold",
           highlight
