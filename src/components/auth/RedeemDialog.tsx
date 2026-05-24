@@ -4,7 +4,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useServerFn } from "@tanstack/react-start";
 import { redeemCoupon } from "@/lib/admin.functions";
-import { createPaymentOrder } from "@/lib/payment.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { Gift, Sparkles, Check, Zap, Crown } from "lucide-react";
@@ -65,49 +64,14 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const fn = useServerFn(redeemCoupon);
-  const createOrder = useServerFn(createPaymentOrder);
   const { refreshProfile } = useAuth();
 
   useEffect(() => { if (!open) setCode(""); }, [open]);
 
-  const handlePurchase = async (planId: string, amount: number) => {
-    const plan = PLANS.find((p) => p.id === planId);
-    // 测试通道（planId === "dev_test"）使用 990 等不会发放积分，仅做链路测试
-    const credits = plan ? Number(String(plan.features[0]).replace(/[^\d]/g, "")) : 0;
-    try {
-      toast.loading("正在创建订单...", { id: "pay" });
-      const r = await createOrder({
-        data: {
-          amount,
-          credits,
-          payType: "alipay",
-          returnOrigin: typeof window !== "undefined" ? window.location.origin : undefined,
-        },
-      });
-      toast.dismiss("pay");
-      if (r?.apiUrl && r?.params) {
-        // 易支付 submit.php 是 POST 接口，构造一个 form 自动提交跳转
-        const form = document.createElement("form");
-        form.method = "POST";
-        form.action = r.apiUrl;
-        form.style.display = "none";
-        Object.entries(r.params).forEach(([k, v]) => {
-          const input = document.createElement("input");
-          input.type = "hidden";
-          input.name = k;
-          input.value = String(v);
-          form.appendChild(input);
-        });
-        document.body.appendChild(form);
-        form.submit();
-      } else {
-        toast.error("生成支付链接失败");
-      }
-    } catch (e: any) {
-      toast.dismiss("pay");
-      toast.error(e?.message || "支付下单失败");
-    }
+  const handlePurchase = async (_planId: string, _amount: number) => {
+    toast.info("支付通道正在升级，敬请期待。如需充值请使用兑换码或联系客服。");
   };
+
 
   const submit = async () => {
     if (!code.trim()) return;
@@ -170,15 +134,6 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           </div>
         </div>
 
-        {/* 隐藏的开发者支付测试入口 · 测试通过后可直接删除该按钮 */}
-        <div className="mt-4 flex justify-center">
-          <button
-            onClick={() => handlePurchase("dev_test", 0.01)}
-            className="text-[11px] text-muted-foreground/50 underline-offset-4 transition-colors hover:text-muted-foreground hover:underline"
-          >
-            开发者支付链路测试
-          </button>
-        </div>
       </DialogContent>
     </Dialog>
   );
