@@ -635,7 +635,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
           {styles.length === 0 ? (
             <div className="flex h-full items-center justify-center text-xs text-muted-foreground">加载中…</div>
           ) : (
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-4 gap-3">
               {styles.map((s) => {
                 const active = !inspirationMode && s.id === styleId;
                 return (
@@ -643,7 +643,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                     key={s.id}
                     onClick={() => setStyleId((prev) => (prev === s.id ? "" : s.id))}
                     title={s.name}
-                    className={`group relative aspect-[3/4] overflow-hidden rounded-xl border transition-all ${
+                    className={`group relative aspect-[9/16] overflow-hidden rounded-xl border transition-all ${
                       active
                         ? "border-primary/70 shadow-glow ring-2 ring-primary/40"
                         : "border-border hover:border-primary/50 hover:-translate-y-0.5"
