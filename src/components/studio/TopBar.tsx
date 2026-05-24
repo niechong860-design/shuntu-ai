@@ -19,10 +19,21 @@ export function TopBar({ credits, onOpenHistory, onSwitchAccount }: Props) {
   const [contactOpen, setContactOpen] = useState(false);
   return (
     <header className="flex h-14 w-full shrink-0 items-center justify-between border-b border-border/60 bg-card/70 px-4 backdrop-blur-2xl">
-      {/* Left: Logo */}
-      <div className="flex items-center gap-2.5">
-        <img src={shuntuLogo} alt="ShunTu" className="h-9 w-auto object-contain" />
-      </div>
+      {/* Left: Logo — 点击回到生成主页并刷新 */}
+      <button
+        type="button"
+        title="返回主页并刷新"
+        onClick={() => {
+          if (window.location.pathname === "/") {
+            window.location.reload();
+          } else {
+            window.location.assign("/");
+          }
+        }}
+        className="flex items-center gap-2.5 rounded-lg p-1 transition-all hover:bg-white/[0.05] active:scale-95"
+      >
+        <img src={shuntuLogo} alt="ShunTu 返回主页" className="h-9 w-auto object-contain" />
+      </button>
 
       {/* Middle: Ad banner */}
       <AdBanner />
