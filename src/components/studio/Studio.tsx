@@ -1,4 +1,4 @@
-import { ControlPanel } from "./ControlPanel";
+import { ControlPanel, type GenProgress } from "./ControlPanel";
 import { Canvas } from "./Canvas";
 import { TopBar } from "./TopBar";
 import { AuthModal } from "@/components/auth/AuthModal";
@@ -13,6 +13,7 @@ export function Studio() {
   const [currentModel, setCurrentModel] = useState<string>("");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [forceAuth, setForceAuth] = useState(false);
+  const [progress, setProgress] = useState<GenProgress | null>(null);
 
   const handleGenerateStart = (info: { prompt: string; modelName: string }) => {
     setGenerating(true);
@@ -22,6 +23,7 @@ export function Studio() {
   };
   const handleGenerateDone = (url: string | null) => {
     setGenerating(false);
+    setProgress(null);
     if (url) setGeneratedUrl(url);
   };
 
@@ -40,6 +42,7 @@ export function Studio() {
           <ControlPanel
             onGenerateStart={handleGenerateStart}
             onGenerateDone={handleGenerateDone}
+            onProgress={setProgress}
             generating={generating}
           />
           <Canvas
@@ -48,6 +51,7 @@ export function Studio() {
             generatedUrl={generatedUrl}
             currentPrompt={currentPrompt}
             currentModel={currentModel}
+            progress={progress}
             historyOpen={historyOpen}
             onHistoryOpenChange={setHistoryOpen}
             onSelectHistory={(url, prompt, model) => {
@@ -62,4 +66,5 @@ export function Studio() {
     </div>
   );
 }
+
 
