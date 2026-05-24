@@ -41,7 +41,42 @@ export type GenProgress = {
   elapsedSec: number;
   taskId?: string;
   message?: string;
+  /** 任务初始排队位置（在 storage 中持久化，保证刷新后 UI 一致） */
+  initialPos?: number;
+  /** 模拟渲染时长（秒），用于刷新后保持渲染百分比一致 */
+  renderBudget?: number;
 };
+
+const ACTIVE_GEN_KEY = "lovable-active-gen-v1";
+type ActiveGen = {
+  taskId: string;
+  modelKey: string;
+  modelName: string;
+  prompt: string;
+  startTs: number;
+  initialPos: number;
+  renderBudget: number;
+};
+function loadActive(): ActiveGen | null {
+  try {
+    const raw = localStorage.getItem(ACTIVE_GEN_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ActiveGen;
+    if (!parsed?.taskId || !parsed?.startTs) return null;
+    // 超过 10 分钟视为过期
+    if (Date.now() - parsed.startTs > 10 * 60 * 1000) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+function saveActive(v: ActiveGen) {
+  try { localStorage.setItem(ACTIVE_GEN_KEY, JSON.stringify(v)); } catch {}
+}
+function clearActive() {
+  try { localStorage.removeItem(ACTIVE_GEN_KEY); } catch {}
+}
+
 
 type Props = {
  onGenerateStart: (info: { prompt: string; modelName: string }) => void;
