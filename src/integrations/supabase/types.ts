@@ -413,6 +413,48 @@ export type Database = {
         }
         Relationships: []
       }
+      user_orders: {
+        Row: {
+          amount: number
+          created_at: string
+          credits: number
+          id: string
+          out_trade_no: string
+          paid_at: string | null
+          pay_type: string | null
+          status: string
+          trade_no: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          credits?: number
+          id?: string
+          out_trade_no: string
+          paid_at?: string | null
+          pay_type?: string | null
+          status?: string
+          trade_no?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          credits?: number
+          id?: string
+          out_trade_no?: string
+          paid_at?: string | null
+          pay_type?: string | null
+          status?: string
+          trade_no?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
