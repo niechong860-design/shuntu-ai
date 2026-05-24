@@ -15,6 +15,7 @@ type Plan = {
   price: number;
   desc: string;
   features: string[];
+  url: string;
   highlight?: boolean;
   icon?: React.ReactNode;
 };
@@ -26,6 +27,7 @@ const PLANS: Plan[] = [
     price: 9.9,
     desc: "适合偶尔体验的尝鲜用户",
     features: ["1,000 积分", "基础图像模型", "标准排队速度"],
+    url: "https://www.kufaka.com/item/dhmljk",
   },
   {
     id: "starter",
@@ -33,6 +35,7 @@ const PLANS: Plan[] = [
     price: 29.9,
     desc: "轻量级创作者的首选",
     features: ["3,000 积分", "所有基础模型", "标准排队速度"],
+    url: "https://www.kufaka.com/item/661nyd",
   },
   {
     id: "core",
@@ -42,6 +45,7 @@ const PLANS: Plan[] = [
     features: ["7,000 积分", "解锁高级模型 (Wan2.6/Pro)", "优先生成队列"],
     highlight: true,
     icon: <Zap className="h-4 w-4" />,
+    url: "https://www.kufaka.com/item/2tig9e",
   },
   {
     id: "pro",
@@ -49,6 +53,7 @@ const PLANS: Plan[] = [
     price: 129,
     desc: "为高频重度使用者打造",
     features: ["13,000 积分", "全模型无限制访问", "极速极享队列", "专属客服支持"],
+    url: "https://www.kufaka.com/item/fk4jmd",
   },
   {
     id: "premium",
@@ -57,6 +62,7 @@ const PLANS: Plan[] = [
     desc: "工作室与商业变现必备",
     features: ["20,000 积分", "最高优先级算力", "支持 API 批量调用", "提供商业授权"],
     icon: <Crown className="h-4 w-4" />,
+    url: "https://www.kufaka.com/item/9a7qf1",
   },
 ];
 
@@ -68,8 +74,12 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
   useEffect(() => { if (!open) setCode(""); }, [open]);
 
-  const handlePurchase = async (_planId: string, _amount: number) => {
-    toast.info("支付通道正在升级，敬请期待。如需充值请使用兑换码或联系客服。");
+  const handlePurchase = (_planId: string, _amount: number, url?: string) => {
+    if (url) {
+      window.open(url, "_blank", "noopener,noreferrer");
+    } else {
+      toast.info("支付链接暂未配置，请联系客服。");
+    }
   };
 
 
@@ -139,7 +149,7 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   );
 }
 
-function PlanCard({ plan, onBuy }: { plan: Plan; onBuy: (id: string, amount: number) => void }) {
+function PlanCard({ plan, onBuy }: { plan: Plan; onBuy: (id: string, amount: number, url?: string) => void }) {
   const { highlight } = plan;
   return (
     <div
@@ -208,7 +218,7 @@ function PlanCard({ plan, onBuy }: { plan: Plan; onBuy: (id: string, amount: num
       </ul>
 
       <Button
-        onClick={() => onBuy(plan.id, plan.price)}
+        onClick={() => onBuy(plan.id, plan.price, plan.url)}
         className={cn(
           "relative mt-5 w-full font-semibold",
           highlight
