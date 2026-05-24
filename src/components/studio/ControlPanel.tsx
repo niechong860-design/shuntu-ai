@@ -472,15 +472,15 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
 
         {/* 提示词 — frosted glass 卡片 */}
         <section className="px-4 pt-3 pb-2">
-        <div className="relative group">
-          <div className="pointer-events-none absolute -inset-px rounded-2xl bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-50 transition-opacity group-focus-within:opacity-90" />
-          <div className="relative rounded-2xl border border-white/[0.04] bg-gradient-to-b from-white/[0.02] to-transparent shadow-inner backdrop-blur-xl transition-all focus-within:border-primary/40 focus-within:shadow-glow">
+        <div className="relative">
+          <div className="pointer-events-none absolute -inset-px rounded-2xl bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-50" />
+          <div className="relative rounded-2xl border border-white/[0.04] bg-gradient-to-b from-white/[0.02] to-transparent shadow-inner backdrop-blur-xl">
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 rows={4}
                 placeholder="描述您想生成的画面、风格、光影与氛围…"
-                className="block w-full resize-none rounded-t-2xl bg-transparent px-4 py-3.5 text-sm font-light leading-relaxed text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
+                className="block w-full resize-none rounded-t-2xl border-0 bg-transparent px-4 py-3.5 text-sm font-light leading-relaxed text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus-visible:!border-transparent focus-visible:!shadow-none focus-visible:!ring-0"
               />
               <div className="flex items-center justify-between gap-2 border-t border-white/[0.04] px-2.5 py-2">
                 <div className="flex items-center gap-1">
