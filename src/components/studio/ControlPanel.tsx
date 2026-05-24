@@ -41,7 +41,42 @@ export type GenProgress = {
   elapsedSec: number;
   taskId?: string;
   message?: string;
+  /** 任务初始排队位置（在 storage 中持久化，保证刷新后 UI 一致） */
+  initialPos?: number;
+  /** 模拟渲染时长（秒），用于刷新后保持渲染百分比一致 */
+  renderBudget?: number;
 };
+
+const ACTIVE_GEN_KEY = "lovable-active-gen-v1";
+type ActiveGen = {
+  taskId: string;
+  modelKey: string;
+  modelName: string;
+  prompt: string;
+  startTs: number;
+  initialPos: number;
+  renderBudget: number;
+};
+function loadActive(): ActiveGen | null {
+  try {
+    const raw = localStorage.getItem(ACTIVE_GEN_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ActiveGen;
+    if (!parsed?.taskId || !parsed?.startTs) return null;
+    // 超过 10 分钟视为过期
+    if (Date.now() - parsed.startTs > 10 * 60 * 1000) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+function saveActive(v: ActiveGen) {
+  try { localStorage.setItem(ACTIVE_GEN_KEY, JSON.stringify(v)); } catch {}
+}
+function clearActive() {
+  try { localStorage.removeItem(ACTIVE_GEN_KEY); } catch {}
+}
+
 
 type Props = {
  onGenerateStart: (info: { prompt: string; modelName: string }) => void;
@@ -189,12 +224,135 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
   };
   const removeRef = (i: number) => setRefs((arr) => arr.filter((_, idx) => idx !== i));
 
+  // 轮询任务到完成。tStart 是任务开始时间戳（毫秒），用于刷新后从持久化时间继续计算 elapsed
+  const pollTask = async (args: {
+    taskId: string;
+    modelName: string;
+    tStart: number;
+    initialPos: number;
+    renderBudget: number;
+  }) => {
+    const { taskId, modelName, tStart, initialPos, renderBudget } = args;
+    const elapsed = () => Math.floor((Date.now() - tStart) / 1000);
+    const POLL_INTERVAL = 5000;
+    const MAX_DURATION_MS = 5 * 60 * 1000;
+    const MAX_TRANSIENT_RETRIES = 3;
+    let transientRetries = 0;
+    let attempt = 0;
+    onProgress?.({
+      stage: "queued", attempt: 0, elapsedSec: elapsed(), taskId,
+      initialPos, renderBudget,
+      message: "已进入队列，等待算力分配…",
+    });
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      if (Date.now() - tStart > MAX_DURATION_MS) {
+        toast.error(`AI 生成任务超时，请检查网络或稍后重新提交（任务 ID: ${taskId}）`, { duration: 8000 });
+        clearActive();
+        onProgress?.(null);
+        onGenerateDone(null);
+        return;
+      }
+      await new Promise((res) => setTimeout(res, POLL_INTERVAL));
+      attempt += 1;
+      try {
+        const s = await checkStatus({ data: { taskId, modelName } });
+        if (s.status === "success" && s.imageUrl) {
+          clearActive();
+          onProgress?.(null);
+          onGenerateDone(s.imageUrl);
+          return;
+        }
+        if (s.status === "failed") {
+          console.warn("[checkImageStatus failed]", { taskId, reason: (s as any).reason, message: s.message });
+          if ((s as any).reason === "ref_url") {
+            toast.error(`参考图读取失败，请检查链接是否为公开的 HTTPS 链接${s.message ? ` · ${s.message}` : ""}`, { duration: 8000 });
+          } else if ((s as any).reason === "rejected" || (s as any).taskStatus === 3) {
+            toast.error(`生成任务失败（任务被拒绝或涉及合规限制，请尝试更换提示词）${s.message ? ` · ${s.message}` : ""}`, { duration: 8000 });
+          } else {
+            toast.error(`生成失败：${s.message ?? "上游服务异常，请稍后重试"}`, { duration: 6000 });
+          }
+          clearActive();
+          onProgress?.(null);
+          onGenerateDone(null);
+          return;
+        }
+        transientRetries = 0;
+        onProgress?.({
+          stage: "rendering", attempt, elapsedSec: elapsed(), taskId,
+          initialPos, renderBudget,
+          message: "AI 正在渲染图像，请稍候…",
+        });
+      } catch (pollErr: any) {
+        const msg = pollErr?.message ?? "";
+        console.warn("[checkImageStatus network error]", pollErr);
+        const isTransient = /network|fetch|timeout|500|502|503|504/i.test(msg) || !msg;
+        if (isTransient && transientRetries < MAX_TRANSIENT_RETRIES) {
+          transientRetries += 1;
+          onProgress?.({
+            stage: "polling", attempt, elapsedSec: elapsed(), taskId,
+            initialPos, renderBudget,
+            message: `网络抖动，自动重试 (${transientRetries}/${MAX_TRANSIENT_RETRIES})…`,
+          });
+          continue;
+        }
+        let m = "生成失败，请稍后再试";
+        try {
+          const raw = pollErr?.message ?? pollErr?.error ?? pollErr?.toString?.() ?? "";
+          const text = typeof raw === "string" ? raw : JSON.stringify(raw);
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            m = parsed?.message || parsed?.error || parsed?.msg || text;
+          } else if (text) m = text;
+        } catch {}
+        toast.error(m, { duration: 6000 });
+        clearActive();
+        onProgress?.(null);
+        onGenerateDone(null);
+        return;
+      }
+    }
+  };
+
+  // 刷新后自动恢复在途的生成任务
+  useEffect(() => {
+    if (!session) return;
+    const active = loadActive();
+    if (!active) return;
+    console.log("[resume] restoring in-flight task", active.taskId);
+    onGenerateStart({ prompt: active.prompt, modelName: active.modelName });
+    onProgress?.({
+      stage: "queued",
+      attempt: 0,
+      elapsedSec: Math.floor((Date.now() - active.startTs) / 1000),
+      taskId: active.taskId,
+      initialPos: active.initialPos,
+      renderBudget: active.renderBudget,
+      message: "已恢复正在进行中的任务，继续等待结果…",
+    });
+    toast.message("已恢复正在进行中的生成任务");
+    pollTask({
+      taskId: active.taskId,
+      modelName: active.modelName,
+      tStart: active.startTs,
+      initialPos: active.initialPos,
+      renderBudget: active.renderBudget,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
+
   const handleGenerate = async () => {
     if (generating || !activeModel) return;
     onGenerateStart({ prompt: prompt.trim(), modelName: activeModel.name ?? activeModel.model_key });
     const tStart = Date.now();
-    const elapsed = () => Math.floor((Date.now() - tStart) / 1000);
-    onProgress?.({ stage: "submitting", attempt: 0, elapsedSec: 0, message: "正在提交任务到生成队列…" });
+    const initialPos = 18 + Math.floor(Math.random() * 25);
+    const renderBudget = 12 + Math.floor(Math.random() * 10);
+    onProgress?.({
+      stage: "submitting", attempt: 0, elapsedSec: 0,
+      initialPos, renderBudget,
+      message: "正在提交任务到生成队列…",
+    });
     try {
       const httpRefs = isTextOnly ? [] : refs.filter((u) => /^https?:\/\//i.test(u));
       const payload = {
@@ -218,75 +376,31 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
       toast.success(`已提交 · 扣除 ${r.cost} 点，剩余 ${r.credits}`);
       await refreshProfile();
 
-      // 同步模型：直接拿到图片
       if (r.imageUrl) {
         onProgress?.(null);
         onGenerateDone(r.imageUrl);
         return;
       }
 
-      // 异步模型：前端轮询直到拿到结果（不受 Worker 超时限制）
       if (!r.taskId) throw new Error("未获取到任务ID");
-      const taskId = r.taskId;
-      const POLL_INTERVAL = 5000;
-      const MAX_DURATION_MS = 5 * 60 * 1000;
-      const MAX_TRANSIENT_RETRIES = 3;
-      let transientRetries = 0;
-      let attempt = 0;
-      onProgress?.({ stage: "queued", attempt: 0, elapsedSec: elapsed(), taskId, message: "已进入队列，等待算力分配…" });
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        if (Date.now() - tStart > MAX_DURATION_MS) {
-          toast.error(`AI 生成任务超时，请检查网络或稍后重新提交（任务 ID: ${taskId}）`, { duration: 8000 });
-          onProgress?.(null);
-          onGenerateDone(null);
-          return;
-        }
-        await new Promise((res) => setTimeout(res, POLL_INTERVAL));
-        attempt += 1;
-        try {
-          const s = await checkStatus({ data: { taskId, modelName: activeModel.name ?? activeModel.model_key } });
-          if (s.status === "success" && s.imageUrl) {
-            onProgress?.(null);
-            onGenerateDone(s.imageUrl);
-            return;
-          }
-          if (s.status === "failed") {
-            console.warn("[checkImageStatus failed]", { taskId, reason: (s as any).reason, message: s.message });
-            if ((s as any).reason === "ref_url") {
-              toast.error(`参考图读取失败，请检查链接是否为公开的 HTTPS 链接${s.message ? ` · ${s.message}` : ""}`, { duration: 8000 });
-            } else if ((s as any).reason === "rejected" || (s as any).taskStatus === 3) {
-              toast.error(`生成任务失败（任务被拒绝或涉及合规限制，请尝试更换提示词）${s.message ? ` · ${s.message}` : ""}`, { duration: 8000 });
-            } else {
-              toast.error(`生成失败：${s.message ?? "上游服务异常，请稍后重试"}`, { duration: 6000 });
-            }
-            onProgress?.(null);
-            onGenerateDone(null);
-            return;
-          }
-          // pending — 进入渲染阶段提示
-          transientRetries = 0;
-          onProgress?.({
-            stage: "rendering",
-            attempt,
-            elapsedSec: elapsed(),
-            taskId,
-            message: "AI 正在渲染图像，请稍候…",
-          });
-        } catch (pollErr: any) {
-          const msg = pollErr?.message ?? "";
-          console.warn("[checkImageStatus network error]", pollErr);
-          const isTransient = /network|fetch|timeout|500|502|503|504/i.test(msg) || !msg;
-          if (isTransient && transientRetries < MAX_TRANSIENT_RETRIES) {
-            transientRetries += 1;
-            onProgress?.({ stage: "polling", attempt, elapsedSec: elapsed(), taskId, message: `网络抖动，自动重试 (${transientRetries}/${MAX_TRANSIENT_RETRIES})…` });
-            continue;
-          }
-          throw pollErr;
-        }
-      }
+      const modelName = activeModel.name ?? activeModel.model_key;
+      saveActive({
+        taskId: r.taskId,
+        modelKey: activeModel.model_key,
+        modelName,
+        prompt: prompt.trim(),
+        startTs: tStart,
+        initialPos,
+        renderBudget,
+      });
+      await pollTask({
+        taskId: r.taskId,
+        modelName,
+        tStart,
+        initialPos,
+        renderBudget,
+      });
     } catch (e: any) {
-      // 兼容 TanStack serverFn 错误包装：可能是 Error、字符串、或 { message } / { error } JSON
       let msg = "生成失败，请稍后再试";
       try {
         const raw = e?.message ?? e?.error ?? e?.toString?.() ?? "";
@@ -302,10 +416,12 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
         msg = String(e?.message ?? e ?? "生成失败");
       }
       toast.error(msg, { duration: 6000 });
+      clearActive();
       onProgress?.(null);
       onGenerateDone(null);
     }
   };
+
 
   return (
     <aside className="flex h-full min-h-0 flex-col overflow-hidden border-r border-border/60 bg-card/40">
