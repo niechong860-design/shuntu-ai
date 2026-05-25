@@ -11,11 +11,12 @@ import {
   adminListCoupons, adminGenerateCoupons, adminDeleteCoupon,
 } from "@/lib/admin.functions";
 import { toast } from "sonner";
-import { Shield, KeyRound, Coins, Copy, Plus, RefreshCw, Users, Ticket, LayoutDashboard, Trash2, Sparkles, Megaphone, Crown, Lock, Palette, Ban, CircleCheck } from "lucide-react";
+import { Shield, KeyRound, Coins, Copy, Plus, RefreshCw, Users, Ticket, LayoutDashboard, Trash2, Sparkles, Megaphone, Crown, Lock, Palette, Ban, CircleCheck, Bell } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { AnalyticsPanel } from "./AnalyticsPanel";
 import { ModelsPanel } from "./ModelsPanel";
 import { AdsPanel } from "./AdsPanel";
+import { AnnouncementsPanel } from "./AnnouncementsPanel";
 import { AdminsPanel } from "./AdminsPanel";
 import { AccessGate } from "./AccessGate";
 import { AccessPasswordPanel } from "./AccessPasswordPanel";
@@ -58,6 +59,7 @@ export function AdminDashboard({ open, onOpenChange, isFounder = false }: { open
             <TabsTrigger value="coupons" className="gap-1.5"><Ticket className="h-3.5 w-3.5" />卡密管理</TabsTrigger>
             <TabsTrigger value="models" className="gap-1.5"><Sparkles className="h-3.5 w-3.5" />模型点数价格控制</TabsTrigger>
             <TabsTrigger value="ads" className="gap-1.5"><Megaphone className="h-3.5 w-3.5" />广告管理</TabsTrigger>
+            <TabsTrigger value="announcements" className="gap-1.5"><Bell className="h-3.5 w-3.5" />通知公告</TabsTrigger>
             <TabsTrigger value="styles" className="gap-1.5"><Palette className="h-3.5 w-3.5" />风格模板 &amp; 提示词</TabsTrigger>
             {isFounder && (
               <TabsTrigger value="admins" className="gap-1.5"><Crown className="h-3.5 w-3.5" />管理员管理</TabsTrigger>
@@ -71,6 +73,7 @@ export function AdminDashboard({ open, onOpenChange, isFounder = false }: { open
           <TabsContent value="coupons" className="mt-4"><CouponsPanel /></TabsContent>
           <TabsContent value="models" className="mt-4"><ModelsPanel /></TabsContent>
           <TabsContent value="ads" className="mt-4"><AdsPanel /></TabsContent>
+          <TabsContent value="announcements" className="mt-4"><AnnouncementsPanel /></TabsContent>
           <TabsContent value="styles" className="mt-4 max-h-[70vh] overflow-auto pr-1"><StyleTemplatesPanel /></TabsContent>
           {isFounder && <TabsContent value="admins" className="mt-4"><AdminsPanel /></TabsContent>}
           {isFounder && <TabsContent value="access" className="mt-4"><AccessPasswordPanel /></TabsContent>}

@@ -1000,6 +1000,81 @@ export const adminDeleteAd = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// --- Announcements / 公告通知 ---
+export const listAnnouncements = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async () => {
+    const { data, error } = await supabaseAdmin
+      .from("announcements")
+      .select("id, title, content, type, image_url, link_url, link_label, is_pinned, created_at")
+      .eq("is_published", true)
+      .order("is_pinned", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+
+export const adminListAnnouncements = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context.userId);
+    const { data, error } = await supabaseAdmin
+      .from("announcements")
+      .select("*")
+      .order("is_pinned", { ascending: false })
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+
+export const adminUpsertAnnouncement = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      id: z.string().uuid().optional(),
+      title: z.string().min(1).max(200),
+      content: z.string().max(5000).default(""),
+      type: z.enum(["info", "success", "warning", "promo"]).default("info"),
+      image_url: z.string().max(1000).nullable().optional(),
+      link_url: z.string().max(1000).nullable().optional(),
+      link_label: z.string().max(100).nullable().optional(),
+      is_pinned: z.boolean().default(false),
+      is_published: z.boolean().default(true),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const payload = {
+      title: data.title,
+      content: data.content ?? "",
+      type: data.type,
+      image_url: data.image_url ?? null,
+      link_url: data.link_url ?? null,
+      link_label: data.link_label ?? null,
+      is_pinned: data.is_pinned,
+      is_published: data.is_published,
+    };
+    if (data.id) {
+      const { error } = await supabaseAdmin.from("announcements").update(payload).eq("id", data.id);
+      if (error) throw new Error(error.message);
+    } else {
+      const { error } = await supabaseAdmin.from("announcements").insert(payload);
+      if (error) throw new Error(error.message);
+    }
+    return { ok: true };
+  });
+
+export const adminDeleteAnnouncement = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const { error } = await supabaseAdmin.from("announcements").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 // --- Founder: Admin role management ---
 export const founderListAdmins = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

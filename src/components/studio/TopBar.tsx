@@ -11,10 +11,11 @@ import { ContactDialog } from "./ContactDialog";
 type Props = {
   credits: number;
   onOpenHistory: () => void;
+  onOpenAnnouncements: () => void;
   onSwitchAccount: () => void;
 };
 
-export function TopBar({ credits, onOpenHistory, onSwitchAccount }: Props) {
+export function TopBar({ credits, onOpenHistory, onOpenAnnouncements, onSwitchAccount }: Props) {
   const [redeemOpen, setRedeemOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   return (
@@ -48,7 +49,7 @@ export function TopBar({ credits, onOpenHistory, onSwitchAccount }: Props) {
 
       <div className="flex items-center gap-2">
         <IconBtn title="历史记录" onClick={onOpenHistory}><History className="h-4 w-4" /></IconBtn>
-        <IconBtn title="通知">
+        <IconBtn title="通知公告" onClick={onOpenAnnouncements}>
           <span className="relative">
             <Bell className="h-4 w-4" />
             <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-primary" />

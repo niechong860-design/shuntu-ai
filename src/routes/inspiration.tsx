@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { InspirationPage } from "@/components/inspiration/InspirationPage";
 import { TopBar } from "@/components/studio/TopBar";
+import { AnnouncementCenter } from "@/components/studio/AnnouncementCenter";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -23,6 +24,7 @@ function InspirationRoute() {
   const { session, profile, loading } = useAuth();
   const navigate = useNavigate();
   const [forceAuth, setForceAuth] = useState(false);
+  const [announcementsOpen, setAnnouncementsOpen] = useState(false);
   const showAuth = !loading && (!session || forceAuth);
 
   return (
@@ -31,10 +33,18 @@ function InspirationRoute() {
         <TopBar
           credits={profile?.credits ?? 0}
           onOpenHistory={() => navigate({ to: "/" })}
+          onOpenAnnouncements={() => setAnnouncementsOpen(true)}
           onSwitchAccount={() => setForceAuth(true)}
         />
         <InspirationPage />
       </div>
+      {!showAuth && (
+        <AnnouncementCenter
+          open={announcementsOpen}
+          onOpenChange={setAnnouncementsOpen}
+          autoOpenLatest
+        />
+      )}
       {showAuth && <AuthModal onSuccess={() => setForceAuth(false)} />}
     </div>
   );

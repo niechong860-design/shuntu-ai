@@ -1,6 +1,7 @@
 import { ControlPanel, type GenProgress } from "./ControlPanel";
 import { Canvas } from "./Canvas";
 import { TopBar } from "./TopBar";
+import { AnnouncementCenter } from "./AnnouncementCenter";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
@@ -13,6 +14,7 @@ export function Studio() {
   const [currentModel, setCurrentModel] = useState<string>("");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [forceAuth, setForceAuth] = useState(false);
+  const [announcementsOpen, setAnnouncementsOpen] = useState(false);
   const [progress, setProgress] = useState<GenProgress | null>(null);
 
   const handleGenerateStart = (info: { prompt: string; modelName: string }) => {
@@ -36,6 +38,7 @@ export function Studio() {
         <TopBar
           credits={credits}
           onOpenHistory={() => setHistoryOpen(true)}
+          onOpenAnnouncements={() => setAnnouncementsOpen(true)}
           onSwitchAccount={() => setForceAuth(true)}
         />
         <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2" style={{ height: "calc(100vh - 56px)" }}>
@@ -62,6 +65,13 @@ export function Studio() {
           />
         </div>
       </div>
+      {!showAuth && (
+        <AnnouncementCenter
+          open={announcementsOpen}
+          onOpenChange={setAnnouncementsOpen}
+          autoOpenLatest
+        />
+      )}
       {showAuth && <AuthModal onSuccess={() => setForceAuth(false)} />}
     </div>
   );
