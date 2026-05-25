@@ -141,9 +141,9 @@ export function AnnouncementCenter({ open, onOpenChange, autoOpenLatest = false 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={`max-w-3xl overflow-hidden border-border/60 bg-card/90 p-0 backdrop-blur-2xl ${style.glow}`}
+        className={`max-w-5xl w-[92vw] overflow-hidden border-border/60 bg-card/90 p-0 backdrop-blur-2xl ${style.glow}`}
       >
-        <div className="grid grid-cols-1 md:grid-cols-[260px_1fr]">
+        <div className="grid grid-cols-1 md:grid-cols-[300px_1fr]">
           {/* Sidebar list */}
           <aside className="border-r border-border/60 bg-black/30">
             <div className="flex items-center gap-2 px-4 py-3.5">
@@ -210,13 +210,13 @@ export function AnnouncementCenter({ open, onOpenChange, autoOpenLatest = false 
               <X className="h-3.5 w-3.5" />
             </button>
 
-            <div className="relative max-h-[70vh] overflow-auto p-7">
+            <div className="relative max-h-[82vh] overflow-auto p-8 md:p-10">
               {!active ? (
-                <div className="flex h-64 items-center justify-center text-xs text-muted-foreground">
+                <div className="flex h-96 items-center justify-center text-xs text-muted-foreground">
                   暂无通知
                 </div>
               ) : (
-                <div className="space-y-5">
+                <div className="space-y-6">
                   <div className="flex items-center gap-2">
                     <span
                       className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${style.chipBg} ${style.chipText}`}
@@ -235,21 +235,21 @@ export function AnnouncementCenter({ open, onOpenChange, autoOpenLatest = false 
                     </span>
                   </div>
 
-                  <h2 className="text-2xl font-semibold leading-snug tracking-tight">{active.title}</h2>
+                  <h2 className="text-3xl font-semibold leading-tight tracking-tight">{active.title}</h2>
 
                   {active.image_url && (
-                    <div className={`overflow-hidden rounded-xl border border-border/60 ring-1 ${style.ring}`}>
+                    <div className={`overflow-hidden rounded-2xl border border-border/60 ring-1 ${style.ring}`}>
                       <img
                         src={active.image_url}
                         alt={active.title}
-                        className="max-h-80 w-full object-cover"
+                        className="max-h-[55vh] w-full object-contain bg-black/40"
                         loading="lazy"
                       />
                     </div>
                   )}
 
                   {active.content && (
-                    <div className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground/85">
+                    <div className="whitespace-pre-wrap text-[15px] leading-[1.8] text-foreground/90">
                       {active.content}
                     </div>
                   )}

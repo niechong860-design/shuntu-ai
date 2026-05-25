@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
+import { supabase } from "@/integrations/supabase/client";
 import {
   adminListAnnouncements,
   adminUpsertAnnouncement,
@@ -11,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, RefreshCw, Trash2, Pencil, Pin, Megaphone, Sparkles, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Plus, RefreshCw, Trash2, Pencil, Pin, Megaphone, Sparkles, AlertTriangle, CheckCircle2, Upload, X as XIcon, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 type Announcement = {
@@ -40,6 +41,31 @@ export function AnnouncementsPanel() {
   const del = useServerFn(adminDeleteAnnouncement);
   const [items, setItems] = useState<Announcement[]>([]);
   const [editing, setEditing] = useState<Partial<Announcement> | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleUpload = async (file: File) => {
+    if (!file.type.startsWith("image/")) return toast.error("请选择图片文件");
+    if (file.size > 10 * 1024 * 1024) return toast.error("图片需小于 10MB");
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop() || "png";
+      const path = `announcements/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error } = await supabase.storage.from("admin-assets").upload(path, file, {
+        cacheControl: "3600",
+        upsert: false,
+      });
+      if (error) throw error;
+      const { data } = supabase.storage.from("admin-assets").getPublicUrl(path);
+      setEditing((prev) => (prev ? { ...prev, image_url: data.publicUrl } : prev));
+      toast.success("图片已上传");
+    } catch (e: any) {
+      toast.error(e.message || "上传失败");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   const load = async () => {
     try {
@@ -256,12 +282,52 @@ export function AnnouncementsPanel() {
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[11px] text-muted-foreground">封面图 URL（可选）</label>
+              <div className="space-y-1.5">
+                <label className="text-[11px] text-muted-foreground">封面图（可选，建议 16:9 或 4:3，&lt;10MB）</label>
+                {editing.image_url ? (
+                  <div className="relative overflow-hidden rounded-lg border border-border/60">
+                    <img src={editing.image_url} alt="封面预览" className="max-h-56 w-full object-contain bg-black/30" />
+                    <button
+                      type="button"
+                      onClick={() => setEditing({ ...editing, image_url: "" })}
+                      className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+                      aria-label="移除图片"
+                    >
+                      <XIcon className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="flex h-28 w-full flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-border/70 bg-white/[0.02] text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:bg-primary/[0.04] hover:text-foreground disabled:opacity-50"
+                  >
+                    {uploading ? (
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        上传中...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-5 w-5" />
+                        点击上传封面图
+                      </>
+                    )}
+                  </button>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])}
+                />
                 <Input
                   value={editing.image_url ?? ""}
                   onChange={(e) => setEditing({ ...editing, image_url: e.target.value })}
-                  placeholder="https://..."
+                  placeholder="或粘贴图片 URL: https://..."
+                  className="text-[11px]"
                 />
               </div>
 
