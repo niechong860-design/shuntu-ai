@@ -43,6 +43,7 @@ export const adminListUsers = createServerFn({ method: "POST" })
       sumMap.set(r.user_id, (sumMap.get(r.user_id) ?? 0) + Number(r.cost ?? 0));
     }
     const banMap = new Map<string, boolean>();
+    const authUsers: Array<{ id: string; email: string | null; created_at: string }> = [];
     try {
       let page = 1;
       while (page < 20) {
@@ -51,16 +52,38 @@ export const adminListUsers = createServerFn({ method: "POST" })
         for (const u of au?.users ?? []) {
           const until = (u as any).banned_until as string | null | undefined;
           banMap.set(u.id, !!until && new Date(until).getTime() > Date.now());
+          authUsers.push({ id: u.id, email: u.email ?? null, created_at: (u as any).created_at ?? new Date().toISOString() });
         }
         if (!au || au.users.length < 1000) break;
         page++;
       }
     } catch { /* ignore */ }
-    return (profiles ?? []).map((p: any) => ({
-      ...p,
-      total_spent: sumMap.get(p.id) ?? 0,
-      is_banned: banMap.get(p.id) ?? false,
-    }));
+
+    // 合并：以 auth.users 为基准，profile 缺失则用 auth 信息补齐（保证新注册用户也能显示）
+    const profileMap = new Map<string, any>();
+    for (const p of (profiles ?? []) as any[]) profileMap.set(p.id, p);
+    const merged = authUsers.map(au => {
+      const p = profileMap.get(au.id);
+      return {
+        id: au.id,
+        email: p?.email ?? au.email,
+        display_name: p?.display_name ?? null,
+        credits: Number(p?.credits ?? 0),
+        created_at: p?.created_at ?? au.created_at,
+        total_spent: sumMap.get(au.id) ?? 0,
+        is_banned: banMap.get(au.id) ?? false,
+      };
+    });
+    // 若 auth 列表为空（极少数情况），回退到 profiles
+    if (merged.length === 0) {
+      return (profiles ?? []).map((p: any) => ({
+        ...p,
+        total_spent: sumMap.get(p.id) ?? 0,
+        is_banned: banMap.get(p.id) ?? false,
+      }));
+    }
+    merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return merged;
   });
 
 export const adminBanUser = createServerFn({ method: "POST" })
