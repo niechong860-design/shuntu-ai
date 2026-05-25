@@ -1,6 +1,7 @@
 import { ControlPanel, type GenProgress } from "./ControlPanel";
 import { Canvas } from "./Canvas";
 import { TopBar } from "./TopBar";
+import { AnnouncementCenter } from "./AnnouncementCenter";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
