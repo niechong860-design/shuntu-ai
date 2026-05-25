@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2, Upload, Lock, User as UserIcon } from "lucide-react";
 import { toast } from "sonner";
+import { thumbUrl } from "@/lib/image-url";
 
 export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const { user, profile, refreshProfile } = useAuth();
