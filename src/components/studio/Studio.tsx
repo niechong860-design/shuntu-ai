@@ -67,13 +67,19 @@ export function Studio() {
         </div>
       </div>
       {!showAuth && (
-        <AnnouncementCenter
-          open={announcementsOpen}
-          onOpenChange={setAnnouncementsOpen}
-          autoOpenLatest
-        />
+        <Suspense fallback={null}>
+          <AnnouncementCenter
+            open={announcementsOpen}
+            onOpenChange={setAnnouncementsOpen}
+            autoOpenLatest
+          />
+        </Suspense>
       )}
-      {showAuth && <AuthModal onSuccess={() => setForceAuth(false)} />}
+      {showAuth && (
+        <Suspense fallback={null}>
+          <AuthModal onSuccess={() => setForceAuth(false)} />
+        </Suspense>
+      )}
     </div>
   );
 }
