@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import {
   Wand2, Eraser, Sparkles, Plus, X, Dices, Zap,
   ChevronDown, Square, RectangleHorizontal, RectangleVertical, Monitor,
-  Check, ImageIcon,
+  Check, ImageIcon, Crown, Flame, Star,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
@@ -48,6 +48,12 @@ export type GenProgress = {
 };
 
 const ACTIVE_GEN_KEY = "lovable-active-gen-v1";
+
+const MODEL_BADGES: Record<string, { label: string; icon: typeof Crown; className: string }> = {
+  nanobanana_pro: { label: "最强", icon: Crown, className: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
+  "gpt-image-2": { label: "最火", icon: Flame, className: "bg-rose-500/15 text-rose-400 border-rose-500/30" },
+  nanobanana2: { label: "推荐", icon: Star, className: "bg-primary/15 text-primary border-primary/30" },
+};
 type ActiveGen = {
   taskId: string;
   modelKey: string;
@@ -492,6 +498,16 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                       <button className="flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/[0.05] px-2.5 py-1.5 text-[11px] font-medium transition-colors hover:border-primary/45 hover:bg-primary/[0.1]">
                         <Sparkles className="h-3 w-3 text-primary" />
                         {activeModel?.name ?? "选择模型"}
+                        {activeModel && MODEL_BADGES[activeModel.model_key] && (() => {
+                          const b = MODEL_BADGES[activeModel.model_key];
+                          const Ic = b.icon;
+                          return (
+                            <span className={`inline-flex items-center gap-0.5 rounded border px-1 py-px text-[9px] font-medium ${b.className}`}>
+                              <Ic className="h-2.5 w-2.5" fill="currentColor" />
+                              {b.label}
+                            </span>
+                          );
+                        })()}
                         <ChevronDown className="h-3 w-3 text-muted-foreground" />
                       </button>
                     </PopoverTrigger>
@@ -502,6 +518,8 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                       )}
                       {models.map((m) => {
                         const active = m.model_key === modelKey;
+                        const badge = MODEL_BADGES[m.model_key];
+                        const BadgeIcon = badge?.icon;
                         return (
                           <button
                             key={m.id}
@@ -514,6 +532,12 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                             <div className="flex-1">
                               <div className="flex items-center gap-1.5">
                                 <span className={`text-xs font-medium ${active ? "text-primary" : ""}`}>{m.name}</span>
+                                {badge && BadgeIcon && (
+                                  <span className={`inline-flex items-center gap-0.5 rounded border px-1 py-px text-[9px] font-medium ${badge.className}`}>
+                                    <BadgeIcon className="h-2.5 w-2.5" fill="currentColor" />
+                                    {badge.label}
+                                  </span>
+                                )}
                                 <span className="ml-auto rounded bg-white/5 px-1.5 py-px font-mono text-[9px] text-primary">{Number(m.cost)} 点</span>
                               </div>
                               {m.description && (
