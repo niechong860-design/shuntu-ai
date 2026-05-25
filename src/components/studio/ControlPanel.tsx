@@ -664,8 +664,10 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
             <div className="flex h-full items-center justify-center text-xs text-muted-foreground">加载中…</div>
           ) : (
             <div className="grid grid-cols-6 gap-2">
-              {styles.map((s) => {
+              {styles.map((s, idx) => {
                 const active = !inspirationMode && s.id === styleId;
+                // First 12 thumbnails are visible on first screen → eager + high priority.
+                const isAboveFold = idx < 12;
                 return (
                   <button
                     key={s.id}
@@ -682,8 +684,9 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                         src={thumbUrl(s.image_url, { quality: 65 })}
                         alt={s.name}
                         className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-                        loading="lazy"
+                        loading={isAboveFold ? "eager" : "lazy"}
                         decoding="async"
+                        fetchPriority={isAboveFold ? "high" : "auto"}
                       />
                     ) : (
                       <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-white/[0.04] to-white/[0.01] text-muted-foreground">
