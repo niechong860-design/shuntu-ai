@@ -249,7 +249,7 @@ export function AnnouncementCenter({ open, onOpenChange, autoOpenLatest = false 
                   )}
 
                   {active.content && (
-                    <div className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground/85">
+                    <div className="whitespace-pre-wrap text-[15px] leading-[1.8] text-foreground/90">
                       {active.content}
                     </div>
                   )}
