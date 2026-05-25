@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { InspirationPage } from "@/components/inspiration/InspirationPage";
 import { TopBar } from "@/components/studio/TopBar";
+import { AnnouncementCenter } from "@/components/studio/AnnouncementCenter";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { useAuth } from "@/hooks/use-auth";
 
