@@ -231,7 +231,7 @@ function ChipRow({
   );
 }
 
-function CaseCard({ item, onOpen }: { item: CaseItem; onOpen: () => void }) {
+function CaseCard({ item, onOpen, priority = false }: { item: CaseItem; onOpen: () => void; priority?: boolean }) {
   return (
     <button
       onClick={onOpen}
@@ -241,8 +241,9 @@ function CaseCard({ item, onOpen }: { item: CaseItem; onOpen: () => void }) {
         <img
           src={thumbUrl(item.image_url, { quality: 65 })}
           alt={item.title || "case"}
-          loading="lazy"
+          loading={priority ? "eager" : "lazy"}
           decoding="async"
+          fetchPriority={priority ? "high" : "auto"}
           className="block w-full transition-transform duration-500 group-hover:scale-[1.03]"
         />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
