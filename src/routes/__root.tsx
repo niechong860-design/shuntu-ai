@@ -88,6 +88,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/9c2e264d-99c8-4f07-b5e8-541849077b8f" },
     ],
     links: [
+      // Preconnect early to the image CDN — saves DNS + TLS handshake (~200-500ms on slow networks)
+      // before the first thumbnail is even requested.
+      { rel: "preconnect", href: "https://nkkrjqzcofzqcyxdkmjy.supabase.co", crossOrigin: "anonymous" },
+      { rel: "dns-prefetch", href: "https://nkkrjqzcofzqcyxdkmjy.supabase.co" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
