@@ -17,6 +17,7 @@ import {
 import { listStyleTemplates, listModelsConfig } from "@/lib/admin.functions";
 import { setStudioPrefill } from "@/lib/studio-prefill";
 import { useAuth } from "@/hooks/use-auth";
+import { thumbUrl } from "@/lib/image-url";
 import { supabase } from "@/integrations/supabase/client";
 import { processImage, validateImageFile } from "@/lib/image-processing";
 
