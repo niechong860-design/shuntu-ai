@@ -12,7 +12,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { consumeStudioPrefill } from "@/lib/studio-prefill";
 import { processImage, validateImageFile } from "@/lib/image-processing";
-import { thumbUrl } from "@/lib/image-url";
+import { thumbUrl, preloadImages } from "@/lib/image-url";
 import { toast } from "sonner";
 
 
@@ -125,7 +125,13 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
       if (list[0] && !modelKey) setModelKey(list[0].model_key);
     }).catch(() => {});
     fetchStyles({}).then((data) => {
-      setStyles((data ?? []) as StyleTpl[]);
+      const list = (data ?? []) as StyleTpl[];
+      setStyles(list);
+      // Idle-preload the next batch of thumbnails (just below the fold)
+      // so the first scroll feels instant.
+      preloadImages(
+        list.slice(12, 36).map((s) => thumbUrl(s.image_url, { quality: 65 })),
+      );
     }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
@@ -664,8 +670,10 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
             <div className="flex h-full items-center justify-center text-xs text-muted-foreground">加载中…</div>
           ) : (
             <div className="grid grid-cols-6 gap-2">
-              {styles.map((s) => {
+              {styles.map((s, idx) => {
                 const active = !inspirationMode && s.id === styleId;
+                // First 12 thumbnails are visible on first screen → eager + high priority.
+                const isAboveFold = idx < 12;
                 return (
                   <button
                     key={s.id}
@@ -682,8 +690,9 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                         src={thumbUrl(s.image_url, { quality: 65 })}
                         alt={s.name}
                         className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-                        loading="lazy"
+                        loading={isAboveFold ? "eager" : "lazy"}
                         decoding="async"
+                        fetchPriority={isAboveFold ? "high" : "auto"}
                       />
                     ) : (
                       <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-white/[0.04] to-white/[0.01] text-muted-foreground">

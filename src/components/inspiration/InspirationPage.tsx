@@ -17,7 +17,7 @@ import {
 import { listStyleTemplates, listModelsConfig } from "@/lib/admin.functions";
 import { setStudioPrefill } from "@/lib/studio-prefill";
 import { useAuth } from "@/hooks/use-auth";
-import { thumbUrl } from "@/lib/image-url";
+import { thumbUrl, preloadImages } from "@/lib/image-url";
 import { supabase } from "@/integrations/supabase/client";
 import { processImage, validateImageFile } from "@/lib/image-processing";
 
@@ -69,7 +69,12 @@ export function InspirationPage() {
         limit: 40,
       },
     })
-      .then((d) => setItems((d ?? []) as CaseItem[]))
+      .then((d) => {
+        const list = (d ?? []) as CaseItem[];
+        setItems(list);
+        // Idle-preload below-the-fold cards so the first scroll has no jank.
+        preloadImages(list.slice(8, 24).map((c) => thumbUrl(c.image_url, { quality: 65 })));
+      })
       .catch((e) => toast.error(e?.message ?? "加载失败"))
       .finally(() => setLoading(false));
   }, [session, search, styleId, tag, modelKey, sort]);
@@ -166,8 +171,8 @@ export function InspirationPage() {
           </div>
         ) : (
           <div className="[column-fill:_balance] columns-2 gap-4 sm:columns-3 lg:columns-4 xl:columns-5">
-            {items.map((c) => (
-              <CaseCard key={c.id} item={c} onOpen={() => setOpenId(c.id)} />
+            {items.map((c, i) => (
+              <CaseCard key={c.id} item={c} priority={i < 8} onOpen={() => setOpenId(c.id)} />
             ))}
           </div>
         )}
@@ -226,7 +231,7 @@ function ChipRow({
   );
 }
 
-function CaseCard({ item, onOpen }: { item: CaseItem; onOpen: () => void }) {
+function CaseCard({ item, onOpen, priority = false }: { item: CaseItem; onOpen: () => void; priority?: boolean }) {
   return (
     <button
       onClick={onOpen}
@@ -236,8 +241,9 @@ function CaseCard({ item, onOpen }: { item: CaseItem; onOpen: () => void }) {
         <img
           src={thumbUrl(item.image_url, { quality: 65 })}
           alt={item.title || "case"}
-          loading="lazy"
+          loading={priority ? "eager" : "lazy"}
           decoding="async"
+          fetchPriority={priority ? "high" : "auto"}
           className="block w-full transition-transform duration-500 group-hover:scale-[1.03]"
         />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />

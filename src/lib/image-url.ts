@@ -49,3 +49,37 @@ export function thumbUrl(url: string | null | undefined, opts: CompressOpts = {}
   const sep = transformed.includes("?") ? "&" : "?";
   return `${transformed}${sep}${params.toString()}`;
 }
+
+/**
+ * Preload a batch of image URLs into the browser cache during idle time,
+ * before they enter the viewport. This eliminates the "blank tile" flash
+ * when the user starts scrolling.
+ *
+ * Uses `<link rel="preload" as="image">` so the browser treats them as
+ * critical resources but with low priority (won't compete with the LCP).
+ * Scheduled via `requestIdleCallback` so it doesn't delay first paint.
+ */
+const preloadedSet = new Set<string>();
+
+export function preloadImages(urls: Array<string | null | undefined>) {
+  if (typeof document === "undefined") return;
+  const fresh = urls.filter((u): u is string => !!u && !preloadedSet.has(u));
+  if (fresh.length === 0) return;
+
+  const schedule =
+    (typeof window !== "undefined" && (window as any).requestIdleCallback) ||
+    ((cb: () => void) => setTimeout(cb, 200));
+
+  schedule(() => {
+    for (const url of fresh) {
+      if (preloadedSet.has(url)) continue;
+      preloadedSet.add(url);
+      const link = document.createElement("link");
+      link.rel = "preload";
+      link.as = "image";
+      link.href = url;
+      (link as any).fetchPriority = "low";
+      document.head.appendChild(link);
+    }
+  });
+}
