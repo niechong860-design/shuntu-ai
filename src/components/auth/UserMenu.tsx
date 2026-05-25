@@ -7,6 +7,7 @@ import { AdminDashboard } from "@/components/admin/AdminDashboard";
 import { useServerFn } from "@tanstack/react-start";
 import { checkIsAdmin } from "@/lib/admin.functions";
 import { toast } from "sonner";
+import { thumbUrl } from "@/lib/image-url";
 
 export function UserMenu({ onSwitchAccount }: { onSwitchAccount: () => void }) {
   const { user, profile, signOut, session } = useAuth();
@@ -33,7 +34,7 @@ export function UserMenu({ onSwitchAccount }: { onSwitchAccount: () => void }) {
         <DropdownMenuTrigger asChild>
           <button className="relative h-8 w-8 overflow-hidden rounded-full ring-1 ring-border transition-all hover:ring-primary/60">
             {avatar ? (
-              <img src={avatar} alt="头像" className="h-full w-full object-cover" />
+              <img src={thumbUrl(avatar, { width: 64, quality: 75 })} alt="头像" loading="lazy" decoding="async" className="h-full w-full object-cover" />
             ) : (
               <>
                 <div className="h-full w-full bg-gradient-to-br from-primary/40 via-accent to-secondary" />
@@ -54,7 +55,7 @@ export function UserMenu({ onSwitchAccount }: { onSwitchAccount: () => void }) {
             <div className="relative flex items-center gap-3">
               <div className="relative h-11 w-11 overflow-hidden rounded-full ring-1 ring-border">
                 {avatar ? (
-                  <img src={avatar} alt="" className="h-full w-full object-cover" />
+                  <img src={thumbUrl(avatar, { width: 96, quality: 75 })} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                 ) : (
                   <>
                     <div className="h-full w-full bg-gradient-to-br from-primary/40 via-accent to-secondary" />

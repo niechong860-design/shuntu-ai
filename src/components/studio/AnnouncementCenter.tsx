@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { listAnnouncements } from "@/lib/admin.functions";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Megaphone, Sparkles, AlertTriangle, CheckCircle2, Pin, X, ArrowUpRight, Bell } from "lucide-react";
+import { thumbUrl } from "@/lib/image-url";
 
 export type Announcement = {
   id: string;
@@ -240,10 +241,11 @@ export function AnnouncementCenter({ open, onOpenChange, autoOpenLatest = false 
                   {active.image_url && (
                     <div className={`overflow-hidden rounded-2xl border border-border/60 ring-1 ${style.ring}`}>
                       <img
-                        src={active.image_url}
+                        src={thumbUrl(active.image_url, { width: 1280, quality: 78, resize: "contain" })}
                         alt={active.title}
                         className="max-h-[55vh] w-full object-contain bg-black/40"
                         loading="lazy"
+                        decoding="async"
                       />
                     </div>
                   )}

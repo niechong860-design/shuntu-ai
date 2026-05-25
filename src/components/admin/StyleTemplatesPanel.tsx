@@ -17,6 +17,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { Save, Upload, RefreshCw, ImageIcon, FileText, Palette, Headphones, Plus, Trash2 } from "lucide-react";
+import { thumbUrl } from "@/lib/image-url";
 
 type Tpl = {
   id: string;
@@ -304,7 +305,7 @@ function TemplateCard({ tpl, onSaved }: { tpl: Tpl; onSaved: () => void }) {
       <div className="flex gap-3">
         <div className="relative aspect-[9/16] w-[90px] shrink-0 overflow-hidden rounded-lg border border-border bg-black/30">
           {imageUrl ? (
-            <img src={imageUrl} alt={tpl.name} className="h-full w-full object-cover" />
+            <img src={thumbUrl(imageUrl, { width: 240, quality: 70 })} alt={tpl.name} loading="lazy" decoding="async" className="h-full w-full object-cover" />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-muted-foreground">
               <ImageIcon className="h-5 w-5" strokeWidth={1.5} />

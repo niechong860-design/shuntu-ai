@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { getMyGenerationHistory } from "@/lib/admin.functions";
 import type { GenProgress } from "./ControlPanel";
+import { thumbUrl } from "@/lib/image-url";
 
 type HistoryItem = {
   id: string;
@@ -173,7 +174,7 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
                       }}
                       className="absolute inset-0"
                     >
-                      <img src={item.image_url} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                      <img src={thumbUrl(item.image_url, { width: 400, quality: 70 })} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
                     </button>
                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/0 opacity-0 transition-opacity group-hover:opacity-100" />
                     <div className="absolute left-2 top-2 opacity-0 transition-opacity group-hover:opacity-100">
