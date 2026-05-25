@@ -679,10 +679,11 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                   >
                     {s.image_url ? (
                       <img
-                        src={s.image_url}
+                        src={thumbUrl(s.image_url, { width: 320, quality: 70 })}
                         alt={s.name}
                         className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                         loading="lazy"
+                        decoding="async"
                       />
                     ) : (
                       <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-white/[0.04] to-white/[0.01] text-muted-foreground">
