@@ -1,10 +1,11 @@
+import { lazy, Suspense, useState } from "react";
 import { ControlPanel, type GenProgress } from "./ControlPanel";
 import { Canvas } from "./Canvas";
 import { TopBar } from "./TopBar";
-import { AnnouncementCenter } from "./AnnouncementCenter";
-import { AuthModal } from "@/components/auth/AuthModal";
 import { useAuth } from "@/hooks/use-auth";
-import { useState } from "react";
+
+const AnnouncementCenter = lazy(() => import("./AnnouncementCenter").then((m) => ({ default: m.AnnouncementCenter })));
+const AuthModal = lazy(() => import("@/components/auth/AuthModal").then((m) => ({ default: m.AuthModal })));
 
 export function Studio() {
   const { session, profile, loading } = useAuth();
@@ -66,13 +67,19 @@ export function Studio() {
         </div>
       </div>
       {!showAuth && (
-        <AnnouncementCenter
-          open={announcementsOpen}
-          onOpenChange={setAnnouncementsOpen}
-          autoOpenLatest
-        />
+        <Suspense fallback={null}>
+          <AnnouncementCenter
+            open={announcementsOpen}
+            onOpenChange={setAnnouncementsOpen}
+            autoOpenLatest
+          />
+        </Suspense>
       )}
-      {showAuth && <AuthModal onSuccess={() => setForceAuth(false)} />}
+      {showAuth && (
+        <Suspense fallback={null}>
+          <AuthModal onSuccess={() => setForceAuth(false)} />
+        </Suspense>
+      )}
     </div>
   );
 }

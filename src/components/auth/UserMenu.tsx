@@ -1,13 +1,15 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Settings, RefreshCw, LogOut, Zap, Shield, Crown } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { SettingsDialog } from "./SettingsDialog";
-import { AdminDashboard } from "@/components/admin/AdminDashboard";
 import { useServerFn } from "@tanstack/react-start";
 import { checkIsAdmin } from "@/lib/admin.functions";
 import { toast } from "sonner";
 import { thumbUrl } from "@/lib/image-url";
+
+// Lazy: only loaded when the user opens them — keeps initial bundle small.
+const SettingsDialog = lazy(() => import("./SettingsDialog").then((m) => ({ default: m.SettingsDialog })));
+const AdminDashboard = lazy(() => import("@/components/admin/AdminDashboard").then((m) => ({ default: m.AdminDashboard })));
 
 export function UserMenu({ onSwitchAccount }: { onSwitchAccount: () => void }) {
   const { user, profile, signOut, session } = useAuth();
@@ -115,8 +117,16 @@ export function UserMenu({ onSwitchAccount }: { onSwitchAccount: () => void }) {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
-      {isAdmin && <AdminDashboard open={adminOpen} onOpenChange={setAdminOpen} isFounder={isFounder} />}
+      {settingsOpen && (
+        <Suspense fallback={null}>
+          <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+        </Suspense>
+      )}
+      {isAdmin && adminOpen && (
+        <Suspense fallback={null}>
+          <AdminDashboard open={adminOpen} onOpenChange={setAdminOpen} isFounder={isFounder} />
+        </Suspense>
+      )}
     </>
   );
 }

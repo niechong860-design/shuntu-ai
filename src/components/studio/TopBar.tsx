@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Zap, Plus, Bell, History } from "lucide-react";
 import shuntuLogo from "@/assets/shuntu-logo.png";
 import { Link } from "@tanstack/react-router";
 import { UserMenu } from "@/components/auth/UserMenu";
-import { RedeemDialog } from "@/components/auth/RedeemDialog";
 import { AdBanner } from "./AdBanner";
-import { ContactDialog } from "./ContactDialog";
+
+const RedeemDialog = lazy(() => import("@/components/auth/RedeemDialog").then((m) => ({ default: m.RedeemDialog })));
+const ContactDialog = lazy(() => import("./ContactDialog").then((m) => ({ default: m.ContactDialog })));
 
 
 type Props = {
@@ -70,8 +71,16 @@ export function TopBar({ credits, onOpenHistory, onOpenAnnouncements, onSwitchAc
           充值
         </button>
       </div>
-      <RedeemDialog open={redeemOpen} onOpenChange={setRedeemOpen} />
-      <ContactDialog open={contactOpen} onOpenChange={setContactOpen} />
+      {redeemOpen && (
+        <Suspense fallback={null}>
+          <RedeemDialog open={redeemOpen} onOpenChange={setRedeemOpen} />
+        </Suspense>
+      )}
+      {contactOpen && (
+        <Suspense fallback={null}>
+          <ContactDialog open={contactOpen} onOpenChange={setContactOpen} />
+        </Suspense>
+      )}
     </header>
   );
 }
