@@ -12,6 +12,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { consumeStudioPrefill } from "@/lib/studio-prefill";
 import { processImage, validateImageFile } from "@/lib/image-processing";
+import { thumbUrl } from "@/lib/image-url";
 import { toast } from "sonner";
 
 
