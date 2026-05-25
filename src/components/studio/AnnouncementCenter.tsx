@@ -141,9 +141,9 @@ export function AnnouncementCenter({ open, onOpenChange, autoOpenLatest = false 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={`max-w-3xl overflow-hidden border-border/60 bg-card/90 p-0 backdrop-blur-2xl ${style.glow}`}
+        className={`max-w-5xl w-[92vw] overflow-hidden border-border/60 bg-card/90 p-0 backdrop-blur-2xl ${style.glow}`}
       >
-        <div className="grid grid-cols-1 md:grid-cols-[260px_1fr]">
+        <div className="grid grid-cols-1 md:grid-cols-[300px_1fr]">
           {/* Sidebar list */}
           <aside className="border-r border-border/60 bg-black/30">
             <div className="flex items-center gap-2 px-4 py-3.5">
