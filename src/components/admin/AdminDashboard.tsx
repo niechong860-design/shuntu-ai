@@ -33,8 +33,7 @@ export function AdminDashboard({ open, onOpenChange, isFounder = false }: { open
 
   useEffect(() => { if (!open) setUnlocked(false); }, [open]);
 
-  // 创始人具备最高权限，直接进入后台，无需访问密码
-  if (open && !unlocked && !isFounder) {
+  if (open && !unlocked) {
     return (
       <AccessGate
         open={open}
