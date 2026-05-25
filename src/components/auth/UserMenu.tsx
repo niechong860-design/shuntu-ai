@@ -7,6 +7,7 @@ import { AdminDashboard } from "@/components/admin/AdminDashboard";
 import { useServerFn } from "@tanstack/react-start";
 import { checkIsAdmin } from "@/lib/admin.functions";
 import { toast } from "sonner";
+import { thumbUrl } from "@/lib/image-url";
 
 export function UserMenu({ onSwitchAccount }: { onSwitchAccount: () => void }) {
   const { user, profile, signOut, session } = useAuth();
