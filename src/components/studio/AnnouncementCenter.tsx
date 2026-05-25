@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { listAnnouncements } from "@/lib/admin.functions";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Megaphone, Sparkles, AlertTriangle, CheckCircle2, Pin, X, ArrowUpRight, Bell } from "lucide-react";
+import { thumbUrl } from "@/lib/image-url";
 
 export type Announcement = {
   id: string;
