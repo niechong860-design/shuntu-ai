@@ -11,6 +11,7 @@ import { ContactDialog } from "./ContactDialog";
 type Props = {
   credits: number;
   onOpenHistory: () => void;
+  onOpenAnnouncements: () => void;
   onSwitchAccount: () => void;
 };
 
