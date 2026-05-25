@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, RefreshCw, Trash2, Pencil, Pin, Megaphone, Sparkles, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Plus, RefreshCw, Trash2, Pencil, Pin, Megaphone, Sparkles, AlertTriangle, CheckCircle2, Upload, X as XIcon, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 type Announcement = {
