@@ -679,7 +679,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                   >
                     {s.image_url ? (
                       <img
-                        src={thumbUrl(s.image_url, { width: 320, quality: 70 })}
+                        src={thumbUrl(s.image_url, { quality: 65 })}
                         alt={s.name}
                         className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                         loading="lazy"
