@@ -48,6 +48,12 @@ export type GenProgress = {
 };
 
 const ACTIVE_GEN_KEY = "lovable-active-gen-v1";
+
+const MODEL_BADGES: Record<string, { label: string; icon: typeof Crown; className: string }> = {
+  nanobanana_pro: { label: "最强", icon: Crown, className: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
+  "gpt-image-2": { label: "最火", icon: Flame, className: "bg-rose-500/15 text-rose-400 border-rose-500/30" },
+  nanobanana2: { label: "推荐", icon: Star, className: "bg-primary/15 text-primary border-primary/30" },
+};
 type ActiveGen = {
   taskId: string;
   modelKey: string;
