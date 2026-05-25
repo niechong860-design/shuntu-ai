@@ -234,9 +234,10 @@ function CaseCard({ item, onOpen }: { item: CaseItem; onOpen: () => void }) {
     >
       <div className="relative">
         <img
-          src={item.image_url}
+          src={thumbUrl(item.image_url, { width: 640, quality: 72 })}
           alt={item.title || "case"}
           loading="lazy"
+          decoding="async"
           className="block w-full transition-transform duration-500 group-hover:scale-[1.03]"
         />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
