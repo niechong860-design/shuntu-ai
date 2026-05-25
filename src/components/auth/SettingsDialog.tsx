@@ -113,7 +113,7 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
                 className="group relative h-20 w-20 overflow-hidden rounded-full ring-1 ring-border transition-all hover:ring-primary/60"
               >
                 {avatar ? (
-                  <img src={avatar} alt="" className="h-full w-full object-cover" />
+                  <img src={thumbUrl(avatar, { width: 160, quality: 80 })} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                 ) : (
                   <>
                     <div className="h-full w-full bg-gradient-to-br from-primary/40 via-accent to-secondary" />
