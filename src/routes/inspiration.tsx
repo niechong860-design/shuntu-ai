@@ -24,6 +24,7 @@ function InspirationRoute() {
   const { session, profile, loading } = useAuth();
   const navigate = useNavigate();
   const [forceAuth, setForceAuth] = useState(false);
+  const [announcementsOpen, setAnnouncementsOpen] = useState(false);
   const showAuth = !loading && (!session || forceAuth);
 
   return (
@@ -32,10 +33,18 @@ function InspirationRoute() {
         <TopBar
           credits={profile?.credits ?? 0}
           onOpenHistory={() => navigate({ to: "/" })}
+          onOpenAnnouncements={() => setAnnouncementsOpen(true)}
           onSwitchAccount={() => setForceAuth(true)}
         />
         <InspirationPage />
       </div>
+      {!showAuth && (
+        <AnnouncementCenter
+          open={announcementsOpen}
+          onOpenChange={setAnnouncementsOpen}
+          autoOpenLatest
+        />
+      )}
       {showAuth && <AuthModal onSuccess={() => setForceAuth(false)} />}
     </div>
   );
