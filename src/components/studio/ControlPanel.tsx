@@ -508,6 +508,8 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                       )}
                       {models.map((m) => {
                         const active = m.model_key === modelKey;
+                        const badge = MODEL_BADGES[m.model_key];
+                        const BadgeIcon = badge?.icon;
                         return (
                           <button
                             key={m.id}
@@ -520,6 +522,12 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                             <div className="flex-1">
                               <div className="flex items-center gap-1.5">
                                 <span className={`text-xs font-medium ${active ? "text-primary" : ""}`}>{m.name}</span>
+                                {badge && BadgeIcon && (
+                                  <span className={`inline-flex items-center gap-0.5 rounded border px-1 py-px text-[9px] font-medium ${badge.className}`}>
+                                    <BadgeIcon className="h-2.5 w-2.5" fill="currentColor" />
+                                    {badge.label}
+                                  </span>
+                                )}
                                 <span className="ml-auto rounded bg-white/5 px-1.5 py-px font-mono text-[9px] text-primary">{Number(m.cost)} 点</span>
                               </div>
                               {m.description && (
