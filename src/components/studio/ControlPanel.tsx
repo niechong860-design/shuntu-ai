@@ -125,7 +125,13 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
       if (list[0] && !modelKey) setModelKey(list[0].model_key);
     }).catch(() => {});
     fetchStyles({}).then((data) => {
-      setStyles((data ?? []) as StyleTpl[]);
+      const list = (data ?? []) as StyleTpl[];
+      setStyles(list);
+      // Idle-preload the next batch of thumbnails (just below the fold)
+      // so the first scroll feels instant.
+      preloadImages(
+        list.slice(12, 36).map((s) => thumbUrl(s.image_url, { quality: 65 })),
+      );
     }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
