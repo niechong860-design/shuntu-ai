@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import {
   Wand2, Eraser, Sparkles, Plus, X, Dices, Zap,
   ChevronDown, Square, RectangleHorizontal, RectangleVertical, Monitor,
-  Check, ImageIcon,
+  Check, ImageIcon, Crown, Flame, Star,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
