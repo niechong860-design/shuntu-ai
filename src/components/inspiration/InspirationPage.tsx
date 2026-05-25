@@ -234,7 +234,7 @@ function CaseCard({ item, onOpen }: { item: CaseItem; onOpen: () => void }) {
     >
       <div className="relative">
         <img
-          src={thumbUrl(item.image_url, { width: 640, quality: 72 })}
+          src={thumbUrl(item.image_url, { quality: 65 })}
           alt={item.title || "case"}
           loading="lazy"
           decoding="async"
