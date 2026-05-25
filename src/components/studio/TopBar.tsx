@@ -15,7 +15,7 @@ type Props = {
   onSwitchAccount: () => void;
 };
 
-export function TopBar({ credits, onOpenHistory, onSwitchAccount }: Props) {
+export function TopBar({ credits, onOpenHistory, onOpenAnnouncements, onSwitchAccount }: Props) {
   const [redeemOpen, setRedeemOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   return (
