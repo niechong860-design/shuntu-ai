@@ -41,6 +41,31 @@ export function AnnouncementsPanel() {
   const del = useServerFn(adminDeleteAnnouncement);
   const [items, setItems] = useState<Announcement[]>([]);
   const [editing, setEditing] = useState<Partial<Announcement> | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleUpload = async (file: File) => {
+    if (!file.type.startsWith("image/")) return toast.error("请选择图片文件");
+    if (file.size > 10 * 1024 * 1024) return toast.error("图片需小于 10MB");
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop() || "png";
+      const path = `announcements/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error } = await supabase.storage.from("admin-assets").upload(path, file, {
+        cacheControl: "3600",
+        upsert: false,
+      });
+      if (error) throw error;
+      const { data } = supabase.storage.from("admin-assets").getPublicUrl(path);
+      setEditing((prev) => (prev ? { ...prev, image_url: data.publicUrl } : prev));
+      toast.success("图片已上传");
+    } catch (e: any) {
+      toast.error(e.message || "上传失败");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   const load = async () => {
     try {
