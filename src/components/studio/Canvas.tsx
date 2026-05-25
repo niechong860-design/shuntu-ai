@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { getMyGenerationHistory } from "@/lib/admin.functions";
 import type { GenProgress } from "./ControlPanel";
+import { thumbUrl } from "@/lib/image-url";
 
 type HistoryItem = {
   id: string;
