@@ -14,6 +14,7 @@ export function Studio() {
   const [currentModel, setCurrentModel] = useState<string>("");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [forceAuth, setForceAuth] = useState(false);
+  const [announcementsOpen, setAnnouncementsOpen] = useState(false);
   const [progress, setProgress] = useState<GenProgress | null>(null);
 
   const handleGenerateStart = (info: { prompt: string; modelName: string }) => {
