@@ -10,9 +10,11 @@ export const Route = createFileRoute("/inspiration")({
   head: () => ({
     meta: [
       { title: "灵感广场 — ShunTu" },
-      { name: "description", content: "浏览社区精选 AI 生成案例，一键复用 Prompt 与生成参数。" },
+      { name: "description", content: "浏览社区精选 AI 生成案例，一键复用提示词与生成参数。" },
       { property: "og:title", content: "灵感广场 — ShunTu" },
-      { property: "og:description", content: "浏览社区精选 AI 生成案例，一键复用 Prompt 与生成参数。" },
+      { property: "og:description", content: "浏览社区精选 AI 生成案例，一键复用提示词与生成参数。" },
+      { name: "twitter:title", content: "灵感广场 — ShunTu" },
+      { name: "twitter:description", content: "浏览社区精选 AI 生成案例，一键复用提示词与生成参数。" },
     ],
   }),
 });
