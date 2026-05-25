@@ -171,8 +171,8 @@ export function InspirationPage() {
           </div>
         ) : (
           <div className="[column-fill:_balance] columns-2 gap-4 sm:columns-3 lg:columns-4 xl:columns-5">
-            {items.map((c) => (
-              <CaseCard key={c.id} item={c} onOpen={() => setOpenId(c.id)} />
+            {items.map((c, i) => (
+              <CaseCard key={c.id} item={c} priority={i < 8} onOpen={() => setOpenId(c.id)} />
             ))}
           </div>
         )}
