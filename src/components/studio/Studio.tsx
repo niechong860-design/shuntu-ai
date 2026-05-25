@@ -38,6 +38,7 @@ export function Studio() {
         <TopBar
           credits={credits}
           onOpenHistory={() => setHistoryOpen(true)}
+          onOpenAnnouncements={() => setAnnouncementsOpen(true)}
           onSwitchAccount={() => setForceAuth(true)}
         />
         <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2" style={{ height: "calc(100vh - 56px)" }}>
