@@ -498,6 +498,16 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                       <button className="flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/[0.05] px-2.5 py-1.5 text-[11px] font-medium transition-colors hover:border-primary/45 hover:bg-primary/[0.1]">
                         <Sparkles className="h-3 w-3 text-primary" />
                         {activeModel?.name ?? "选择模型"}
+                        {activeModel && MODEL_BADGES[activeModel.model_key] && (() => {
+                          const b = MODEL_BADGES[activeModel.model_key];
+                          const Ic = b.icon;
+                          return (
+                            <span className={`inline-flex items-center gap-0.5 rounded border px-1 py-px text-[9px] font-medium ${b.className}`}>
+                              <Ic className="h-2.5 w-2.5" fill="currentColor" />
+                              {b.label}
+                            </span>
+                          );
+                        })()}
                         <ChevronDown className="h-3 w-3 text-muted-foreground" />
                       </button>
                     </PopoverTrigger>
