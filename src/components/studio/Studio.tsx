@@ -65,6 +65,13 @@ export function Studio() {
           />
         </div>
       </div>
+      {!showAuth && (
+        <AnnouncementCenter
+          open={announcementsOpen}
+          onOpenChange={setAnnouncementsOpen}
+          autoOpenLatest
+        />
+      )}
       {showAuth && <AuthModal onSuccess={() => setForceAuth(false)} />}
     </div>
   );
