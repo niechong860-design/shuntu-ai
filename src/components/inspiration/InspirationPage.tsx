@@ -69,7 +69,12 @@ export function InspirationPage() {
         limit: 40,
       },
     })
-      .then((d) => setItems((d ?? []) as CaseItem[]))
+      .then((d) => {
+        const list = (d ?? []) as CaseItem[];
+        setItems(list);
+        // Idle-preload below-the-fold cards so the first scroll has no jank.
+        preloadImages(list.slice(8, 24).map((c) => thumbUrl(c.image_url, { quality: 65 })));
+      })
       .catch((e) => toast.error(e?.message ?? "加载失败"))
       .finally(() => setLoading(false));
   }, [session, search, styleId, tag, modelKey, sort]);
