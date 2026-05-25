@@ -71,8 +71,16 @@ export function TopBar({ credits, onOpenHistory, onOpenAnnouncements, onSwitchAc
           充值
         </button>
       </div>
-      <RedeemDialog open={redeemOpen} onOpenChange={setRedeemOpen} />
-      <ContactDialog open={contactOpen} onOpenChange={setContactOpen} />
+      {redeemOpen && (
+        <Suspense fallback={null}>
+          <RedeemDialog open={redeemOpen} onOpenChange={setRedeemOpen} />
+        </Suspense>
+      )}
+      {contactOpen && (
+        <Suspense fallback={null}>
+          <ContactDialog open={contactOpen} onOpenChange={setContactOpen} />
+        </Suspense>
+      )}
     </header>
   );
 }
