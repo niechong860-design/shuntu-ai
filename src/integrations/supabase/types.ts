@@ -71,6 +71,48 @@ export type Database = {
         }
         Relationships: []
       }
+      announcements: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          image_url: string | null
+          is_pinned: boolean
+          is_published: boolean
+          link_label: string | null
+          link_url: string | null
+          title: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          content?: string
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          is_pinned?: boolean
+          is_published?: boolean
+          link_label?: string | null
+          link_url?: string | null
+          title: string
+          type?: string
+          updated_at?: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          is_pinned?: boolean
+          is_published?: boolean
+          link_label?: string | null
+          link_url?: string | null
+          title?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       case_comments: {
         Row: {
           case_id: string
