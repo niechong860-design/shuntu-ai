@@ -282,12 +282,52 @@ export function AnnouncementsPanel() {
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[11px] text-muted-foreground">封面图 URL（可选）</label>
+              <div className="space-y-1.5">
+                <label className="text-[11px] text-muted-foreground">封面图（可选，建议 16:9 或 4:3，&lt;10MB）</label>
+                {editing.image_url ? (
+                  <div className="relative overflow-hidden rounded-lg border border-border/60">
+                    <img src={editing.image_url} alt="封面预览" className="max-h-56 w-full object-contain bg-black/30" />
+                    <button
+                      type="button"
+                      onClick={() => setEditing({ ...editing, image_url: "" })}
+                      className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+                      aria-label="移除图片"
+                    >
+                      <XIcon className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="flex h-28 w-full flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-border/70 bg-white/[0.02] text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:bg-primary/[0.04] hover:text-foreground disabled:opacity-50"
+                  >
+                    {uploading ? (
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        上传中...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-5 w-5" />
+                        点击上传封面图
+                      </>
+                    )}
+                  </button>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])}
+                />
                 <Input
                   value={editing.image_url ?? ""}
                   onChange={(e) => setEditing({ ...editing, image_url: e.target.value })}
-                  placeholder="https://..."
+                  placeholder="或粘贴图片 URL: https://..."
+                  className="text-[11px]"
                 />
               </div>
 
