@@ -127,8 +127,18 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
           options: { emailRedirectTo: `${window.location.origin}/` },
         });
         if (error) throw error;
-        toast.success("注册成功！请去邮箱点一下验证链接");
-        setTab("login");
+        // 邮箱验证已关闭：注册后直接登录
+        const { error: signInErr } = await supabase.auth.signInWithPassword({
+          email: trimmedEmail,
+          password,
+        });
+        if (signInErr) {
+          toast.success("注册成功，请登录");
+          setTab("login");
+        } else {
+          toast.success("注册成功，欢迎加入");
+          onSuccess?.();
+        }
       } else {
         const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
           redirectTo: `${window.location.origin}/`,
