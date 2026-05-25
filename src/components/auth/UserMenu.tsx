@@ -117,8 +117,16 @@ export function UserMenu({ onSwitchAccount }: { onSwitchAccount: () => void }) {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
-      {isAdmin && <AdminDashboard open={adminOpen} onOpenChange={setAdminOpen} isFounder={isFounder} />}
+      {settingsOpen && (
+        <Suspense fallback={null}>
+          <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+        </Suspense>
+      )}
+      {isAdmin && adminOpen && (
+        <Suspense fallback={null}>
+          <AdminDashboard open={adminOpen} onOpenChange={setAdminOpen} isFounder={isFounder} />
+        </Suspense>
+      )}
     </>
   );
 }
