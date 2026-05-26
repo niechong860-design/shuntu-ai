@@ -496,7 +496,12 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
             </div>
 
             {refs.length === 0 ? (
-              <label className={`group flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"} rounded-xl border border-dashed border-primary/30 bg-primary/[0.04] transition-all hover:border-primary/60 hover:bg-primary/[0.08]`}>
+              <button
+                type="button"
+                onClick={openRefPicker}
+                disabled={uploadingRef}
+                className={`group flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"} rounded-xl border border-dashed border-primary/30 bg-primary/[0.04] transition-all hover:border-primary/60 hover:bg-primary/[0.08]`}
+              >
                 {uploadingRef ? (
                   <span className="text-[11px] text-muted-foreground">上传中…</span>
                 ) : (
@@ -505,15 +510,8 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                     <span className="text-[10px] text-muted-foreground/80">上传参考图</span>
                   </>
                 )}
-                <input
-                  type="file"
-                  accept="image/jpeg,image/jpg,image/png,image/webp"
-                  multiple
-                  className="hidden"
-                  onChange={addRef}
-                  disabled={uploadingRef}
-                />
-              </label>
+              </button>
+
             ) : (
               <div className="scrollbar-thin flex gap-3 overflow-x-auto pb-1">
                 {refs.map((url, i) => (
