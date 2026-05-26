@@ -812,6 +812,15 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
           </span>
         </button>
       </div>
+      {dragOver && (
+        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center rounded-lg bg-background/70 ring-2 ring-primary/70 ring-inset backdrop-blur-[2px]">
+          <div className="flex flex-col items-center gap-2 rounded-2xl border border-primary/40 bg-primary/15 px-6 py-4 text-primary shadow-lg">
+            <Plus className="h-7 w-7" strokeWidth={1.75} />
+            <span className="text-sm font-medium">释放鼠标以上传参考图</span>
+            <span className="text-[11px] text-primary/70">支持 JPG / PNG / WEBP，最多 5 张</span>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }
