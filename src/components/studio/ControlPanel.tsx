@@ -545,13 +545,8 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
               </div>
             )}
 
-            {dragOver && (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg bg-background/70 backdrop-blur-[2px]">
-                <span className="rounded-full border border-primary/40 bg-primary/15 px-3 py-1.5 text-[12px] font-medium text-primary">
-                  释放鼠标以上传参考图
-                </span>
-              </div>
-            )}
+
+
           </section>
         )}
 
