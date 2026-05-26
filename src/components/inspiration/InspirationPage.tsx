@@ -41,7 +41,7 @@ export function InspirationPage() {
   const [modelKey, setModelKey] = useState("");
   const [sort, setSort] = useState<"latest" | "hot" | "views">("latest");
   const [styles] = useState<StyleTpl[]>(
-    STYLE_TEMPLATES.map((s) => ({ id: s.id, name: s.name, image_url: null })),
+    STYLE_TEMPLATES.map((s) => ({ id: s.id, name: s.name, image_url: s.previewImage })),
   );
   const [allModels, setAllModels] = useState<{ key: string; name: string }[]>([]);
   const [facets, setFacets] = useState<{ hotTags: { name: string; count: number }[]; models: { key: string; name: string }[] }>({ hotTags: [], models: [] });
