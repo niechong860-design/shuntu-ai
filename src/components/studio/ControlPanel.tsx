@@ -159,76 +159,107 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
   }, [isTextOnly]);
 
   const [uploadingRef, setUploadingRef] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
 
-  const addRef = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    e.target.value = "";
-    if (!f) return;
-    if (refs.length >= 5) {
-      toast.error("最多上传 5 张参考图");
-      return;
-    }
+  const uploadOneRef = async (f: File) => {
     const uid = session?.user?.id;
     if (!uid) {
       toast.error("请先登录后再上传参考图");
       return;
     }
-    const invalid = validateImageFile(f, { preset: "ai-model", maxMB: 15 });
+    const ACCEPTED = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+    if (!ACCEPTED.has(f.type.toLowerCase())) {
+      toast.error("仅支持 JPG、PNG、WEBP 图片");
+      return;
+    }
+    const invalid = validateImageFile(f, { preset: "ai-model", maxMB: 10 });
     if (invalid) {
       toast.error(invalid);
       return;
     }
 
-    // Instant local preview — show immediately so the UI never feels blocked.
     const previewUrl = URL.createObjectURL(f);
-    const placeholderIdx = refs.length;
     setRefs((arr) => [...arr, previewUrl]);
     setUploadingRef(true);
 
-    // Process + upload async — never blocks the UI thread for long.
-    (async () => {
-      try {
-        const processed = await processImage(f, "ai-model");
-        const path = `${uid}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${processed.ext}`;
-        const { error: upErr } = await supabase.storage
-          .from("reference-images")
-          .upload(path, processed.blob, {
-            cacheControl: "3600",
-            contentType: processed.contentType,
-            upsert: false,
-          });
-        if (upErr) throw upErr;
-        const { data: signed, error: signErr } = await supabase.storage
-          .from("reference-images")
-          .createSignedUrl(path, 60 * 60 * 24 * 7); // 7 days, long enough for generation
-        if (signErr) throw signErr;
-        const url = signed.signedUrl;
-        console.log(
-          `[ref upload] ${(processed.originalSize / 1024).toFixed(0)}KB → ${(processed.processedSize / 1024).toFixed(0)}KB →`,
-          url,
-        );
-        setRefs((arr) => {
-          const next = [...arr];
-          // Replace by index when possible; otherwise append.
-          if (next[placeholderIdx] === previewUrl) next[placeholderIdx] = url;
-          else {
-            const idx = next.indexOf(previewUrl);
-            if (idx >= 0) next[idx] = url;
-            else next.push(url);
-          }
-          return next;
+    try {
+      const processed = await processImage(f, "ai-model");
+      const path = `${uid}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${processed.ext}`;
+      const { error: upErr } = await supabase.storage
+        .from("reference-images")
+        .upload(path, processed.blob, {
+          cacheControl: "3600",
+          contentType: processed.contentType,
+          upsert: false,
         });
-      } catch (err) {
-        console.error("[ref upload] failed", err);
-        toast.error("参考图上传失败，请重试");
-        setRefs((arr) => arr.filter((u) => u !== previewUrl));
-      } finally {
-        URL.revokeObjectURL(previewUrl);
-        setUploadingRef(false);
-      }
-    })();
+      if (upErr) throw upErr;
+      const { data: signed, error: signErr } = await supabase.storage
+        .from("reference-images")
+        .createSignedUrl(path, 60 * 60 * 24 * 7);
+      if (signErr) throw signErr;
+      const url = signed.signedUrl;
+      console.log(
+        `[ref upload] ${(processed.originalSize / 1024).toFixed(0)}KB → ${(processed.processedSize / 1024).toFixed(0)}KB →`,
+        url,
+      );
+      setRefs((arr) => {
+        const next = [...arr];
+        const idx = next.indexOf(previewUrl);
+        if (idx >= 0) next[idx] = url;
+        else next.push(url);
+        return next;
+      });
+    } catch (err) {
+      console.error("[ref upload] failed", err);
+      toast.error("参考图上传失败，请重试");
+      setRefs((arr) => arr.filter((u) => u !== previewUrl));
+    } finally {
+      URL.revokeObjectURL(previewUrl);
+      setUploadingRef(false);
+    }
+  };
+
+  const addRefs = (files: FileList | File[]) => {
+    const list = Array.from(files).filter((f) => /^image\//i.test(f.type));
+    if (!list.length) {
+      toast.error("仅支持 JPG、PNG、WEBP 图片");
+      return;
+    }
+    const remaining = 5 - refs.length;
+    if (remaining <= 0) {
+      toast.error("最多上传 5 张参考图");
+      return;
+    }
+    const accepted = list.slice(0, remaining);
+    if (list.length > remaining) toast.error("最多上传 5 张参考图");
+    accepted.forEach((f) => void uploadOneRef(f));
+  };
+
+  const addRef = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    e.target.value = "";
+    if (files && files.length) addRefs(files);
   };
   const removeRef = (i: number) => setRefs((arr) => arr.filter((_, idx) => idx !== i));
+
+  const onRefDragOver = (e: React.DragEvent) => {
+    if (!e.dataTransfer?.types?.includes("Files")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    if (!dragOver) setDragOver(true);
+  };
+  const onRefDragLeave = (e: React.DragEvent) => {
+    // Only clear when leaving the section bounds
+    const related = e.relatedTarget as Node | null;
+    if (related && (e.currentTarget as Node).contains(related)) return;
+    setDragOver(false);
+  };
+  const onRefDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const files = e.dataTransfer?.files;
+    if (files && files.length) addRefs(files);
+  };
 
   // 轮询任务到完成。tStart 是任务开始时间戳（毫秒），用于刷新后从持久化时间继续计算 elapsed
   const pollTask = async (args: {
@@ -437,7 +468,13 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
       <div className="flex shrink-0 flex-col">
         {/* 参考图 — 紧凑横向条 */}
         {!isTextOnly && (
-          <section className="bg-gradient-to-b from-primary/[0.02] via-transparent to-transparent px-4 py-4">
+          <section
+            onDragOver={onRefDragOver}
+            onDragEnter={onRefDragOver}
+            onDragLeave={onRefDragLeave}
+            onDrop={onRefDrop}
+            className={`relative bg-gradient-to-b from-primary/[0.02] via-transparent to-transparent px-4 py-4 transition-colors ${dragOver ? "rounded-lg ring-2 ring-primary/70 ring-offset-2 ring-offset-background bg-primary/[0.06]" : ""}`}
+          >
             <div className="mb-3 flex items-center justify-between">
               <Label>参考图 · 图生图 ({refs.length}/5)</Label>
               {refs.length > 0 && (
@@ -449,32 +486,65 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                 </button>
               )}
             </div>
-            <div className="scrollbar-thin flex gap-3 overflow-x-auto pb-1">
-              {refs.map((url, i) => (
-                <div key={i} className="group relative h-24 w-24 shrink-0 overflow-hidden rounded-xl border border-primary/15 bg-surface">
-                  <img src={url} alt="ref" className="h-full w-full object-cover" />
-                  <button
-                    onClick={() => removeRef(i)}
-                    className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/75 text-white opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 hover:bg-destructive"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ))}
-              {refs.length < 5 && (
-                <label className={`group flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"} rounded-xl border border-dashed border-primary/30 bg-primary/[0.04] transition-all hover:border-primary/60 hover:bg-primary/[0.08]`}>
-                  {uploadingRef ? (
-                    <span className="text-[11px] text-muted-foreground">上传中…</span>
-                  ) : (
-                    <>
-                      <Plus className="h-6 w-6 text-primary/70 transition-colors group-hover:text-primary" strokeWidth={1.75} />
-                      <span className="text-[10px] text-muted-foreground/80">上传参考图</span>
-                    </>
-                  )}
-                  <input type="file" accept="image/*" className="hidden" onChange={addRef} disabled={uploadingRef} />
-                </label>
-              )}
-            </div>
+
+            {refs.length === 0 ? (
+              <label className={`flex h-24 w-full items-center justify-center gap-2 rounded-xl border border-dashed ${dragOver ? "border-primary/70 bg-primary/[0.08]" : "border-primary/30 bg-primary/[0.04]"} ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"} px-4 text-center transition-all hover:border-primary/60 hover:bg-primary/[0.08]`}>
+                <Plus className="h-5 w-5 text-primary/70" strokeWidth={1.75} />
+                <span className="text-[12px] text-muted-foreground">
+                  {uploadingRef ? "上传中…" : "拖拽图片到这里，或点击上传参考图"}
+                </span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/jpg,image/png,image/webp"
+                  multiple
+                  className="hidden"
+                  onChange={addRef}
+                  disabled={uploadingRef}
+                />
+              </label>
+            ) : (
+              <div className="scrollbar-thin flex gap-3 overflow-x-auto pb-1">
+                {refs.map((url, i) => (
+                  <div key={i} className="group relative h-24 w-24 shrink-0 overflow-hidden rounded-xl border border-primary/15 bg-surface">
+                    <img src={url} alt="ref" className="h-full w-full object-cover" />
+                    <button
+                      onClick={() => removeRef(i)}
+                      className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/75 text-white opacity-100 backdrop-blur transition-opacity hover:bg-destructive sm:opacity-0 sm:group-hover:opacity-100"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+                {refs.length < 5 && (
+                  <label className={`group flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"} rounded-xl border border-dashed border-primary/30 bg-primary/[0.04] transition-all hover:border-primary/60 hover:bg-primary/[0.08]`}>
+                    {uploadingRef ? (
+                      <span className="text-[11px] text-muted-foreground">上传中…</span>
+                    ) : (
+                      <>
+                        <Plus className="h-6 w-6 text-primary/70 transition-colors group-hover:text-primary" strokeWidth={1.75} />
+                        <span className="text-[10px] text-muted-foreground/80">上传参考图</span>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/jpg,image/png,image/webp"
+                      multiple
+                      className="hidden"
+                      onChange={addRef}
+                      disabled={uploadingRef}
+                    />
+                  </label>
+                )}
+              </div>
+            )}
+
+            {dragOver && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg bg-background/70 backdrop-blur-[2px]">
+                <span className="rounded-full border border-primary/40 bg-primary/15 px-3 py-1.5 text-[12px] font-medium text-primary">
+                  释放鼠标以上传参考图
+                </span>
+              </div>
+            )}
           </section>
         )}
 
