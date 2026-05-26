@@ -463,18 +463,21 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
 
 
   return (
-    <aside className="flex h-full min-h-0 flex-col overflow-hidden border-r border-border/60 bg-card/40">
+    <aside
+      onDragOver={onRefDragOver}
+      onDragEnter={onRefDragOver}
+      onDragLeave={onRefDragLeave}
+      onDrop={onRefDrop}
+      className="relative flex h-full min-h-0 flex-col overflow-hidden border-r border-border/60 bg-card/40"
+    >
       {/* 上半部分：参考图 + 提示词 — 固定高度，不参与滚动 */}
       <div className="flex shrink-0 flex-col">
         {/* 参考图 — 紧凑横向条 */}
         {!isTextOnly && (
           <section
-            onDragOver={onRefDragOver}
-            onDragEnter={onRefDragOver}
-            onDragLeave={onRefDragLeave}
-            onDrop={onRefDrop}
-            className={`relative bg-gradient-to-b from-primary/[0.02] via-transparent to-transparent px-4 py-4 transition-colors ${dragOver ? "rounded-lg ring-2 ring-primary/70 ring-offset-2 ring-offset-background bg-primary/[0.06]" : ""}`}
+            className={`relative bg-gradient-to-b from-primary/[0.02] via-transparent to-transparent px-4 py-4 transition-colors ${dragOver ? "rounded-lg bg-primary/[0.06]" : ""}`}
           >
+
             <div className="mb-3 flex items-center justify-between">
               <Label>参考图 · 图生图 ({refs.length}/5)</Label>
               {refs.length > 0 && (
