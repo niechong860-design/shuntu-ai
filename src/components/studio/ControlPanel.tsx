@@ -488,11 +488,15 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
             </div>
 
             {refs.length === 0 ? (
-              <label className={`flex h-24 w-full items-center justify-center gap-2 rounded-xl border border-dashed ${dragOver ? "border-primary/70 bg-primary/[0.08]" : "border-primary/30 bg-primary/[0.04]"} ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"} px-4 text-center transition-all hover:border-primary/60 hover:bg-primary/[0.08]`}>
-                <Plus className="h-5 w-5 text-primary/70" strokeWidth={1.75} />
-                <span className="text-[12px] text-muted-foreground">
-                  {uploadingRef ? "上传中…" : "拖拽图片到这里，或点击上传参考图"}
-                </span>
+              <label className={`group flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"} rounded-xl border border-dashed border-primary/30 bg-primary/[0.04] transition-all hover:border-primary/60 hover:bg-primary/[0.08]`}>
+                {uploadingRef ? (
+                  <span className="text-[11px] text-muted-foreground">上传中…</span>
+                ) : (
+                  <>
+                    <Plus className="h-6 w-6 text-primary/70 transition-colors group-hover:text-primary" strokeWidth={1.75} />
+                    <span className="text-[10px] text-muted-foreground/80">上传参考图</span>
+                  </>
+                )}
                 <input
                   type="file"
                   accept="image/jpeg,image/jpg,image/png,image/webp"
