@@ -350,7 +350,10 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
 
   const handleGenerate = async () => {
     if (generating || !activeModel) return;
-    onGenerateStart({ prompt: prompt.trim(), modelName: activeModel.name ?? activeModel.model_key });
+    // 风格模板只是本地 prompt 预设：在客户端把 promptSuffix 追加到用户原始 prompt 后
+    const effectiveStyleId = inspirationMode ? "" : styleId;
+    const finalPrompt = applyStyleSuffix(prompt, effectiveStyleId);
+    onGenerateStart({ prompt: finalPrompt, modelName: activeModel.name ?? activeModel.model_key });
     const tStart = Date.now();
     const initialPos = 18 + Math.floor(Math.random() * 25);
     const renderBudget = 12 + Math.floor(Math.random() * 10);
@@ -363,11 +366,10 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
       const httpRefs = isTextOnly ? [] : refs.filter((u) => /^https?:\/\//i.test(u));
       const payload = {
         modelKey: activeModel.model_key,
-        prompt: prompt.trim(),
+        prompt: finalPrompt,
         aspectRatio: ratio,
         size,
         referenceImages: httpRefs.length ? httpRefs : undefined,
-        styleId: inspirationMode ? "" : styleId,
       };
       console.log("[generate click] payload →", JSON.stringify(payload, null, 2));
       const r = await generate({ data: payload });
