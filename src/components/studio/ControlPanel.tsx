@@ -468,7 +468,13 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
       <div className="flex shrink-0 flex-col">
         {/* 参考图 — 紧凑横向条 */}
         {!isTextOnly && (
-          <section className="bg-gradient-to-b from-primary/[0.02] via-transparent to-transparent px-4 py-4">
+          <section
+            onDragOver={onRefDragOver}
+            onDragEnter={onRefDragOver}
+            onDragLeave={onRefDragLeave}
+            onDrop={onRefDrop}
+            className={`relative bg-gradient-to-b from-primary/[0.02] via-transparent to-transparent px-4 py-4 transition-colors ${dragOver ? "rounded-lg ring-2 ring-primary/70 ring-offset-2 ring-offset-background bg-primary/[0.06]" : ""}`}
+          >
             <div className="mb-3 flex items-center justify-between">
               <Label>参考图 · 图生图 ({refs.length}/5)</Label>
               {refs.length > 0 && (
@@ -480,32 +486,65 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                 </button>
               )}
             </div>
-            <div className="scrollbar-thin flex gap-3 overflow-x-auto pb-1">
-              {refs.map((url, i) => (
-                <div key={i} className="group relative h-24 w-24 shrink-0 overflow-hidden rounded-xl border border-primary/15 bg-surface">
-                  <img src={url} alt="ref" className="h-full w-full object-cover" />
-                  <button
-                    onClick={() => removeRef(i)}
-                    className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/75 text-white opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 hover:bg-destructive"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ))}
-              {refs.length < 5 && (
-                <label className={`group flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"} rounded-xl border border-dashed border-primary/30 bg-primary/[0.04] transition-all hover:border-primary/60 hover:bg-primary/[0.08]`}>
-                  {uploadingRef ? (
-                    <span className="text-[11px] text-muted-foreground">上传中…</span>
-                  ) : (
-                    <>
-                      <Plus className="h-6 w-6 text-primary/70 transition-colors group-hover:text-primary" strokeWidth={1.75} />
-                      <span className="text-[10px] text-muted-foreground/80">上传参考图</span>
-                    </>
-                  )}
-                  <input type="file" accept="image/*" className="hidden" onChange={addRef} disabled={uploadingRef} />
-                </label>
-              )}
-            </div>
+
+            {refs.length === 0 ? (
+              <label className={`flex h-24 w-full items-center justify-center gap-2 rounded-xl border border-dashed ${dragOver ? "border-primary/70 bg-primary/[0.08]" : "border-primary/30 bg-primary/[0.04]"} ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"} px-4 text-center transition-all hover:border-primary/60 hover:bg-primary/[0.08]`}>
+                <Plus className="h-5 w-5 text-primary/70" strokeWidth={1.75} />
+                <span className="text-[12px] text-muted-foreground">
+                  {uploadingRef ? "上传中…" : "拖拽图片到这里，或点击上传参考图"}
+                </span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/jpg,image/png,image/webp"
+                  multiple
+                  className="hidden"
+                  onChange={addRef}
+                  disabled={uploadingRef}
+                />
+              </label>
+            ) : (
+              <div className="scrollbar-thin flex gap-3 overflow-x-auto pb-1">
+                {refs.map((url, i) => (
+                  <div key={i} className="group relative h-24 w-24 shrink-0 overflow-hidden rounded-xl border border-primary/15 bg-surface">
+                    <img src={url} alt="ref" className="h-full w-full object-cover" />
+                    <button
+                      onClick={() => removeRef(i)}
+                      className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/75 text-white opacity-100 backdrop-blur transition-opacity hover:bg-destructive sm:opacity-0 sm:group-hover:opacity-100"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+                {refs.length < 5 && (
+                  <label className={`group flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"} rounded-xl border border-dashed border-primary/30 bg-primary/[0.04] transition-all hover:border-primary/60 hover:bg-primary/[0.08]`}>
+                    {uploadingRef ? (
+                      <span className="text-[11px] text-muted-foreground">上传中…</span>
+                    ) : (
+                      <>
+                        <Plus className="h-6 w-6 text-primary/70 transition-colors group-hover:text-primary" strokeWidth={1.75} />
+                        <span className="text-[10px] text-muted-foreground/80">上传参考图</span>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/jpg,image/png,image/webp"
+                      multiple
+                      className="hidden"
+                      onChange={addRef}
+                      disabled={uploadingRef}
+                    />
+                  </label>
+                )}
+              </div>
+            )}
+
+            {dragOver && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg bg-background/70 backdrop-blur-[2px]">
+                <span className="rounded-full border border-primary/40 bg-primary/15 px-3 py-1.5 text-[12px] font-medium text-primary">
+                  释放鼠标以上传参考图
+                </span>
+              </div>
+            )}
           </section>
         )}
 
