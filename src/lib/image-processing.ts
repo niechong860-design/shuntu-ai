@@ -14,7 +14,7 @@
  * canvas encoding, so the UI stays smooth on mobile.
  */
 
-export type ProcessPreset = "ai-model" | "community";
+export type ProcessPreset = "ai-model" | "community" | "reference";
 
 export interface ProcessedImage {
   /** Processed binary, ready to upload. */
