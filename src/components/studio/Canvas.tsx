@@ -425,17 +425,24 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
     pct = 60 + rp * 39;
   }
 
-  // 预计剩余时间（秒）
-  let etaSec: number;
-  if (stage === "rendering") {
-    const rStart = renderStartRef.current ?? elapsed;
-    etaSec = Math.max(1, renderBudget - (elapsed - rStart));
-  } else {
-    etaSec = Math.max(1, queuePos * 2 + renderBudget);
-  }
-
-  const mm = String(Math.floor(elapsed / 60)).padStart(1, "0");
-  const ss = String(elapsed % 60).padStart(2, "0");
+  // 友好提示文案（轮播，不显示具体耗时）
+  const FRIENDLY_TIPS = [
+    "AI 正在创作中，请稍候",
+    "正在优化画面细节",
+    "正在渲染高清图像",
+    "正在处理光影与质感",
+    "正在润色构图与色彩",
+    "即将完成，请保持页面打开",
+  ];
+  const LONG_WAIT_TIP = "复杂画面生成需要一点时间，请保持页面打开";
+  const [tipIdx, setTipIdx] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => {
+      setTipIdx((i) => (i + 1 + Math.floor(Math.random() * (FRIENDLY_TIPS.length - 1))) % FRIENDLY_TIPS.length);
+    }, 3500 + Math.floor(Math.random() * 1500));
+    return () => clearInterval(id);
+  }, []);
+  const currentTip = elapsed > 45 ? LONG_WAIT_TIP : FRIENDLY_TIPS[tipIdx];
 
   const stageLabel =
     stage === "rendering" ? "生成中" : stage === "polling" ? "网络重试" : stage === "submitting" ? "提交中" : "排队中";
