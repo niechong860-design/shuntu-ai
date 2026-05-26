@@ -425,17 +425,24 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
     pct = 60 + rp * 39;
   }
 
-  // 预计剩余时间（秒）
-  let etaSec: number;
-  if (stage === "rendering") {
-    const rStart = renderStartRef.current ?? elapsed;
-    etaSec = Math.max(1, renderBudget - (elapsed - rStart));
-  } else {
-    etaSec = Math.max(1, queuePos * 2 + renderBudget);
-  }
-
-  const mm = String(Math.floor(elapsed / 60)).padStart(1, "0");
-  const ss = String(elapsed % 60).padStart(2, "0");
+  // 友好提示文案（轮播，不显示具体耗时）
+  const FRIENDLY_TIPS = [
+    "AI 正在创作中，请稍候",
+    "正在优化画面细节",
+    "正在渲染高清图像",
+    "正在处理光影与质感",
+    "正在润色构图与色彩",
+    "即将完成，请保持页面打开",
+  ];
+  const LONG_WAIT_TIP = "复杂画面生成需要一点时间，请保持页面打开";
+  const [tipIdx, setTipIdx] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => {
+      setTipIdx((i) => (i + 1 + Math.floor(Math.random() * (FRIENDLY_TIPS.length - 1))) % FRIENDLY_TIPS.length);
+    }, 3500 + Math.floor(Math.random() * 1500));
+    return () => clearInterval(id);
+  }, []);
+  const currentTip = elapsed > 45 ? LONG_WAIT_TIP : FRIENDLY_TIPS[tipIdx];
 
   const stageLabel =
     stage === "rendering" ? "生成中" : stage === "polling" ? "网络重试" : stage === "submitting" ? "提交中" : "排队中";
@@ -516,15 +523,15 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
         {stage === "rendering" ? (
           <div className="text-center">
             <div className="font-display text-3xl font-semibold tracking-tight text-foreground">{Math.round(pct)}%</div>
-            <div className="mt-1 text-xs font-light text-muted-foreground">AI 正在渲染图像，马上完成</div>
+            <div className="mt-1 text-xs font-light text-muted-foreground transition-opacity duration-500">{currentTip}</div>
           </div>
         ) : (
           <div className="text-center">
             <div className="font-display text-3xl font-semibold tracking-tight text-foreground">
               正在排队 · 第 <span className="text-primary">{queuePos}</span> 位
             </div>
-            <div className="mt-1 text-xs font-light text-muted-foreground">
-              预计等待 <span className="font-mono text-foreground/90">{etaSec}</span> 秒
+            <div className="mt-1 text-xs font-light text-muted-foreground transition-opacity duration-500">
+              {currentTip}
             </div>
           </div>
         )}
@@ -554,11 +561,9 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
           })}
         </div>
 
-        {/* Meta line */}
+        {/* Meta line（不显示具体耗时，仅保留任务编号供排查） */}
         <div className="flex items-center gap-3 font-mono text-[10px] text-muted-foreground">
-          <span>已用时 {mm}:{ss}</span>
-          {progress?.attempt ? <span>· 第 {progress.attempt} 次查询</span> : null}
-          {progress?.taskId ? <span>· 任务 {progress.taskId.slice(0, 8)}…</span> : null}
+          {progress?.taskId ? <span>任务 {progress.taskId.slice(0, 8)}…</span> : <span>正在与生成节点通信…</span>}
         </div>
         <div className="text-[10px] font-light text-emerald-200/50">您可以继续浏览历史记录，结果会在这里自动显示</div>
         </div>
