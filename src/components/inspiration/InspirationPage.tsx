@@ -14,7 +14,8 @@ import {
   toggleCaseLike, toggleCaseFavorite, addCaseComment, publishCase,
   type CaseRow,
 } from "@/lib/inspiration.functions";
-import { listStyleTemplates, listModelsConfig } from "@/lib/admin.functions";
+import { listModelsConfig } from "@/lib/admin.functions";
+import { STYLE_TEMPLATES } from "@/lib/style-templates";
 import { setStudioPrefill } from "@/lib/studio-prefill";
 import { useAuth } from "@/hooks/use-auth";
 import { thumbUrl, preloadImages } from "@/lib/image-url";
