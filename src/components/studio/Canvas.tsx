@@ -1,19 +1,28 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, Copy, Maximize2, Sparkles, ArrowUpRight, X, Clock, ImageIcon, ListOrdered, Loader2, CheckCircle2 } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { getMyGenerationHistory } from "@/lib/admin.functions";
 import type { GenProgress } from "./ControlPanel";
-import { thumbUrl } from "@/lib/image-url";
+
+const FALLBACK_THUMB = "/style-previews/default.webp";
+const PAGE_SIZE = 20;
 
 type HistoryItem = {
   id: string;
   model: string;
   prompt: string | null;
+  finalPrompt: string | null;
+  styleName: string | null;
+  aspectRatio: string | null;
+  createdAt: string;
+  thumbnailUrl: string | null;
+  originalImageUrl: string;
+  cost: number;
+  // legacy
   image_url: string;
   created_at: string;
-  cost: number;
 };
 
 function timeAgo(iso: string) {
@@ -77,31 +86,60 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
   const [lightbox, setLightbox] = useState<HistoryItem | null>(null);
   const [heroLightbox, setHeroLightbox] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [total, setTotal] = useState(0);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const fetchHistory = useServerFn(getMyGenerationHistory);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  const loadHistory = async () => {
-    setLoadingHistory(true);
+  const loadHistory = useCallback(async (mode: "reset" | "append" = "reset") => {
+    if (mode === "reset") {
+      setLoadingHistory(true);
+      setHistoryError(null);
+    } else {
+      if (loadingMore || loadingHistory) return;
+      if (history.length >= total && total > 0) return;
+      setLoadingMore(true);
+    }
     try {
-      const list = await fetchHistory();
-      setHistory(list);
-    } catch (e) {
+      const offset = mode === "append" ? history.length : 0;
+      const res = (await fetchHistory({ data: { limit: PAGE_SIZE, offset } })) as {
+        items: HistoryItem[]; total: number; limit: number; offset: number;
+      };
+      setTotal(res.total);
+      setHistory((prev) => (mode === "append" ? [...prev, ...res.items] : res.items));
+    } catch (e: any) {
       console.warn("[history] load failed", e);
+      if (mode === "reset") setHistoryError(e?.message ?? "加载失败，请稍后再试");
     } finally {
       setLoadingHistory(false);
+      setLoadingMore(false);
     }
-  };
+  }, [fetchHistory, history.length, loadingMore, loadingHistory, total]);
 
   useEffect(() => {
-    if (historyOpen) loadHistory();
+    if (historyOpen) loadHistory("reset");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyOpen]);
 
   // 当主画布出现新图（生成完成）时，自动刷新历史，确保下次打开抽屉是最新的
   useEffect(() => {
-    if (generatedUrl) loadHistory();
+    if (generatedUrl) loadHistory("reset");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [generatedUrl]);
+
+  // 无限滚动：sentinel 进入视口时加载下一页
+  useEffect(() => {
+    if (!historyOpen) return;
+    const el = sentinelRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) loadHistory("append");
+    }, { rootMargin: "200px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [historyOpen, loadHistory]);
 
   const heroPrompt = currentPrompt ?? "";
   const heroModel = currentModel ?? "当前模型";
@@ -152,63 +190,95 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
               <h2 className="font-display text-base font-semibold tracking-tight">历史记录</h2>
             </div>
             <p className="mt-0.5 text-[11px] font-light text-muted-foreground">
-              共 {history.length} 张 · 最多保留 100 张 · 超过 15 天自动清理
+              共 {total || history.length} 张 · 最多保留 100 张 · 超过 15 天自动清理
             </p>
           </div>
           <div className="scrollbar-thin h-[calc(100vh-72px)] overflow-y-auto p-4">
             {loadingHistory ? (
               <div className="py-20 text-center text-xs text-muted-foreground">加载中…</div>
+            ) : historyError ? (
+              <div className="py-20 text-center text-xs text-muted-foreground">
+                <div className="mb-3">{historyError}</div>
+                <button
+                  onClick={() => loadHistory("reset")}
+                  className="rounded-md border border-border px-3 py-1.5 text-[11px] hover:border-primary/60 hover:text-primary"
+                >重试</button>
+              </div>
             ) : history.length === 0 ? (
               <div className="py-20 text-center text-xs text-muted-foreground">还没有历史作品，去生成第一张吧</div>
             ) : (
-              <div className="grid grid-cols-2 gap-3">
-                {history.map((item) => (
-                  <div
-                    key={item.id}
-                    className="group relative aspect-square overflow-hidden rounded-xl border border-border bg-card transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-glow"
-                  >
-                    <button
-                      onClick={() => {
-                        onSelectHistory(item.image_url, item.prompt ?? "", item.model);
-                        onHistoryOpenChange(false);
-                      }}
-                      className="absolute inset-0"
-                    >
-                      <img src={thumbUrl(item.image_url, { quality: 65 })} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
-                    </button>
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/0 opacity-0 transition-opacity group-hover:opacity-100" />
-                    <div className="absolute left-2 top-2 opacity-0 transition-opacity group-hover:opacity-100">
-                      <span className="glass rounded-full px-1.5 py-0.5 text-[8px] font-semibold uppercase text-primary">{item.model.split(" ")[0]}</span>
-                    </div>
-                    <div className="absolute inset-x-2 bottom-2 flex items-end justify-between gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                      <span className="font-mono text-[9px] text-foreground/70">{timeAgo(item.created_at)}</span>
-                      <div className="flex items-center gap-1">
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  {history.map((item) => {
+                    const thumb = item.thumbnailUrl || FALLBACK_THUMB;
+                    return (
+                      <div
+                        key={item.id}
+                        className="group relative aspect-square overflow-hidden rounded-xl border border-border bg-card transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-glow"
+                      >
                         <button
-                          onClick={(e) => { e.stopPropagation(); copyToClipboard(item.prompt ?? ""); }}
-                          title="复制提示词"
-                          className="glass flex h-6 w-6 items-center justify-center rounded-md text-foreground/90 hover:bg-primary/20 hover:text-primary"
+                          onClick={() => {
+                            onSelectHistory(item.originalImageUrl, item.prompt ?? "", item.model);
+                            onHistoryOpenChange(false);
+                          }}
+                          className="absolute inset-0"
                         >
-                          <Copy className="h-2.5 w-2.5" />
+                          <img
+                            src={thumb}
+                            alt=""
+                            width={480}
+                            height={480}
+                            loading="lazy"
+                            decoding="async"
+                            onError={(e) => {
+                              const img = e.currentTarget as HTMLImageElement;
+                              if (!img.src.endsWith(FALLBACK_THUMB)) img.src = FALLBACK_THUMB;
+                            }}
+                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                          />
                         </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); downloadImage(item.image_url, `lovable-${item.model}-${item.id}.png`); }}
-                          title="下载"
-                          className="glass flex h-6 w-6 items-center justify-center rounded-md text-foreground/90 hover:bg-primary/20 hover:text-primary"
-                        >
-                          <Download className="h-2.5 w-2.5" />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setLightbox(item); }}
-                          title="查看大图"
-                          className="glass flex h-6 w-6 items-center justify-center rounded-md text-foreground/90 hover:bg-primary/20 hover:text-primary"
-                        >
-                          <Maximize2 className="h-2.5 w-2.5" />
-                        </button>
+                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/0 opacity-0 transition-opacity group-hover:opacity-100" />
+                        <div className="absolute left-2 top-2 opacity-0 transition-opacity group-hover:opacity-100">
+                          <span className="glass rounded-full px-1.5 py-0.5 text-[8px] font-semibold uppercase text-primary">{item.model.split(" ")[0]}</span>
+                        </div>
+                        <div className="absolute inset-x-2 bottom-2 flex items-end justify-between gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                          <span className="font-mono text-[9px] text-foreground/70">{timeAgo(item.createdAt)}</span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); copyToClipboard(item.prompt ?? ""); }}
+                              title="复制提示词"
+                              className="glass flex h-6 w-6 items-center justify-center rounded-md text-foreground/90 hover:bg-primary/20 hover:text-primary"
+                            >
+                              <Copy className="h-2.5 w-2.5" />
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); downloadImage(item.originalImageUrl, `lovable-${item.model}-${item.id}.png`); }}
+                              title="下载原图"
+                              className="glass flex h-6 w-6 items-center justify-center rounded-md text-foreground/90 hover:bg-primary/20 hover:text-primary"
+                            >
+                              <Download className="h-2.5 w-2.5" />
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setLightbox(item); }}
+                              title="查看大图"
+                              className="glass flex h-6 w-6 items-center justify-center rounded-md text-foreground/90 hover:bg-primary/20 hover:text-primary"
+                            >
+                              <Maximize2 className="h-2.5 w-2.5" />
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                    );
+                  })}
+                </div>
+                <div ref={sentinelRef} className="h-8" />
+                {loadingMore && (
+                  <div className="py-3 text-center text-[11px] text-muted-foreground">加载更多…</div>
+                )}
+                {!loadingMore && history.length >= total && total > 0 && (
+                  <div className="py-3 text-center text-[10px] text-muted-foreground/70">已加载全部</div>
+                )}
+              </>
             )}
           </div>
         </SheetContent>
@@ -216,7 +286,7 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
 
       {lightbox && (
         <Lightbox
-          src={lightbox.image_url}
+          src={lightbox.originalImageUrl}
           prompt={lightbox.prompt ?? ""}
           model={lightbox.model}
           filename={`lovable-${lightbox.model}-${lightbox.id}.png`}
