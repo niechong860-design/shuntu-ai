@@ -709,7 +709,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
           </div>
         )}
         <div className={`scrollbar-thin min-h-0 flex-1 overflow-y-auto pb-3 ${inspirationMode ? "pointer-events-none opacity-40" : ""}`}>
-          {styles.length === 0 ? (
+          {!stylesLoaded && styles.length === 0 ? (
             <div className="flex h-full items-center justify-center text-xs text-muted-foreground">加载中…</div>
           ) : (
             <div className="grid grid-cols-6 gap-2">
