@@ -623,21 +623,10 @@ export const generateImage = createServerFn({ method: "POST" })
       message,
     });
 
-    // 最终 prompt = 用户原文 + （若选择了风格模板）模板提示词
-    // 灵感广场的提示词在前端已直接写入用户输入框，这里无需重复追加。
-    // 商品保护提示 / 后台 system_prompt 不再自动并入请求。
-    let stylePromptStr = "";
-    if (data.styleId && data.styleId !== "none") {
-      const { data: tpl } = await supabaseAdmin
-        .from("style_templates")
-        .select("prompt")
-        .eq("id", data.styleId)
-        .maybeSingle();
-      stylePromptStr = (tpl?.prompt ?? "").trim();
-    }
-    const finalPrompt = [data.prompt.trim(), stylePromptStr]
-      .filter(Boolean)
-      .join("\n\n");
+    // 风格模板已迁移为前端本地预设：客户端会自行把 promptSuffix 追加到 prompt 后再提交。
+    // 这里直接使用客户端传入的 prompt，不再查询 style_templates 表。
+    // styleId 字段仅作为可选元数据保留（兼容旧客户端），不参与提示词拼接。
+    const finalPrompt = data.prompt.trim();
 
 
 

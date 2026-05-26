@@ -7,12 +7,13 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { useServerFn } from "@tanstack/react-start";
-import { listModelsConfig, generateImage, checkImageStatus, listStyleTemplates, generateRandomPrompt } from "@/lib/admin.functions";
+import { listModelsConfig, generateImage, checkImageStatus, generateRandomPrompt } from "@/lib/admin.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { consumeStudioPrefill } from "@/lib/studio-prefill";
 import { processImage, validateImageFile } from "@/lib/image-processing";
-import { thumbUrl, preloadImages } from "@/lib/image-url";
+import { thumbUrl } from "@/lib/image-url";
+import { STYLE_TEMPLATES, applyStyleSuffix, type StyleTemplate } from "@/lib/style-templates";
 import { toast } from "sonner";
 
 
@@ -34,7 +35,7 @@ const RATIOS = [
   { id: "4:5", icon: RectangleVertical, label: "竖版" },
 ];
 
-type StyleTpl = { id: string; name: string; image_url: string | null; sort_order: number };
+type StyleTpl = StyleTemplate;
 
 export type GenProgress = {
   stage: "submitting" | "queued" | "rendering" | "polling";
@@ -110,12 +111,10 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
   const [refs, setRefs] = useState<string[]>([]);
   const [prompt, setPrompt] = useState("");
   const [styleId, setStyleId] = useState<string>("");
-  const [styles, setStyles] = useState<StyleTpl[]>([]);
+  const [styles] = useState<StyleTpl[]>(STYLE_TEMPLATES);
   const [inspirationMode, setInspirationMode] = useState(false);
   const [cfg, setCfg] = useState([7.5]);
   const [steps, setSteps] = useState([32]);
-
-  const fetchStyles = useServerFn(listStyleTemplates);
 
   useEffect(() => {
     if (!session) return;
@@ -123,15 +122,6 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
       const list = (data ?? []) as ModelCfg[];
       setModels(list);
       if (list[0] && !modelKey) setModelKey(list[0].model_key);
-    }).catch(() => {});
-    fetchStyles({}).then((data) => {
-      const list = (data ?? []) as StyleTpl[];
-      setStyles(list);
-      // Idle-preload the next batch of thumbnails (just below the fold)
-      // so the first scroll feels instant.
-      preloadImages(
-        list.slice(12, 36).map((s) => thumbUrl(s.image_url, { quality: 65 })),
-      );
     }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
@@ -360,7 +350,10 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
 
   const handleGenerate = async () => {
     if (generating || !activeModel) return;
-    onGenerateStart({ prompt: prompt.trim(), modelName: activeModel.name ?? activeModel.model_key });
+    // 风格模板只是本地 prompt 预设：在客户端把 promptSuffix 追加到用户原始 prompt 后
+    const effectiveStyleId = inspirationMode ? "" : styleId;
+    const finalPrompt = applyStyleSuffix(prompt, effectiveStyleId);
+    onGenerateStart({ prompt: finalPrompt, modelName: activeModel.name ?? activeModel.model_key });
     const tStart = Date.now();
     const initialPos = 18 + Math.floor(Math.random() * 25);
     const renderBudget = 12 + Math.floor(Math.random() * 10);
@@ -373,11 +366,10 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
       const httpRefs = isTextOnly ? [] : refs.filter((u) => /^https?:\/\//i.test(u));
       const payload = {
         modelKey: activeModel.model_key,
-        prompt: prompt.trim(),
+        prompt: finalPrompt,
         aspectRatio: ratio,
         size,
         referenceImages: httpRefs.length ? httpRefs : undefined,
-        styleId: inspirationMode ? "" : styleId,
       };
       console.log("[generate click] payload →", JSON.stringify(payload, null, 2));
       const r = await generate({ data: payload });
@@ -404,7 +396,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
         taskId: r.taskId,
         modelKey: activeModel.model_key,
         modelName,
-        prompt: prompt.trim(),
+        prompt: finalPrompt,
         startTs: tStart,
         initialPos,
         renderBudget,
@@ -685,20 +677,18 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                         : "border-border hover:border-primary/50 hover:-translate-y-0.5"
                     }`}
                   >
-                    {s.image_url ? (
+                    <div className={`absolute inset-0 bg-gradient-to-br ${s.gradient}`} />
+                    {s.image ? (
                       <img
-                        src={thumbUrl(s.image_url, { quality: 65 })}
+                        src={s.image}
                         alt={s.name}
-                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                        className="relative h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                         loading={isAboveFold ? "eager" : "lazy"}
                         decoding="async"
                         fetchPriority={isAboveFold ? "high" : "auto"}
                       />
-                    ) : (
-                      <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-white/[0.04] to-white/[0.01] text-muted-foreground">
-                        <ImageIcon className="h-6 w-6" strokeWidth={1.5} />
-                      </div>
-                    )}
+                    ) : null}
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent px-2 pb-1.5 pt-4">
                       <div className="flex items-center gap-1.5">
                         {active && <div className="h-3 w-1 rounded-full bg-primary" />}
