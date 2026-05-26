@@ -70,6 +70,7 @@ export function historyThumbUrl(url: string | null | undefined): string {
   params.set("resize", "contain");
   const sep = transformed.includes("?") ? "&" : "?";
   return `${transformed}${sep}${params.toString()}`;
+}
 
 /**
  * Preload a batch of image URLs into the browser cache during idle time,
