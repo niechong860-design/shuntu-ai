@@ -1,19 +1,28 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, Copy, Maximize2, Sparkles, ArrowUpRight, X, Clock, ImageIcon, ListOrdered, Loader2, CheckCircle2 } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { getMyGenerationHistory } from "@/lib/admin.functions";
 import type { GenProgress } from "./ControlPanel";
-import { thumbUrl } from "@/lib/image-url";
+
+const FALLBACK_THUMB = "/style-previews/default.webp";
+const PAGE_SIZE = 20;
 
 type HistoryItem = {
   id: string;
   model: string;
   prompt: string | null;
+  finalPrompt: string | null;
+  styleName: string | null;
+  aspectRatio: string | null;
+  createdAt: string;
+  thumbnailUrl: string | null;
+  originalImageUrl: string;
+  cost: number;
+  // legacy
   image_url: string;
   created_at: string;
-  cost: number;
 };
 
 function timeAgo(iso: string) {
