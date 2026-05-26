@@ -143,23 +143,35 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
     try {
       if (tab === "login") {
         const { error } = await supabase.auth.signInWithPassword({ email: trimmedEmail, password });
-        if (error) throw error;
+        if (error) {
+          console.warn("[auth] login failed:", safeErrorCode(error));
+          throw error;
+        }
         toast.success("登录成功，欢迎回来");
         onSuccess?.();
       } else if (tab === "signup") {
-        const { error } = await supabase.auth.signUp({
+        const { data: signUpData, error } = await supabase.auth.signUp({
           email: trimmedEmail,
           password,
           options: { emailRedirectTo: `${window.location.origin}/` },
         });
-        if (error) throw error;
-        // 邮箱验证已关闭：注册后直接登录
+        if (error) {
+          console.warn("[auth] signup failed:", safeErrorCode(error));
+          throw error;
+        }
+        // 如果未自动登录（需邮箱验证场景），尝试登录
         const { error: signInErr } = await supabase.auth.signInWithPassword({
           email: trimmedEmail,
           password,
         });
         if (signInErr) {
-          toast.success("注册成功，请登录");
+          // 注册接口成功但无法立即登录，通常是邮箱验证开启
+          console.warn("[auth] signup ok but auto sign-in failed:", safeErrorCode(signInErr));
+          if (signUpData?.user && !signUpData.session) {
+            toast.success("注册成功，请到邮箱完成验证后再登录");
+          } else {
+            toast.success("注册成功，请重新登录");
+          }
           setTab("login");
         } else {
           toast.success("注册成功，欢迎加入");
@@ -169,7 +181,10 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
         const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
           redirectTo: `${window.location.origin}/`,
         });
-        if (error) throw error;
+        if (error) {
+          console.warn("[auth] reset password failed:", safeErrorCode(error));
+          throw error;
+        }
         toast.success("重置链接已发到邮箱，请去查收");
         setTab("login");
       }
