@@ -286,7 +286,7 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
 
       {lightbox && (
         <Lightbox
-          src={lightbox.image_url}
+          src={lightbox.originalImageUrl}
           prompt={lightbox.prompt ?? ""}
           model={lightbox.model}
           filename={`lovable-${lightbox.model}-${lightbox.id}.png`}
