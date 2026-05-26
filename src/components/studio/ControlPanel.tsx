@@ -681,6 +681,8 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                     <img
                       src={s.previewImage}
                       alt={s.name}
+                      width={420}
+                      height={747}
                       onError={(e) => {
                         const img = e.currentTarget as HTMLImageElement;
                         if (!img.src.endsWith("/style-previews/default.webp")) {
