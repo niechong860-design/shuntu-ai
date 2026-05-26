@@ -160,6 +160,16 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
 
   const [uploadingRef, setUploadingRef] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const openFilePicker = () => {
+    if (uploadingRef) return;
+    if (refs.length >= 5) {
+      toast.error("最多上传 5 张参考图");
+      return;
+    }
+    fileInputRef.current?.click();
+  };
 
   const REF_ACCEPT = /^image\/(jpe?g|png|webp)$/i;
 
