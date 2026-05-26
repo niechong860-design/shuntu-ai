@@ -10,7 +10,28 @@ type Tab = "login" | "signup" | "forgot";
 /** 把 Supabase 返回的英文错误翻成更明确的中文提示 */
 function translateAuthError(err: unknown, tab: Tab): string {
   const raw = err instanceof Error ? err.message : typeof err === "string" ? err : "";
-  const m = raw.toLowerCase();
+  // 新版 Supabase 错误把详情放在 code/status 字段，message 可能是通用文案
+  const errObj = (err && typeof err === "object" ? err : {}) as { code?: string; status?: number; name?: string };
+  const code = (errObj.code ?? "").toLowerCase();
+  const status = errObj.status ?? 0;
+  const m = (raw + " " + code).toLowerCase();
+
+  // 直接按 code 命中（新版 GoTrue 优先返回 code）
+  if (code === "invalid_credentials" || code === "invalid_grant")
+    return "邮箱或密码不正确，请重新输入";
+  if (code === "email_not_confirmed") return "邮箱尚未验证，请先到邮箱完成验证";
+  if (code === "user_not_found") return "账号不存在，请先注册";
+  if (code === "user_banned") return "账号已被封禁，请联系客服";
+  if (code === "user_already_exists" || code === "email_exists")
+    return "该邮箱已注册，请直接登录";
+  if (code === "weak_password" || code === "password_too_short")
+    return "密码长度不足，请重新设置";
+  if (code === "over_request_rate_limit" || code === "over_email_send_rate_limit" || status === 429)
+    return "操作太频繁，请稍后再试";
+  if (code === "validation_failed" || code === "email_address_invalid")
+    return "请输入正确的邮箱地址";
+
+
 
   // 已经是中文的（自定义抛出）直接返回
   if (/[\u4e00-\u9fa5]/.test(raw)) return raw;
@@ -80,9 +101,12 @@ function translateAuthError(err: unknown, tab: Tab): string {
   if (/\b5\d\d\b/.test(m) || m.includes("internal server") || m.includes("unexpected_failure"))
     return "服务器暂时繁忙，请稍后再试";
 
+  // 登录 400 几乎都是账号/密码不匹配
+  if (tab === "login" && status === 400) return "邮箱或密码不正确，请重新输入";
+
   // 兜底
   return tab === "login"
-    ? "登录失败，请检查邮箱和密码后重试"
+    ? "邮箱或密码不正确，请重新输入"
     : tab === "signup"
       ? "注册失败，请稍后重试"
       : "发送失败，请稍后重试";
