@@ -7,12 +7,13 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { useServerFn } from "@tanstack/react-start";
-import { listModelsConfig, generateImage, checkImageStatus, listStyleTemplates, generateRandomPrompt } from "@/lib/admin.functions";
+import { listModelsConfig, generateImage, checkImageStatus, generateRandomPrompt } from "@/lib/admin.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { consumeStudioPrefill } from "@/lib/studio-prefill";
 import { processImage, validateImageFile } from "@/lib/image-processing";
-import { thumbUrl, preloadImages } from "@/lib/image-url";
+import { thumbUrl } from "@/lib/image-url";
+import { STYLE_TEMPLATES, applyStyleSuffix, type StyleTemplate } from "@/lib/style-templates";
 import { toast } from "sonner";
 
 
