@@ -396,7 +396,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
         taskId: r.taskId,
         modelKey: activeModel.model_key,
         modelName,
-        prompt: prompt.trim(),
+        prompt: finalPrompt,
         startTs: tStart,
         initialPos,
         renderBudget,
