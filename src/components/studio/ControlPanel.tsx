@@ -160,6 +160,11 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
 
   const [uploadingRef, setUploadingRef] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const refFileInputRef = useRef<HTMLInputElement>(null);
+  const openRefPicker = () => {
+    if (uploadingRef) return;
+    refFileInputRef.current?.click();
+  };
 
   const uploadOneRef = async (f: File) => {
     const uid = session?.user?.id;
