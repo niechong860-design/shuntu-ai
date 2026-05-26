@@ -677,18 +677,23 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                         : "border-border hover:border-primary/50 hover:-translate-y-0.5"
                     }`}
                   >
-                    <div className={`absolute inset-0 bg-gradient-to-br ${s.gradient}`} />
-                    {s.image ? (
-                      <img
-                        src={s.image}
-                        alt={s.name}
-                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-                        className="relative h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-                        loading={isAboveFold ? "eager" : "lazy"}
-                        decoding="async"
-                        fetchPriority={isAboveFold ? "high" : "auto"}
-                      />
-                    ) : null}
+                    <div className="absolute inset-0 bg-gradient-to-br from-zinc-700/60 to-zinc-900/80" />
+                    <img
+                      src={s.previewImage}
+                      alt={s.name}
+                      onError={(e) => {
+                        const img = e.currentTarget as HTMLImageElement;
+                        if (!img.src.endsWith("/style-previews/default.webp")) {
+                          img.src = "/style-previews/default.webp";
+                        } else {
+                          img.style.display = "none";
+                        }
+                      }}
+                      className="relative h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                      loading={isAboveFold ? "eager" : "lazy"}
+                      decoding="async"
+                      fetchPriority={isAboveFold ? "high" : "auto"}
+                    />
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent px-2 pb-1.5 pt-4">
                       <div className="flex items-center gap-1.5">
                         {active && <div className="h-3 w-1 rounded-full bg-primary" />}
