@@ -147,6 +147,23 @@ export async function processImage(file: File, preset: ProcessPreset): Promise<P
       };
     }
 
+    if (preset === "reference") {
+      const { w, h } = fitDimensions(bitmap.width, bitmap.height, REF_MAX_DIM);
+      // Try WebP first (best compression); fall back to JPEG if browser/codec refuses.
+      let blob: Blob;
+      let contentType = "image/webp";
+      let ext = "webp";
+      try {
+        blob = await canvasEncode(bitmap, w, h, "image/webp", REF_QUALITY, null);
+        if (!blob || blob.size === 0) throw new Error("empty webp");
+      } catch {
+        blob = await canvasEncode(bitmap, w, h, "image/jpeg", REF_QUALITY, "#ffffff");
+        contentType = "image/jpeg";
+        ext = "jpg";
+      }
+      return { blob, contentType, ext, previewUrl, originalSize, processedSize: blob.size };
+    }
+
     // community
     const type = SUPPORTED_COMMUNITY_TYPES.has(file.type) ? file.type : "image/jpeg";
     const isPng = type === "image/png";
