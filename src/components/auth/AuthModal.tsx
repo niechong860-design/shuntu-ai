@@ -101,9 +101,12 @@ function translateAuthError(err: unknown, tab: Tab): string {
   if (/\b5\d\d\b/.test(m) || m.includes("internal server") || m.includes("unexpected_failure"))
     return "服务器暂时繁忙，请稍后再试";
 
+  // 登录 400 几乎都是账号/密码不匹配
+  if (tab === "login" && status === 400) return "邮箱或密码不正确，请重新输入";
+
   // 兜底
   return tab === "login"
-    ? "登录失败，请检查邮箱和密码后重试"
+    ? "邮箱或密码不正确，请重新输入"
     : tab === "signup"
       ? "注册失败，请稍后重试"
       : "发送失败，请稍后重试";
