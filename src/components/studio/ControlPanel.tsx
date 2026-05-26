@@ -111,12 +111,10 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
   const [refs, setRefs] = useState<string[]>([]);
   const [prompt, setPrompt] = useState("");
   const [styleId, setStyleId] = useState<string>("");
-  const [styles, setStyles] = useState<StyleTpl[]>([]);
+  const [styles] = useState<StyleTpl[]>(STYLE_TEMPLATES);
   const [inspirationMode, setInspirationMode] = useState(false);
   const [cfg, setCfg] = useState([7.5]);
   const [steps, setSteps] = useState([32]);
-
-  const fetchStyles = useServerFn(listStyleTemplates);
 
   useEffect(() => {
     if (!session) return;
@@ -124,15 +122,6 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
       const list = (data ?? []) as ModelCfg[];
       setModels(list);
       if (list[0] && !modelKey) setModelKey(list[0].model_key);
-    }).catch(() => {});
-    fetchStyles({}).then((data) => {
-      const list = (data ?? []) as StyleTpl[];
-      setStyles(list);
-      // Idle-preload the next batch of thumbnails (just below the fold)
-      // so the first scroll feels instant.
-      preloadImages(
-        list.slice(12, 36).map((s) => thumbUrl(s.image_url, { quality: 65 })),
-      );
     }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
