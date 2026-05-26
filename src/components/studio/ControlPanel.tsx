@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Wand2, Eraser, Sparkles, Plus, X, Dices, Zap,
   ChevronDown, Square, RectangleHorizontal, RectangleVertical, Monitor,
@@ -160,6 +160,16 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
 
   const [uploadingRef, setUploadingRef] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const openFilePicker = () => {
+    if (uploadingRef) return;
+    if (refs.length >= 5) {
+      toast.error("最多上传 5 张参考图");
+      return;
+    }
+    fileInputRef.current?.click();
+  };
 
   const REF_ACCEPT = /^image\/(jpe?g|png|webp)$/i;
 
@@ -458,18 +468,21 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
         {/* 参考图 — 紧凑横向条 */}
         {!isTextOnly && (
           <section
+            role="button"
+            tabIndex={0}
             className={`relative cursor-pointer bg-gradient-to-b from-primary/[0.02] via-transparent to-transparent px-4 py-4 transition-all ${
               isDragOver ? "bg-primary/[0.08] ring-2 ring-inset ring-primary/60" : ""
             }`}
             onClick={(e) => {
-              // Avoid opening file picker when clicking thumbnails, their delete button, or "清空"
               const t = e.target as HTMLElement;
               if (t.closest("[data-ref-noopen]")) return;
-              if (refs.length >= 5) {
-                toast.error("最多上传 5 张参考图");
-                return;
+              openFilePicker();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                openFilePicker();
               }
-              document.getElementById("ref-file-input")?.click();
             }}
             onDragEnter={(e) => {
               e.preventDefault();
@@ -480,7 +493,6 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
               if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
             }}
             onDragLeave={(e) => {
-              // Only clear when leaving the section, not its children
               if (e.currentTarget.contains(e.relatedTarget as Node)) return;
               setIsDragOver(false);
             }}
@@ -495,6 +507,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
               <Label>参考图 · 图生图 ({refs.length}/5)</Label>
               {refs.length > 0 && (
                 <button
+                  type="button"
                   data-ref-noopen
                   onClick={(e) => { e.stopPropagation(); setRefs([]); }}
                   className="text-[11px] text-muted-foreground transition-colors hover:text-primary"
@@ -512,6 +525,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                 >
                   <img src={url} alt="ref" className="h-full w-full object-cover" />
                   <button
+                    type="button"
                     onClick={(e) => { e.stopPropagation(); removeRef(i); }}
                     className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/75 text-white opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 hover:bg-destructive"
                   >
@@ -520,10 +534,14 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                 </div>
               ))}
               {refs.length < 5 && (
-                <div
-                  className={`pointer-events-none flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-dashed ${
-                    isDragOver ? "border-primary bg-primary/[0.12]" : "border-primary/30 bg-primary/[0.04]"
-                  } transition-all`}
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); openFilePicker(); }}
+                  className={`flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-dashed transition-all ${
+                    isDragOver
+                      ? "border-primary bg-primary/[0.12]"
+                      : "border-primary/30 bg-primary/[0.04] hover:border-primary/60 hover:bg-primary/[0.08]"
+                  } ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"}`}
                 >
                   {uploadingRef ? (
                     <span className="text-[11px] text-muted-foreground">上传中…</span>
@@ -533,10 +551,9 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                       <span className="text-[10px] text-muted-foreground/80">上传参考图</span>
                     </>
                   )}
-                </div>
+                </button>
               )}
             </div>
-            {/* Hint line */}
             <div className="mt-2 text-center text-[11px] font-light text-muted-foreground/80">
               {isDragOver
                 ? "释放鼠标以上传参考图"
@@ -546,7 +563,6 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                 ? "正在上传参考图…"
                 : "点击或拖拽继续添加（最多 5 张）"}
             </div>
-            {/* Drag overlay */}
             {isDragOver && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md bg-primary/10 backdrop-blur-[2px]">
                 <span className="rounded-full border border-primary/40 bg-background/80 px-4 py-1.5 text-xs font-medium text-primary">
@@ -555,13 +571,15 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
               </div>
             )}
             <input
-              id="ref-file-input"
+              ref={fileInputRef}
               type="file"
-              accept="image/jpeg,image/jpg,image/png,image/webp"
+              accept="image/jpeg,image/png,image/webp"
               multiple
-              className="hidden"
+              onClick={(e) => e.stopPropagation()}
               onChange={onFileInputChange}
-              disabled={uploadingRef}
+              style={{ position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }}
+              tabIndex={-1}
+              aria-hidden="true"
             />
           </section>
         )}
