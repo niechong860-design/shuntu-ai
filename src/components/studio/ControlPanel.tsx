@@ -35,7 +35,7 @@ const RATIOS = [
   { id: "4:5", icon: RectangleVertical, label: "竖版" },
 ];
 
-type StyleTpl = { id: string; name: string; image_url: string | null; sort_order: number };
+type StyleTpl = StyleTemplate;
 
 export type GenProgress = {
   stage: "submitting" | "queued" | "rendering" | "polling";
