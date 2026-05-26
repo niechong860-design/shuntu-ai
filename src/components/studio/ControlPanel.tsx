@@ -457,12 +457,46 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
       <div className="flex shrink-0 flex-col">
         {/* 参考图 — 紧凑横向条 */}
         {!isTextOnly && (
-          <section className="bg-gradient-to-b from-primary/[0.02] via-transparent to-transparent px-4 py-4">
+          <section
+            className={`relative cursor-pointer bg-gradient-to-b from-primary/[0.02] via-transparent to-transparent px-4 py-4 transition-all ${
+              isDragOver ? "bg-primary/[0.08] ring-2 ring-inset ring-primary/60" : ""
+            }`}
+            onClick={(e) => {
+              // Avoid opening file picker when clicking thumbnails, their delete button, or "清空"
+              const t = e.target as HTMLElement;
+              if (t.closest("[data-ref-noopen]")) return;
+              if (refs.length >= 5) {
+                toast.error("最多上传 5 张参考图");
+                return;
+              }
+              document.getElementById("ref-file-input")?.click();
+            }}
+            onDragEnter={(e) => {
+              e.preventDefault();
+              if (e.dataTransfer?.types?.includes("Files")) setIsDragOver(true);
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+            }}
+            onDragLeave={(e) => {
+              // Only clear when leaving the section, not its children
+              if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+              setIsDragOver(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setIsDragOver(false);
+              const files = e.dataTransfer?.files;
+              if (files && files.length) void addRefFiles(files);
+            }}
+          >
             <div className="mb-3 flex items-center justify-between">
               <Label>参考图 · 图生图 ({refs.length}/5)</Label>
               {refs.length > 0 && (
                 <button
-                  onClick={() => setRefs([])}
+                  data-ref-noopen
+                  onClick={(e) => { e.stopPropagation(); setRefs([]); }}
                   className="text-[11px] text-muted-foreground transition-colors hover:text-primary"
                 >
                   清空
@@ -471,10 +505,14 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
             </div>
             <div className="scrollbar-thin flex gap-3 overflow-x-auto pb-1">
               {refs.map((url, i) => (
-                <div key={i} className="group relative h-24 w-24 shrink-0 overflow-hidden rounded-xl border border-primary/15 bg-surface">
+                <div
+                  key={i}
+                  data-ref-noopen
+                  className="group relative h-24 w-24 shrink-0 overflow-hidden rounded-xl border border-primary/15 bg-surface"
+                >
                   <img src={url} alt="ref" className="h-full w-full object-cover" />
                   <button
-                    onClick={() => removeRef(i)}
+                    onClick={(e) => { e.stopPropagation(); removeRef(i); }}
                     className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/75 text-white opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 hover:bg-destructive"
                   >
                     <X className="h-3.5 w-3.5" />
@@ -482,21 +520,53 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                 </div>
               ))}
               {refs.length < 5 && (
-                <label className={`group flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"} rounded-xl border border-dashed border-primary/30 bg-primary/[0.04] transition-all hover:border-primary/60 hover:bg-primary/[0.08]`}>
+                <div
+                  className={`pointer-events-none flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-dashed ${
+                    isDragOver ? "border-primary bg-primary/[0.12]" : "border-primary/30 bg-primary/[0.04]"
+                  } transition-all`}
+                >
                   {uploadingRef ? (
                     <span className="text-[11px] text-muted-foreground">上传中…</span>
                   ) : (
                     <>
-                      <Plus className="h-6 w-6 text-primary/70 transition-colors group-hover:text-primary" strokeWidth={1.75} />
+                      <Plus className="h-6 w-6 text-primary/70" strokeWidth={1.75} />
                       <span className="text-[10px] text-muted-foreground/80">上传参考图</span>
                     </>
                   )}
-                  <input type="file" accept="image/*" className="hidden" onChange={addRef} disabled={uploadingRef} />
-                </label>
+                </div>
               )}
             </div>
+            {/* Hint line */}
+            <div className="mt-2 text-center text-[11px] font-light text-muted-foreground/80">
+              {isDragOver
+                ? "释放鼠标以上传参考图"
+                : refs.length === 0
+                ? "点击或拖拽图片到这里上传参考图（最多 5 张 · JPG/PNG/WEBP）"
+                : uploadingRef
+                ? "正在上传参考图…"
+                : "点击或拖拽继续添加（最多 5 张）"}
+            </div>
+            {/* Drag overlay */}
+            {isDragOver && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md bg-primary/10 backdrop-blur-[2px]">
+                <span className="rounded-full border border-primary/40 bg-background/80 px-4 py-1.5 text-xs font-medium text-primary">
+                  释放鼠标以上传参考图
+                </span>
+              </div>
+            )}
+            <input
+              id="ref-file-input"
+              type="file"
+              accept="image/jpeg,image/jpg,image/png,image/webp"
+              multiple
+              className="hidden"
+              onChange={onFileInputChange}
+              disabled={uploadingRef}
+            />
           </section>
         )}
+
+
 
         {/* 提示词 — frosted glass 卡片 */}
         <section className="px-4 pt-3 pb-2">
