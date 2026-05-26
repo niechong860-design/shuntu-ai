@@ -159,75 +159,95 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
   }, [isTextOnly]);
 
   const [uploadingRef, setUploadingRef] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
 
-  const addRef = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    e.target.value = "";
-    if (!f) return;
-    if (refs.length >= 5) {
-      toast.error("最多上传 5 张参考图");
-      return;
-    }
+  const REF_ACCEPT = /^image\/(jpe?g|png|webp)$/i;
+
+  const addRefFiles = async (fileList: FileList | File[]) => {
     const uid = session?.user?.id;
     if (!uid) {
       toast.error("请先登录后再上传参考图");
       return;
     }
-    const invalid = validateImageFile(f, { preset: "ai-model", maxMB: 15 });
-    if (invalid) {
-      toast.error(invalid);
+    const all = Array.from(fileList);
+    if (!all.length) return;
+
+    // Validate format
+    const bad = all.find((f) => !REF_ACCEPT.test(f.type));
+    if (bad) {
+      toast.error("仅支持 JPG、PNG、WEBP 图片");
       return;
     }
 
-    // Instant local preview — show immediately so the UI never feels blocked.
-    const previewUrl = URL.createObjectURL(f);
-    const placeholderIdx = refs.length;
-    setRefs((arr) => [...arr, previewUrl]);
-    setUploadingRef(true);
+    // Truncate to remaining slots
+    const remaining = 5 - refs.length;
+    if (remaining <= 0) {
+      toast.error("最多上传 5 张参考图");
+      return;
+    }
+    const accepted = all.slice(0, remaining);
+    if (all.length > remaining) {
+      toast.message(`最多上传 5 张参考图，已添加前 ${remaining} 张`);
+    }
 
-    // Process + upload async — never blocks the UI thread for long.
-    (async () => {
-      try {
-        const processed = await processImage(f, "ai-model");
-        const path = `${uid}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${processed.ext}`;
-        const { error: upErr } = await supabase.storage
-          .from("reference-images")
-          .upload(path, processed.blob, {
-            cacheControl: "3600",
-            contentType: processed.contentType,
-            upsert: false,
+    setUploadingRef(true);
+    toast.message("正在压缩图片…");
+
+    // Process each in parallel; each gets its own preview placeholder
+    await Promise.all(
+      accepted.map(async (f) => {
+        const invalid = validateImageFile(f, { preset: "community", maxMB: 15 });
+        if (invalid) {
+          toast.error(invalid);
+          return;
+        }
+        const previewUrl = URL.createObjectURL(f);
+        setRefs((arr) => (arr.length >= 5 ? arr : [...arr, previewUrl]));
+        try {
+          const processed = await processImage(f, "reference");
+          const path = `${uid}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${processed.ext}`;
+          const { error: upErr } = await supabase.storage
+            .from("reference-images")
+            .upload(path, processed.blob, {
+              cacheControl: "3600",
+              contentType: processed.contentType,
+              upsert: false,
+            });
+          if (upErr) throw upErr;
+          const { data: signed, error: signErr } = await supabase.storage
+            .from("reference-images")
+            .createSignedUrl(path, 60 * 60 * 24 * 7);
+          if (signErr) throw signErr;
+          const url = signed.signedUrl;
+          console.log(
+            `[ref upload] ${(processed.originalSize / 1024).toFixed(0)}KB → ${(processed.processedSize / 1024).toFixed(0)}KB →`,
+            url,
+          );
+          setRefs((arr) => {
+            const idx = arr.indexOf(previewUrl);
+            if (idx < 0) return arr;
+            const next = [...arr];
+            next[idx] = url;
+            return next;
           });
-        if (upErr) throw upErr;
-        const { data: signed, error: signErr } = await supabase.storage
-          .from("reference-images")
-          .createSignedUrl(path, 60 * 60 * 24 * 7); // 7 days, long enough for generation
-        if (signErr) throw signErr;
-        const url = signed.signedUrl;
-        console.log(
-          `[ref upload] ${(processed.originalSize / 1024).toFixed(0)}KB → ${(processed.processedSize / 1024).toFixed(0)}KB →`,
-          url,
-        );
-        setRefs((arr) => {
-          const next = [...arr];
-          // Replace by index when possible; otherwise append.
-          if (next[placeholderIdx] === previewUrl) next[placeholderIdx] = url;
-          else {
-            const idx = next.indexOf(previewUrl);
-            if (idx >= 0) next[idx] = url;
-            else next.push(url);
-          }
-          return next;
-        });
-      } catch (err) {
-        console.error("[ref upload] failed", err);
-        toast.error("参考图上传失败，请重试");
-        setRefs((arr) => arr.filter((u) => u !== previewUrl));
-      } finally {
-        URL.revokeObjectURL(previewUrl);
-        setUploadingRef(false);
-      }
-    })();
+        } catch (err) {
+          console.error("[ref upload] failed", err);
+          toast.error("参考图上传失败，请重试");
+          setRefs((arr) => arr.filter((u) => u !== previewUrl));
+        } finally {
+          URL.revokeObjectURL(previewUrl);
+        }
+      }),
+    );
+    setUploadingRef(false);
   };
+
+  const onFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    e.target.value = "";
+    if (files && files.length) void addRefFiles(files);
+  };
+
   const removeRef = (i: number) => setRefs((arr) => arr.filter((_, idx) => idx !== i));
 
   // 轮询任务到完成。tStart 是任务开始时间戳（毫秒），用于刷新后从持久化时间继续计算 elapsed
