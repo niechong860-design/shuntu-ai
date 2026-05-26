@@ -33,6 +33,9 @@ export interface ProcessedImage {
 const AI_MAX_DIM = 1600;
 const AI_QUALITY = 0.85;
 
+const REF_MAX_DIM = 1280;
+const REF_QUALITY = 0.8;
+
 const COMMUNITY_MAX_DIM = 2560;
 const COMMUNITY_SIZE_THRESHOLD = 2 * 1024 * 1024; // 2 MB
 const COMMUNITY_QUALITY = 0.88;
