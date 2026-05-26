@@ -51,6 +51,27 @@ export function thumbUrl(url: string | null | undefined, opts: CompressOpts = {}
 }
 
 /**
+ * Build a small history-list thumbnail URL from a Supabase Storage URL.
+ * - width ~480px, quality 62 → typically 30–120KB WebP (browser-negotiated)
+ * - Non-Supabase URLs are returned unchanged (no transform endpoint available).
+ */
+export function historyThumbUrl(url: string | null | undefined): string {
+  if (!url) return "";
+  if (/^(blob:|data:)/i.test(url)) return url;
+  if (!url.includes("/storage/v1/object/public/") && !url.includes("/storage/v1/render/image/public/")) {
+    return url;
+  }
+  const transformed = url.includes("/storage/v1/object/public/")
+    ? url.replace("/storage/v1/object/public/", "/storage/v1/render/image/public/")
+    : url;
+  const params = new URLSearchParams();
+  params.set("width", "480");
+  params.set("quality", "62");
+  params.set("resize", "contain");
+  const sep = transformed.includes("?") ? "&" : "?";
+  return `${transformed}${sep}${params.toString()}`;
+
+/**
  * Preload a batch of image URLs into the browser cache during idle time,
  * before they enter the viewport. This eliminates the "blank tile" flash
  * when the user starts scrolling.
