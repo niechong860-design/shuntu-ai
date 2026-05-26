@@ -29,7 +29,6 @@ export function InspirationPage() {
   const { session } = useAuth();
   const fetchList = useServerFn(listCases);
   const fetchFacets = useServerFn(listCaseFacets);
-  const fetchStyles = useServerFn(listStyleTemplates);
 
   const fetchModels = useServerFn(listModelsConfig);
 
@@ -41,7 +40,9 @@ export function InspirationPage() {
   const [tag, setTag] = useState("");
   const [modelKey, setModelKey] = useState("");
   const [sort, setSort] = useState<"latest" | "hot" | "views">("latest");
-  const [styles, setStyles] = useState<StyleTpl[]>([]);
+  const [styles] = useState<StyleTpl[]>(
+    STYLE_TEMPLATES.map((s) => ({ id: s.id, name: s.name, image_url: null })),
+  );
   const [allModels, setAllModels] = useState<{ key: string; name: string }[]>([]);
   const [facets, setFacets] = useState<{ hotTags: { name: string; count: number }[]; models: { key: string; name: string }[] }>({ hotTags: [], models: [] });
   const [openId, setOpenId] = useState<string | null>(null);
@@ -49,7 +50,6 @@ export function InspirationPage() {
 
   useEffect(() => {
     if (!session) return;
-    fetchStyles({}).then((d) => setStyles((d ?? []) as StyleTpl[])).catch(() => {});
     fetchFacets({}).then((d) => setFacets(d as any)).catch(() => {});
     fetchModels({}).then((d) => {
       const list = (d ?? []) as { model_key: string; name: string }[];
