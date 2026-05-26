@@ -86,31 +86,60 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
   const [lightbox, setLightbox] = useState<HistoryItem | null>(null);
   const [heroLightbox, setHeroLightbox] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [total, setTotal] = useState(0);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const fetchHistory = useServerFn(getMyGenerationHistory);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  const loadHistory = async () => {
-    setLoadingHistory(true);
+  const loadHistory = useCallback(async (mode: "reset" | "append" = "reset") => {
+    if (mode === "reset") {
+      setLoadingHistory(true);
+      setHistoryError(null);
+    } else {
+      if (loadingMore || loadingHistory) return;
+      if (history.length >= total && total > 0) return;
+      setLoadingMore(true);
+    }
     try {
-      const list = await fetchHistory();
-      setHistory(list);
-    } catch (e) {
+      const offset = mode === "append" ? history.length : 0;
+      const res = (await fetchHistory({ data: { limit: PAGE_SIZE, offset } })) as {
+        items: HistoryItem[]; total: number; limit: number; offset: number;
+      };
+      setTotal(res.total);
+      setHistory((prev) => (mode === "append" ? [...prev, ...res.items] : res.items));
+    } catch (e: any) {
       console.warn("[history] load failed", e);
+      if (mode === "reset") setHistoryError(e?.message ?? "加载失败，请稍后再试");
     } finally {
       setLoadingHistory(false);
+      setLoadingMore(false);
     }
-  };
+  }, [fetchHistory, history.length, loadingMore, loadingHistory, total]);
 
   useEffect(() => {
-    if (historyOpen) loadHistory();
+    if (historyOpen) loadHistory("reset");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyOpen]);
 
   // 当主画布出现新图（生成完成）时，自动刷新历史，确保下次打开抽屉是最新的
   useEffect(() => {
-    if (generatedUrl) loadHistory();
+    if (generatedUrl) loadHistory("reset");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [generatedUrl]);
+
+  // 无限滚动：sentinel 进入视口时加载下一页
+  useEffect(() => {
+    if (!historyOpen) return;
+    const el = sentinelRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) loadHistory("append");
+    }, { rootMargin: "200px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [historyOpen, loadHistory]);
 
   const heroPrompt = currentPrompt ?? "";
   const heroModel = currentModel ?? "当前模型";
