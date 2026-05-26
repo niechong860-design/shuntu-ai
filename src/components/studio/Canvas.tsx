@@ -523,15 +523,15 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
         {stage === "rendering" ? (
           <div className="text-center">
             <div className="font-display text-3xl font-semibold tracking-tight text-foreground">{Math.round(pct)}%</div>
-            <div className="mt-1 text-xs font-light text-muted-foreground">AI 正在渲染图像，马上完成</div>
+            <div className="mt-1 text-xs font-light text-muted-foreground transition-opacity duration-500">{currentTip}</div>
           </div>
         ) : (
           <div className="text-center">
             <div className="font-display text-3xl font-semibold tracking-tight text-foreground">
               正在排队 · 第 <span className="text-primary">{queuePos}</span> 位
             </div>
-            <div className="mt-1 text-xs font-light text-muted-foreground">
-              预计等待 <span className="font-mono text-foreground/90">{etaSec}</span> 秒
+            <div className="mt-1 text-xs font-light text-muted-foreground transition-opacity duration-500">
+              {currentTip}
             </div>
           </div>
         )}
