@@ -111,28 +111,71 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
   const [prompt, setPrompt] = useState("");
   const [styleId, setStyleId] = useState<string>("");
   const [styles, setStyles] = useState<StyleTpl[]>([]);
+  const [stylesLoaded, setStylesLoaded] = useState(false);
   const [inspirationMode, setInspirationMode] = useState(false);
   const [cfg, setCfg] = useState([7.5]);
   const [steps, setSteps] = useState([32]);
 
   const fetchStyles = useServerFn(listStyleTemplates);
 
+  // 本地默认风格模板（fallback），确保即使数据库为空 / 接口失败 / 超时 / 未登录也能展示
+  const DEFAULT_STYLES: StyleTpl[] = [
+    { id: "default-realistic", name: "写实摄影", image_url: null, sort_order: 1 },
+    { id: "default-ecommerce", name: "电商产品图", image_url: null, sort_order: 2 },
+    { id: "default-guochao", name: "国潮风", image_url: null, sort_order: 3 },
+    { id: "default-cyberpunk", name: "赛博朋克", image_url: null, sort_order: 4 },
+    { id: "default-3d", name: "3D 渲染", image_url: null, sort_order: 5 },
+    { id: "default-white-bg", name: "极简白底", image_url: null, sort_order: 6 },
+    { id: "default-luxury", name: "奢华质感", image_url: null, sort_order: 7 },
+    { id: "default-poster", name: "海报设计", image_url: null, sort_order: 8 },
+  ];
+
   useEffect(() => {
-    if (!session) return;
+    // 未登录时也展示默认模板，避免一直显示「加载中…」
+    if (!session) {
+      setStyles((prev) => (prev.length ? prev : DEFAULT_STYLES));
+      setStylesLoaded(true);
+      return;
+    }
     fetchModels({}).then((data) => {
       const list = (data ?? []) as ModelCfg[];
       setModels(list);
       if (list[0] && !modelKey) setModelKey(list[0].model_key);
     }).catch(() => {});
-    fetchStyles({}).then((data) => {
-      const list = (data ?? []) as StyleTpl[];
-      setStyles(list);
-      // Idle-preload the next batch of thumbnails (just below the fold)
-      // so the first scroll feels instant.
-      preloadImages(
-        list.slice(12, 36).map((s) => thumbUrl(s.image_url, { quality: 65 })),
-      );
-    }).catch(() => {});
+
+    let settled = false;
+    const applyFallback = () => {
+      if (settled) return;
+      settled = true;
+      setStyles(DEFAULT_STYLES);
+      setStylesLoaded(true);
+    };
+    // 3 秒超时兜底
+    const timer = setTimeout(applyFallback, 3000);
+
+    fetchStyles({})
+      .then((data) => {
+        if (settled) return;
+        const list = (data ?? []) as StyleTpl[];
+        if (!list || list.length === 0) {
+          applyFallback();
+          return;
+        }
+        settled = true;
+        setStyles(list);
+        preloadImages(
+          list.slice(12, 36).map((s) => thumbUrl(s.image_url, { quality: 65 })),
+        );
+      })
+      .catch(() => {
+        applyFallback();
+      })
+      .finally(() => {
+        clearTimeout(timer);
+        setStylesLoaded(true);
+      });
+
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
@@ -666,7 +709,7 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
           </div>
         )}
         <div className={`scrollbar-thin min-h-0 flex-1 overflow-y-auto pb-3 ${inspirationMode ? "pointer-events-none opacity-40" : ""}`}>
-          {styles.length === 0 ? (
+          {!stylesLoaded && styles.length === 0 ? (
             <div className="flex h-full items-center justify-center text-xs text-muted-foreground">加载中…</div>
           ) : (
             <div className="grid grid-cols-6 gap-2">
