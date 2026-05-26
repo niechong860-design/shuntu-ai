@@ -371,21 +371,55 @@ export const consumeGeneration = createServerFn({ method: "POST" })
     return row as { success: boolean; message: string; credits: number; cost: number };
   });
 
-// --- 获取当前用户最近 100 条生成历史（仅含图片） ---
+// --- 获取当前用户生成历史（分页 + 缩略图）---
+// 列表只返回轻量 thumbnailUrl，原图 originalImageUrl 用于详情/下载。
+function buildHistoryThumbUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (/^(blob:|data:)/i.test(url)) return url;
+  if (!url.includes("/storage/v1/object/public/") && !url.includes("/storage/v1/render/image/public/")) {
+    return url;
+  }
+  const transformed = url.includes("/storage/v1/object/public/")
+    ? url.replace("/storage/v1/object/public/", "/storage/v1/render/image/public/")
+    : url;
+  const sep = transformed.includes("?") ? "&" : "?";
+  return `${transformed}${sep}width=480&quality=62&resize=contain`;
+}
+
 export const getMyGenerationHistory = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .inputValidator((input: { limit?: number; offset?: number } | undefined) => ({
+    limit: Math.min(50, Math.max(1, Number(input?.limit ?? 20))),
+    offset: Math.max(0, Number(input?.offset ?? 0)),
+  }))
+  .handler(async ({ context, data }) => {
     const { supabase } = context;
-    const { data, error } = await supabase
+    const { limit, offset } = data;
+    const { data: rows, error, count } = await supabase
       .from("generation_history")
-      .select("id, model, prompt, image_url, created_at, cost")
+      .select("id, user_id, model, prompt, image_url, created_at, cost", { count: "exact" })
       .not("image_url", "is", null)
       .order("created_at", { ascending: false })
-      .limit(100);
+      .range(offset, offset + limit - 1);
     if (error) throw new Error(error.message);
-    return (data ?? []) as Array<{
-      id: string; model: string; prompt: string | null; image_url: string; created_at: string; cost: number;
-    }>;
+    const items = (rows ?? []).map((r: any) => ({
+      id: r.id as string,
+      userId: r.user_id as string,
+      model: r.model as string,
+      prompt: (r.prompt ?? null) as string | null,
+      finalPrompt: (r.prompt ?? null) as string | null,
+      styleName: null as string | null,
+      aspectRatio: null as string | null,
+      createdAt: r.created_at as string,
+      originalImageUrl: r.image_url as string,
+      thumbnailUrl: buildHistoryThumbUrl(r.image_url),
+      status: "done" as const,
+      cost: Number(r.cost ?? 0),
+      // backward-compat:
+      image_url: r.image_url as string,
+      created_at: r.created_at as string,
+    }));
+    return { items, total: count ?? items.length, limit, offset };
   });
 
 // --- NEW: Dynamic upstream image generation (per-model API routing) ---
