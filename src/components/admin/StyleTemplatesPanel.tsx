@@ -28,11 +28,11 @@ type Tpl = {
 };
 
 export function StyleTemplatesPanel() {
+  // 风格模板已改为前台固定本地数据，后台不再管理（见 src/lib/style-templates.ts）。
   return (
     <div className="space-y-6">
       <ContactInfoCard />
       <SystemPromptCard />
-      <TemplatesGrid />
     </div>
   );
 }
