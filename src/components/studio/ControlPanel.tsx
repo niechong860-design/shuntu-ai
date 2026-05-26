@@ -468,22 +468,9 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
         {/* 参考图 — 紧凑横向条 */}
         {!isTextOnly && (
           <section
-            role="button"
-            tabIndex={0}
-            className={`relative cursor-pointer bg-gradient-to-b from-primary/[0.02] via-transparent to-transparent px-4 py-4 transition-all ${
+            className={`relative bg-gradient-to-b from-primary/[0.02] via-transparent to-transparent px-4 py-4 transition-all ${
               isDragOver ? "bg-primary/[0.08] ring-2 ring-inset ring-primary/60" : ""
             }`}
-            onClick={(e) => {
-              const t = e.target as HTMLElement;
-              if (t.closest("[data-ref-noopen]")) return;
-              openFilePicker();
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                openFilePicker();
-              }
-            }}
             onDragEnter={(e) => {
               e.preventDefault();
               if (e.dataTransfer?.types?.includes("Files")) setIsDragOver(true);
@@ -503,45 +490,67 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
               if (files && files.length) void addRefFiles(files);
             }}
           >
-            <div className="mb-3 flex items-center justify-between">
+            {/* Transparent file input covering the whole section — z-10 below action buttons (z-20) */}
+            {refs.length < 5 && !uploadingRef && (
+              <input
+                type="file"
+                accept="image/jpeg,image/jpg,image/png,image/webp"
+                multiple
+                title=""
+                onClick={(e) => {
+                  // clear value so picking the same file again still fires onChange
+                  (e.currentTarget as HTMLInputElement).value = "";
+                }}
+                onChange={onFileInputChange}
+                className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+                aria-label="点击上传参考图"
+              />
+            )}
+            {refs.length >= 5 && (
+              <button
+                type="button"
+                onClick={() => toast.error("最多上传 5 张参考图")}
+                className="absolute inset-0 z-10 h-full w-full cursor-not-allowed opacity-0"
+                aria-label="已达上限"
+              />
+            )}
+
+            <div className="relative z-20 mb-3 flex items-center justify-between">
               <Label>参考图 · 图生图 ({refs.length}/5)</Label>
               {refs.length > 0 && (
                 <button
                   type="button"
-                  data-ref-noopen
-                  onClick={(e) => { e.stopPropagation(); setRefs([]); }}
-                  className="text-[11px] text-muted-foreground transition-colors hover:text-primary"
+                  onClick={() => setRefs([])}
+                  className="pointer-events-auto text-[11px] text-muted-foreground transition-colors hover:text-primary"
                 >
                   清空
                 </button>
               )}
             </div>
-            <div className="scrollbar-thin flex gap-3 overflow-x-auto pb-1">
+
+            <div className="scrollbar-thin relative z-20 flex gap-3 overflow-x-auto pb-1">
               {refs.map((url, i) => (
                 <div
                   key={i}
-                  data-ref-noopen
                   className="group relative h-24 w-24 shrink-0 overflow-hidden rounded-xl border border-primary/15 bg-surface"
                 >
                   <img src={url} alt="ref" className="h-full w-full object-cover" />
                   <button
                     type="button"
-                    onClick={(e) => { e.stopPropagation(); removeRef(i); }}
-                    className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/75 text-white opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 hover:bg-destructive"
+                    onClick={() => removeRef(i)}
+                    className="pointer-events-auto absolute right-1 top-1 z-30 flex h-6 w-6 items-center justify-center rounded-full bg-black/75 text-white opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 hover:bg-destructive"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
               ))}
               {refs.length < 5 && (
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); openFilePicker(); }}
-                  className={`flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-dashed transition-all ${
+                <div
+                  className={`pointer-events-none flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-dashed transition-all ${
                     isDragOver
                       ? "border-primary bg-primary/[0.12]"
-                      : "border-primary/30 bg-primary/[0.04] hover:border-primary/60 hover:bg-primary/[0.08]"
-                  } ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"}`}
+                      : "border-primary/30 bg-primary/[0.04]"
+                  }`}
                 >
                   {uploadingRef ? (
                     <span className="text-[11px] text-muted-foreground">上传中…</span>
@@ -551,36 +560,29 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                       <span className="text-[10px] text-muted-foreground/80">上传参考图</span>
                     </>
                   )}
-                </button>
+                </div>
               )}
             </div>
-            <div className="mt-2 text-center text-[11px] font-light text-muted-foreground/80">
+
+            <div className="pointer-events-none relative z-20 mt-2 text-center text-[11px] font-light text-muted-foreground/80">
               {isDragOver
                 ? "释放鼠标以上传参考图"
                 : refs.length === 0
                 ? "点击或拖拽图片到这里上传参考图（最多 5 张 · JPG/PNG/WEBP）"
                 : uploadingRef
                 ? "正在上传参考图…"
+                : refs.length >= 5
+                ? "已达上限（5 张）"
                 : "点击或拖拽继续添加（最多 5 张）"}
             </div>
+
             {isDragOver && (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md bg-primary/10 backdrop-blur-[2px]">
+              <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-md bg-primary/10 backdrop-blur-[2px]">
                 <span className="rounded-full border border-primary/40 bg-background/80 px-4 py-1.5 text-xs font-medium text-primary">
                   释放鼠标以上传参考图
                 </span>
               </div>
             )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              multiple
-              onClick={(e) => e.stopPropagation()}
-              onChange={onFileInputChange}
-              style={{ position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }}
-              tabIndex={-1}
-              aria-hidden="true"
-            />
           </section>
         )}
 
