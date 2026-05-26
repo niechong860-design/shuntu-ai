@@ -675,20 +675,18 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
                         : "border-border hover:border-primary/50 hover:-translate-y-0.5"
                     }`}
                   >
-                    {s.image_url ? (
+                    <div className={`absolute inset-0 bg-gradient-to-br ${s.gradient}`} />
+                    {s.image ? (
                       <img
-                        src={thumbUrl(s.image_url, { quality: 65 })}
+                        src={s.image}
                         alt={s.name}
-                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                        className="relative h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                         loading={isAboveFold ? "eager" : "lazy"}
                         decoding="async"
                         fetchPriority={isAboveFold ? "high" : "auto"}
                       />
-                    ) : (
-                      <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-white/[0.04] to-white/[0.01] text-muted-foreground">
-                        <ImageIcon className="h-6 w-6" strokeWidth={1.5} />
-                      </div>
-                    )}
+                    ) : null}
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent px-2 pb-1.5 pt-4">
                       <div className="flex items-center gap-1.5">
                         {active && <div className="h-3 w-1 rounded-full bg-primary" />}
