@@ -463,18 +463,21 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
 
 
   return (
-    <aside className="flex h-full min-h-0 flex-col overflow-hidden border-r border-border/60 bg-card/40">
+    <aside
+      onDragOver={onRefDragOver}
+      onDragEnter={onRefDragOver}
+      onDragLeave={onRefDragLeave}
+      onDrop={onRefDrop}
+      className="relative flex h-full min-h-0 flex-col overflow-hidden border-r border-border/60 bg-card/40"
+    >
       {/* 上半部分：参考图 + 提示词 — 固定高度，不参与滚动 */}
       <div className="flex shrink-0 flex-col">
         {/* 参考图 — 紧凑横向条 */}
         {!isTextOnly && (
           <section
-            onDragOver={onRefDragOver}
-            onDragEnter={onRefDragOver}
-            onDragLeave={onRefDragLeave}
-            onDrop={onRefDrop}
-            className={`relative bg-gradient-to-b from-primary/[0.02] via-transparent to-transparent px-4 py-4 transition-colors ${dragOver ? "rounded-lg ring-2 ring-primary/70 ring-offset-2 ring-offset-background bg-primary/[0.06]" : ""}`}
+            className={`relative bg-gradient-to-b from-primary/[0.02] via-transparent to-transparent px-4 py-4 transition-colors ${dragOver ? "rounded-lg bg-primary/[0.06]" : ""}`}
           >
+
             <div className="mb-3 flex items-center justify-between">
               <Label>参考图 · 图生图 ({refs.length}/5)</Label>
               {refs.length > 0 && (
@@ -542,13 +545,8 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
               </div>
             )}
 
-            {dragOver && (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg bg-background/70 backdrop-blur-[2px]">
-                <span className="rounded-full border border-primary/40 bg-primary/15 px-3 py-1.5 text-[12px] font-medium text-primary">
-                  释放鼠标以上传参考图
-                </span>
-              </div>
-            )}
+
+
           </section>
         )}
 
@@ -814,6 +812,15 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
           </span>
         </button>
       </div>
+      {dragOver && (
+        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center rounded-lg bg-background/70 ring-2 ring-primary/70 ring-inset backdrop-blur-[2px]">
+          <div className="flex flex-col items-center gap-2 rounded-2xl border border-primary/40 bg-primary/15 px-6 py-4 text-primary shadow-lg">
+            <Plus className="h-7 w-7" strokeWidth={1.75} />
+            <span className="text-sm font-medium">释放鼠标以上传参考图</span>
+            <span className="text-[11px] text-primary/70">支持 JPG / PNG / WEBP，最多 5 张</span>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }
