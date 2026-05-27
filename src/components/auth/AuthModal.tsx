@@ -319,9 +319,31 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
               </Field>
             )}
 
+            <label className="mt-1 flex items-start gap-2 text-[11px] leading-relaxed text-muted-foreground select-none">
+              <input
+                type="checkbox"
+                checked={agreed}
+                onChange={(e) => toggleAgreed(e.target.checked)}
+                className="mt-0.5 h-3.5 w-3.5 cursor-pointer accent-primary"
+              />
+              <span>
+                我已阅读并同意
+                <a
+                  href="/disclaimer"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mx-0.5 text-primary underline-offset-2 hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  《用户声明与免责声明》
+                </a>
+              </span>
+            </label>
+
             <button
               type="submit"
               disabled={loading}
+              aria-disabled={!agreed}
               className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-gradient-aurora text-sm font-semibold text-primary-foreground shadow-glow transition-transform hover:scale-[1.01] disabled:opacity-60"
             >
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
