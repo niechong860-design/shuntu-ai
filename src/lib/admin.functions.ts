@@ -630,6 +630,17 @@ export const generateImage = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
+    // 服务端违规词二次校验，防止绕过前端
+    const safety = checkPromptSafety(data.prompt);
+    if (!safety.allowed) {
+      console.warn("[generateImage] blocked by safety filter", {
+        userId,
+        category: safety.category,
+        at: new Date().toISOString(),
+      });
+      throw new Error(SAFETY_SERVER_BLOCK_MESSAGE);
+    }
+
     const { base_url, global_api_key } = await loadGlobalConfig();
 
     const { data: model, error: mErr } = await supabaseAdmin
