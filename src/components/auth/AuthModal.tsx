@@ -119,6 +119,8 @@ function safeErrorCode(err: unknown): string {
   return e.code ?? (e.status ? `http_${e.status}` : e.name ?? "unknown");
 }
 
+const DISCLAIMER_AGREED_KEY = "shuntu:disclaimer_agreed:v1";
+
 export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
   const [tab, setTab] = useState<Tab>("login");
   const [email, setEmail] = useState("");
@@ -126,12 +128,27 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
   const [contact, setContact] = useState<{ wechat: string; qq: string }>({ wechat: "", qq: "" });
+  const [agreed, setAgreed] = useState(false);
   const fetchContact = useServerFn(getContactInfo);
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(DISCLAIMER_AGREED_KEY) === "1") setAgreed(true);
+    } catch {}
+  }, []);
 
   useEffect(() => {
     if (tab !== "forgot") return;
     fetchContact().then((r: any) => setContact({ wechat: r?.wechat ?? "", qq: r?.qq ?? "" })).catch(() => {});
   }, [tab]);
+
+  const toggleAgreed = (next: boolean) => {
+    setAgreed(next);
+    try {
+      if (next) localStorage.setItem(DISCLAIMER_AGREED_KEY, "1");
+      else localStorage.removeItem(DISCLAIMER_AGREED_KEY);
+    } catch {}
+  };
 
   const copy = async (val: string, label: string) => {
     try {
