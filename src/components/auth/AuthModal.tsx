@@ -161,6 +161,10 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!agreed) {
+      toast.error("请先阅读并同意《用户声明与免责声明》");
+      return;
+    }
     // 前置校验（用大白话）
     const trimmedEmail = email.trim();
     if (!trimmedEmail) {
