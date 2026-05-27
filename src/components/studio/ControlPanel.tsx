@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { consumeStudioPrefill } from "@/lib/studio-prefill";
 import { processImage, validateImageFile } from "@/lib/image-processing";
 import { thumbUrl } from "@/lib/image-url";
+import { checkPromptSafety, SAFETY_BLOCK_MESSAGE } from "@/lib/promptSafety";
 import { STYLE_TEMPLATES, applyStyleSuffix, type StyleTemplate } from "@/lib/style-templates";
 import { toast } from "sonner";
 
