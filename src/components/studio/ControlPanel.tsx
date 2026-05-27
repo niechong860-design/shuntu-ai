@@ -350,9 +350,20 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
 
   const handleGenerate = async () => {
     if (generating || !activeModel) return;
+    if (!prompt || !prompt.trim()) {
+      toast.error("请输入图片描述后再生成。");
+      return;
+    }
     // 风格模板只是本地 prompt 预设：在客户端把 promptSuffix 追加到用户原始 prompt 后
     const effectiveStyleId = inspirationMode ? "" : styleId;
     const finalPrompt = applyStyleSuffix(prompt, effectiveStyleId);
+    // 前端违规词检测（服务端会再次检查）
+    const safety = checkPromptSafety(`${prompt}\n${finalPrompt}`);
+    if (!safety.allowed) {
+      console.warn("[generate] prompt blocked by safety filter", { category: safety.category });
+      toast.error(SAFETY_BLOCK_MESSAGE);
+      return;
+    }
     onGenerateStart({ prompt: finalPrompt, modelName: activeModel.name ?? activeModel.model_key });
     const tStart = Date.now();
     const initialPos = 18 + Math.floor(Math.random() * 25);
