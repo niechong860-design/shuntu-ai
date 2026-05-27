@@ -1,0 +1,1 @@
+UPDATE public.models_config SET name = 'GPT-Image-2-VIP' WHERE id = 'a6ec9fc3-85a6-4345-b2ad-4c60cfc83b9c';
