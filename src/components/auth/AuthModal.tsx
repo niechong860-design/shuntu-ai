@@ -119,6 +119,8 @@ function safeErrorCode(err: unknown): string {
   return e.code ?? (e.status ? `http_${e.status}` : e.name ?? "unknown");
 }
 
+const DISCLAIMER_AGREED_KEY = "shuntu:disclaimer_agreed:v1";
+
 export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
   const [tab, setTab] = useState<Tab>("login");
   const [email, setEmail] = useState("");
@@ -126,12 +128,27 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
   const [contact, setContact] = useState<{ wechat: string; qq: string }>({ wechat: "", qq: "" });
+  const [agreed, setAgreed] = useState(false);
   const fetchContact = useServerFn(getContactInfo);
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(DISCLAIMER_AGREED_KEY) === "1") setAgreed(true);
+    } catch {}
+  }, []);
 
   useEffect(() => {
     if (tab !== "forgot") return;
     fetchContact().then((r: any) => setContact({ wechat: r?.wechat ?? "", qq: r?.qq ?? "" })).catch(() => {});
   }, [tab]);
+
+  const toggleAgreed = (next: boolean) => {
+    setAgreed(next);
+    try {
+      if (next) localStorage.setItem(DISCLAIMER_AGREED_KEY, "1");
+      else localStorage.removeItem(DISCLAIMER_AGREED_KEY);
+    } catch {}
+  };
 
   const copy = async (val: string, label: string) => {
     try {
@@ -144,6 +161,10 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!agreed) {
+      toast.error("请先阅读并同意《用户声明与免责声明》");
+      return;
+    }
     // 前置校验（用大白话）
     const trimmedEmail = email.trim();
     if (!trimmedEmail) {
@@ -298,9 +319,31 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
               </Field>
             )}
 
+            <label className="mt-1 flex items-start gap-2 text-[11px] leading-relaxed text-muted-foreground select-none">
+              <input
+                type="checkbox"
+                checked={agreed}
+                onChange={(e) => toggleAgreed(e.target.checked)}
+                className="mt-0.5 h-3.5 w-3.5 cursor-pointer accent-primary"
+              />
+              <span>
+                我已阅读并同意
+                <a
+                  href="/disclaimer"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mx-0.5 text-primary underline-offset-2 hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  《用户声明与免责声明》
+                </a>
+              </span>
+            </label>
+
             <button
               type="submit"
               disabled={loading}
+              aria-disabled={!agreed}
               className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-gradient-aurora text-sm font-semibold text-primary-foreground shadow-glow transition-transform hover:scale-[1.01] disabled:opacity-60"
             >
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
