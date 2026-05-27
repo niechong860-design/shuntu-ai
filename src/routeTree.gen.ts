@@ -10,11 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as InspirationRouteImport } from './routes/inspiration'
+import { Route as DisclaimerRouteImport } from './routes/disclaimer'
 import { Route as IndexRouteImport } from './routes/index'
 
 const InspirationRoute = InspirationRouteImport.update({
   id: '/inspiration',
   path: '/inspiration',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DisclaimerRoute = DisclaimerRouteImport.update({
+  id: '/disclaimer',
+  path: '/disclaimer',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -25,27 +31,31 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/disclaimer': typeof DisclaimerRoute
   '/inspiration': typeof InspirationRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/disclaimer': typeof DisclaimerRoute
   '/inspiration': typeof InspirationRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/disclaimer': typeof DisclaimerRoute
   '/inspiration': typeof InspirationRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/inspiration'
+  fullPaths: '/' | '/disclaimer' | '/inspiration'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/inspiration'
-  id: '__root__' | '/' | '/inspiration'
+  to: '/' | '/disclaimer' | '/inspiration'
+  id: '__root__' | '/' | '/disclaimer' | '/inspiration'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DisclaimerRoute: typeof DisclaimerRoute
   InspirationRoute: typeof InspirationRoute
 }
 
@@ -56,6 +66,13 @@ declare module '@tanstack/react-router' {
       path: '/inspiration'
       fullPath: '/inspiration'
       preLoaderRoute: typeof InspirationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/disclaimer': {
+      id: '/disclaimer'
+      path: '/disclaimer'
+      fullPath: '/disclaimer'
+      preLoaderRoute: typeof DisclaimerRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -70,6 +87,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DisclaimerRoute: DisclaimerRoute,
   InspirationRoute: InspirationRoute,
 }
 export const routeTree = rootRouteImport
