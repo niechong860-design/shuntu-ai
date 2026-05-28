@@ -845,6 +845,8 @@ export const checkImageStatus = createServerFn({ method: "POST" })
     z.object({
       taskId: z.string().min(1).max(128),
       modelName: z.string().max(128).optional(),
+      modelKey: z.string().max(64).optional(),
+      prompt: z.string().max(4000).optional(),
     }).parse(d),
   )
   .handler(async ({ data, context }) => {
@@ -887,6 +889,25 @@ export const checkImageStatus = createServerFn({ method: "POST" })
     if (taskStatus === 2) {
       const url = extractImageUrl(j?.data) ?? extractImageUrl(j);
       if (url) {
+        // 上游成功返回图片后再扣费记账，避免失败也扣点
+        if (data.modelKey && data.prompt) {
+          try {
+            const { data: rpcRes, error: rpcErr } = await supabase.rpc("consume_credits_for_generation", {
+              _model_key: data.modelKey,
+              _prompt: data.prompt,
+            });
+            if (rpcErr) {
+              console.error("[checkImageStatus] 扣费失败", rpcErr);
+            } else {
+              const row: any = Array.isArray(rpcRes) ? rpcRes?.[0] : rpcRes;
+              if (!row?.success) {
+                console.error("[checkImageStatus] 扣费返回失败", row);
+              }
+            }
+          } catch (e) {
+            console.error("[checkImageStatus] 扣费异常", e);
+          }
+        }
         if (data.modelName) {
           await supabase.rpc("set_latest_history_image", {
             _model: data.modelName,
