@@ -398,10 +398,9 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
         return;
       }
 
-      toast.success(`已提交 · 扣除 ${r.cost} 点，剩余 ${r.credits}`);
-      await refreshProfile();
-
       if (r.imageUrl) {
+        // sync 模型：服务端已扣费，刷新余额
+        await refreshProfile();
         onProgress?.(null);
         onGenerateDone(r.imageUrl);
         return;
@@ -421,6 +420,8 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
       await pollTask({
         taskId: r.taskId,
         modelName,
+        modelKey: activeModel.model_key,
+        prompt: finalPrompt,
         tStart,
         initialPos,
         renderBudget,
