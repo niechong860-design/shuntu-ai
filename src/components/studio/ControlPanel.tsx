@@ -263,11 +263,12 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
       await new Promise((res) => setTimeout(res, POLL_INTERVAL));
       attempt += 1;
       try {
-        const s = await checkStatus({ data: { taskId, modelName } });
+        const s = await checkStatus({ data: { taskId, modelName, modelKey: args.modelKey, prompt: args.prompt } });
         if (s.status === "success" && s.imageUrl) {
           clearActive();
           onProgress?.(null);
           onGenerateDone(s.imageUrl);
+          refreshProfile();
           return;
         }
         if (s.status === "failed") {
