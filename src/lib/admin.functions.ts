@@ -806,34 +806,45 @@ export const generateImage = createServerFn({ method: "POST" })
     if (requestFormat === "sync_url") {
       let res: Response;
       try {
-        res = await fetch(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
+        res = await fetchWithRetry(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
       } catch (e: any) {
-        return failGeneration(`请求上游失败: ${e?.message ?? "网络错误"}`);
+        console.error("[generateImage] sync upstream network error", e);
+        return failGeneration(friendlyUpstreamError("NET"));
       }
       const text = await res.text();
       const json: any = parseUpstreamResponse(text);
-      if (!res.ok) return failGeneration(`上游接口返回 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
-      if (Number(json?.code) >= 400) return failGeneration(`上游接口失败: ${json?.msg ?? "当前模型接口拒绝了请求，请检查模型配置、密钥权限或额度"}`);
+      if (!res.ok) {
+        console.error("[generateImage] sync upstream HTTP", res.status, text?.slice(0, 500));
+        return failGeneration(friendlyUpstreamError(`H${res.status}`));
+      }
+      if (Number(json?.code) >= 400) {
+        console.error("[generateImage] sync upstream code", json?.code, json?.msg);
+        return failGeneration(friendlyUpstreamError(`C${json?.code ?? "ERR"}`));
+      }
       imageUrl = extractImageUrl(json ?? text);
-      if (!imageUrl) return failGeneration("上游未返回图片地址");
+      if (!imageUrl) return failGeneration(friendlyUpstreamError("NOURL"));
     } else {
       try {
-        const res = await fetch(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
+        const res = await fetchWithRetry(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
         const text = await res.text();
         const json = parseUpstreamResponse(text);
         console.log("[generateImage] upstream response →", { status: res.status, ok: res.ok, body: text?.slice(0, 1000) });
-        const upstreamMsg = (json?.msg ?? json?.message ?? json?.error?.message ?? "").toString().trim();
-        const rawTail = text?.slice(0, 300) || "";
         if (!res.ok) {
-          return failGeneration(`上游提交失败 ${res.status}: ${upstreamMsg || rawTail || "(空响应)"}`);
+          console.error("[generateImage] async upstream HTTP", res.status, text?.slice(0, 500));
+          return failGeneration(friendlyUpstreamError(`H${res.status}`));
         }
         if (Number(json?.code) >= 400) {
-          return failGeneration(`上游提交失败 [code=${json?.code}]: ${upstreamMsg || "当前模型接口拒绝了请求，请检查模型配置、密钥权限或额度"}`);
+          console.error("[generateImage] async upstream code", json?.code, json?.msg);
+          return failGeneration(friendlyUpstreamError(`C${json?.code ?? "ERR"}`));
         }
         taskId = json?.data?.id ?? json?.id ?? json?.task_id ?? (typeof json?.data === "string" ? json.data : null);
-        if (!taskId) return failGeneration(`上游未返回任务ID，原始响应: ${rawTail || "(空)"}`);
+        if (!taskId) {
+          console.error("[generateImage] async no taskId", text?.slice(0, 500));
+          return failGeneration(friendlyUpstreamError("NOTASK"));
+        }
       } catch (e: any) {
-        return failGeneration(e?.message ?? "提交任务失败");
+        console.error("[generateImage] async upstream network error", e);
+        return failGeneration(friendlyUpstreamError("NET"));
       }
     }
 
