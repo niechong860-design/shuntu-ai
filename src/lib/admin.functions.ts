@@ -898,7 +898,7 @@ export const checkImageStatus = createServerFn({ method: "POST" })
     if (!pureApiKey) throw new Error("尚未配置全局 API Key，请联系管理员");
 
     const detailUrl = `https://api.wuyinkeji.com/api/async/detail?id=${encodeURIComponent(data.taskId)}`;
-    const r = await fetch(detailUrl, {
+    const r = await fetchWithRetry(detailUrl, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
@@ -917,7 +917,8 @@ export const checkImageStatus = createServerFn({ method: "POST" })
     }
     const code = Number(j?.code);
     if (code >= 400) {
-      return { status: "failed" as const, reason: "upstream" as const, imageUrl: null as string | null, message: rawMsg ?? "上游查询失败", code, taskStatus, rawMsg, debug: rawDebug };
+      console.error("[checkImageStatus] upstream code", code, rawMsg);
+      return { status: "failed" as const, reason: "upstream" as const, imageUrl: null as string | null, message: friendlyUpstreamError(`C${code}`), code, taskStatus, rawMsg, debug: rawDebug };
     }
     if (taskStatus === 3) {
       const detailMsg: string = String(j?.data?.message ?? rawMsg ?? "");
