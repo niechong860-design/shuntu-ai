@@ -235,6 +235,8 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
   const pollTask = async (args: {
     taskId: string;
     modelName: string;
+    modelKey: string;
+    prompt: string;
     tStart: number;
     initialPos: number;
     renderBudget: number;
