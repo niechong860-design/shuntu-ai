@@ -809,20 +809,20 @@ export const generateImage = createServerFn({ method: "POST" })
         res = await fetchWithRetry(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
       } catch (e: any) {
         console.error("[generateImage] sync upstream network error", e);
-        return failGeneration(friendlyUpstreamError("NET"));
+        return failGeneration(friendlyUpstreamError(0));
       }
       const text = await res.text();
       const json: any = parseUpstreamResponse(text);
       if (!res.ok) {
         console.error("[generateImage] sync upstream HTTP", res.status, text?.slice(0, 500));
-        return failGeneration(friendlyUpstreamError(`H${res.status}`));
+        return failGeneration(friendlyUpstreamError(res.status));
       }
       if (Number(json?.code) >= 400) {
         console.error("[generateImage] sync upstream code", json?.code, json?.msg);
-        return failGeneration(friendlyUpstreamError(`C${json?.code ?? "ERR"}`));
+        return failGeneration(friendlyUpstreamError(Number(json?.code) || 500));
       }
       imageUrl = extractImageUrl(json ?? text);
-      if (!imageUrl) return failGeneration(friendlyUpstreamError("NOURL"));
+      if (!imageUrl) return failGeneration(friendlyUpstreamError(502));
     } else {
       try {
         const res = await fetchWithRetry(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
@@ -831,20 +831,20 @@ export const generateImage = createServerFn({ method: "POST" })
         console.log("[generateImage] upstream response →", { status: res.status, ok: res.ok, body: text?.slice(0, 1000) });
         if (!res.ok) {
           console.error("[generateImage] async upstream HTTP", res.status, text?.slice(0, 500));
-          return failGeneration(friendlyUpstreamError(`H${res.status}`));
+          return failGeneration(friendlyUpstreamError(res.status));
         }
         if (Number(json?.code) >= 400) {
           console.error("[generateImage] async upstream code", json?.code, json?.msg);
-          return failGeneration(friendlyUpstreamError(`C${json?.code ?? "ERR"}`));
+          return failGeneration(friendlyUpstreamError(Number(json?.code) || 500));
         }
         taskId = json?.data?.id ?? json?.id ?? json?.task_id ?? (typeof json?.data === "string" ? json.data : null);
         if (!taskId) {
           console.error("[generateImage] async no taskId", text?.slice(0, 500));
-          return failGeneration(friendlyUpstreamError("NOTASK"));
+          return failGeneration(friendlyUpstreamError(502));
         }
       } catch (e: any) {
         console.error("[generateImage] async upstream network error", e);
-        return failGeneration(friendlyUpstreamError("NET"));
+        return failGeneration(friendlyUpstreamError(0));
       }
     }
 
@@ -918,7 +918,7 @@ export const checkImageStatus = createServerFn({ method: "POST" })
     const code = Number(j?.code);
     if (code >= 400) {
       console.error("[checkImageStatus] upstream code", code, rawMsg);
-      return { status: "failed" as const, reason: "upstream" as const, imageUrl: null as string | null, message: friendlyUpstreamError(`C${code}`), code, taskStatus, rawMsg, debug: rawDebug };
+      return { status: "failed" as const, reason: "upstream" as const, imageUrl: null as string | null, message: friendlyUpstreamError(code), code, taskStatus, rawMsg, debug: rawDebug };
     }
     if (taskStatus === 3) {
       const detailMsg: string = String(j?.data?.message ?? rawMsg ?? "");
