@@ -345,6 +345,8 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
     pollTask({
       taskId: active.taskId,
       modelName: active.modelName,
+      modelKey: active.modelKey,
+      prompt: active.prompt,
       tStart: active.startTs,
       initialPos: active.initialPos,
       renderBudget: active.renderBudget,
