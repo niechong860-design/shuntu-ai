@@ -502,9 +502,40 @@ function extractImageUrl(payload: any): string | null {
    } catch {
      return submitUrl.replace(/\/[^/]*$/, "/fetch_result");
    }
- }
+  }
 
- const VALID_SIZES = new Set(["auto","1:1","2:3","16:9","9:16","4:3","3:4","21:9","9:21","1:3","3:1","1:2"]);
+  // 对上游 429 / 5xx / 网络错误做一次带退避的自动重试。
+  async function fetchWithRetry(url: string, init: RequestInit, opts?: { retries?: number; backoffMs?: number }): Promise<Response> {
+    const retries = opts?.retries ?? 1;
+    const backoffMs = opts?.backoffMs ?? 800;
+    let lastErr: any = null;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const res = await fetch(url, init);
+        if ((res.status === 429 || res.status >= 500) && attempt < retries) {
+          await new Promise((r) => setTimeout(r, backoffMs * (attempt + 1)));
+          continue;
+        }
+        return res;
+      } catch (e) {
+        lastErr = e;
+        if (attempt < retries) {
+          await new Promise((r) => setTimeout(r, backoffMs * (attempt + 1)));
+          continue;
+        }
+        throw e;
+      }
+    }
+    if (lastErr) throw lastErr;
+    throw new Error("upstream request failed");
+  }
+
+  // 生成对用户友好的统一上游错误文案，不暴露上游细节。
+  function friendlyUpstreamError(code: string | number): string {
+    return `错误代码 ${code}，模型繁忙，请稍后再试`;
+  }
+
+  const VALID_SIZES = new Set(["auto","1:1","2:3","16:9","9:16","4:3","3:4","21:9","9:21","1:3","3:1","1:2"]);
 
  // --- Global upstream config (Base URL + global API key) ---
  async function loadGlobalConfig(): Promise<{ base_url: string; global_api_key: string | null }> {
