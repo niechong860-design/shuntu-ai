@@ -502,9 +502,40 @@ function extractImageUrl(payload: any): string | null {
    } catch {
      return submitUrl.replace(/\/[^/]*$/, "/fetch_result");
    }
- }
+  }
 
- const VALID_SIZES = new Set(["auto","1:1","2:3","16:9","9:16","4:3","3:4","21:9","9:21","1:3","3:1","1:2"]);
+  // 对上游 429 / 5xx / 网络错误做一次带退避的自动重试。
+  async function fetchWithRetry(url: string, init: RequestInit, opts?: { retries?: number; backoffMs?: number }): Promise<Response> {
+    const retries = opts?.retries ?? 1;
+    const backoffMs = opts?.backoffMs ?? 800;
+    let lastErr: any = null;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const res = await fetch(url, init);
+        if ((res.status === 429 || res.status >= 500) && attempt < retries) {
+          await new Promise((r) => setTimeout(r, backoffMs * (attempt + 1)));
+          continue;
+        }
+        return res;
+      } catch (e) {
+        lastErr = e;
+        if (attempt < retries) {
+          await new Promise((r) => setTimeout(r, backoffMs * (attempt + 1)));
+          continue;
+        }
+        throw e;
+      }
+    }
+    if (lastErr) throw lastErr;
+    throw new Error("upstream request failed");
+  }
+
+  // 生成对用户友好的统一上游错误文案，不暴露上游细节。
+  function friendlyUpstreamError(code: string | number): string {
+    return `错误代码 ${code}，模型繁忙，请稍后再试`;
+  }
+
+  const VALID_SIZES = new Set(["auto","1:1","2:3","16:9","9:16","4:3","3:4","21:9","9:21","1:3","3:1","1:2"]);
 
  // --- Global upstream config (Base URL + global API key) ---
  async function loadGlobalConfig(): Promise<{ base_url: string; global_api_key: string | null }> {
@@ -775,34 +806,45 @@ export const generateImage = createServerFn({ method: "POST" })
     if (requestFormat === "sync_url") {
       let res: Response;
       try {
-        res = await fetch(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
+        res = await fetchWithRetry(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
       } catch (e: any) {
-        return failGeneration(`请求上游失败: ${e?.message ?? "网络错误"}`);
+        console.error("[generateImage] sync upstream network error", e);
+        return failGeneration(friendlyUpstreamError("NET"));
       }
       const text = await res.text();
       const json: any = parseUpstreamResponse(text);
-      if (!res.ok) return failGeneration(`上游接口返回 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
-      if (Number(json?.code) >= 400) return failGeneration(`上游接口失败: ${json?.msg ?? "当前模型接口拒绝了请求，请检查模型配置、密钥权限或额度"}`);
+      if (!res.ok) {
+        console.error("[generateImage] sync upstream HTTP", res.status, text?.slice(0, 500));
+        return failGeneration(friendlyUpstreamError(`H${res.status}`));
+      }
+      if (Number(json?.code) >= 400) {
+        console.error("[generateImage] sync upstream code", json?.code, json?.msg);
+        return failGeneration(friendlyUpstreamError(`C${json?.code ?? "ERR"}`));
+      }
       imageUrl = extractImageUrl(json ?? text);
-      if (!imageUrl) return failGeneration("上游未返回图片地址");
+      if (!imageUrl) return failGeneration(friendlyUpstreamError("NOURL"));
     } else {
       try {
-        const res = await fetch(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
+        const res = await fetchWithRetry(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
         const text = await res.text();
         const json = parseUpstreamResponse(text);
         console.log("[generateImage] upstream response →", { status: res.status, ok: res.ok, body: text?.slice(0, 1000) });
-        const upstreamMsg = (json?.msg ?? json?.message ?? json?.error?.message ?? "").toString().trim();
-        const rawTail = text?.slice(0, 300) || "";
         if (!res.ok) {
-          return failGeneration(`上游提交失败 ${res.status}: ${upstreamMsg || rawTail || "(空响应)"}`);
+          console.error("[generateImage] async upstream HTTP", res.status, text?.slice(0, 500));
+          return failGeneration(friendlyUpstreamError(`H${res.status}`));
         }
         if (Number(json?.code) >= 400) {
-          return failGeneration(`上游提交失败 [code=${json?.code}]: ${upstreamMsg || "当前模型接口拒绝了请求，请检查模型配置、密钥权限或额度"}`);
+          console.error("[generateImage] async upstream code", json?.code, json?.msg);
+          return failGeneration(friendlyUpstreamError(`C${json?.code ?? "ERR"}`));
         }
         taskId = json?.data?.id ?? json?.id ?? json?.task_id ?? (typeof json?.data === "string" ? json.data : null);
-        if (!taskId) return failGeneration(`上游未返回任务ID，原始响应: ${rawTail || "(空)"}`);
+        if (!taskId) {
+          console.error("[generateImage] async no taskId", text?.slice(0, 500));
+          return failGeneration(friendlyUpstreamError("NOTASK"));
+        }
       } catch (e: any) {
-        return failGeneration(e?.message ?? "提交任务失败");
+        console.error("[generateImage] async upstream network error", e);
+        return failGeneration(friendlyUpstreamError("NET"));
       }
     }
 
@@ -856,7 +898,7 @@ export const checkImageStatus = createServerFn({ method: "POST" })
     if (!pureApiKey) throw new Error("尚未配置全局 API Key，请联系管理员");
 
     const detailUrl = `https://api.wuyinkeji.com/api/async/detail?id=${encodeURIComponent(data.taskId)}`;
-    const r = await fetch(detailUrl, {
+    const r = await fetchWithRetry(detailUrl, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
@@ -875,7 +917,8 @@ export const checkImageStatus = createServerFn({ method: "POST" })
     }
     const code = Number(j?.code);
     if (code >= 400) {
-      return { status: "failed" as const, reason: "upstream" as const, imageUrl: null as string | null, message: rawMsg ?? "上游查询失败", code, taskStatus, rawMsg, debug: rawDebug };
+      console.error("[checkImageStatus] upstream code", code, rawMsg);
+      return { status: "failed" as const, reason: "upstream" as const, imageUrl: null as string | null, message: friendlyUpstreamError(`C${code}`), code, taskStatus, rawMsg, debug: rawDebug };
     }
     if (taskStatus === 3) {
       const detailMsg: string = String(j?.data?.message ?? rawMsg ?? "");
