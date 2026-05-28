@@ -806,20 +806,21 @@ export const generateImage = createServerFn({ method: "POST" })
       }
     }
 
-    // 任务已成功提交，立即扣费记账
-    const { data: rpcRes, error: rpcErr } = await supabase.rpc("consume_credits_for_generation", {
-      _model_key: data.modelKey,
-      _prompt: data.prompt,
-    });
-    if (rpcErr) throw new Error(rpcErr.message);
-    const row: any = Array.isArray(rpcRes) ? rpcRes?.[0] : rpcRes;
-    if (!row?.success) throw new Error(row?.message ?? "扣费失败");
-
-    const safeCost = Number(row?.cost ?? 0) || 0;
-    const safeCredits = Number(row?.credits ?? 0) || 0;
-
-    // sync 模型立即拿到图片 URL，直接回填到最新一条历史
+    // 仅在已经成功拿到图片（sync 模型）时立即扣费并记账。
+    // 异步模型在 checkImageStatus 拿到最终图片后再扣费，避免上游失败仍扣点。
+    let safeCost = 0;
+    let safeCredits = currentCredits;
     if (imageUrl) {
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc("consume_credits_for_generation", {
+        _model_key: data.modelKey,
+        _prompt: data.prompt,
+      });
+      if (rpcErr) throw new Error(rpcErr.message);
+      const row: any = Array.isArray(rpcRes) ? rpcRes?.[0] : rpcRes;
+      if (!row?.success) throw new Error(row?.message ?? "扣费失败");
+      safeCost = Number(row?.cost ?? 0) || 0;
+      safeCredits = Number(row?.credits ?? 0) || 0;
+
       await supabase.rpc("set_latest_history_image", {
         _model: model.name,
         _image_url: imageUrl,
@@ -844,6 +845,8 @@ export const checkImageStatus = createServerFn({ method: "POST" })
     z.object({
       taskId: z.string().min(1).max(128),
       modelName: z.string().max(128).optional(),
+      modelKey: z.string().max(64).optional(),
+      prompt: z.string().max(4000).optional(),
     }).parse(d),
   )
   .handler(async ({ data, context }) => {
@@ -886,6 +889,25 @@ export const checkImageStatus = createServerFn({ method: "POST" })
     if (taskStatus === 2) {
       const url = extractImageUrl(j?.data) ?? extractImageUrl(j);
       if (url) {
+        // 上游成功返回图片后再扣费记账，避免失败也扣点
+        if (data.modelKey && data.prompt) {
+          try {
+            const { data: rpcRes, error: rpcErr } = await supabase.rpc("consume_credits_for_generation", {
+              _model_key: data.modelKey,
+              _prompt: data.prompt,
+            });
+            if (rpcErr) {
+              console.error("[checkImageStatus] 扣费失败", rpcErr);
+            } else {
+              const row: any = Array.isArray(rpcRes) ? rpcRes?.[0] : rpcRes;
+              if (!row?.success) {
+                console.error("[checkImageStatus] 扣费返回失败", row);
+              }
+            }
+          } catch (e) {
+            console.error("[checkImageStatus] 扣费异常", e);
+          }
+        }
         if (data.modelName) {
           await supabase.rpc("set_latest_history_image", {
             _model: data.modelName,

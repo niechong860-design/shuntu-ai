@@ -235,6 +235,8 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
   const pollTask = async (args: {
     taskId: string;
     modelName: string;
+    modelKey: string;
+    prompt: string;
     tStart: number;
     initialPos: number;
     renderBudget: number;
@@ -263,11 +265,12 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
       await new Promise((res) => setTimeout(res, POLL_INTERVAL));
       attempt += 1;
       try {
-        const s = await checkStatus({ data: { taskId, modelName } });
+        const s = await checkStatus({ data: { taskId, modelName, modelKey: args.modelKey, prompt: args.prompt } });
         if (s.status === "success" && s.imageUrl) {
           clearActive();
           onProgress?.(null);
           onGenerateDone(s.imageUrl);
+          refreshProfile();
           return;
         }
         if (s.status === "failed") {
@@ -342,6 +345,8 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
     pollTask({
       taskId: active.taskId,
       modelName: active.modelName,
+      modelKey: active.modelKey,
+      prompt: active.prompt,
       tStart: active.startTs,
       initialPos: active.initialPos,
       renderBudget: active.renderBudget,
@@ -393,10 +398,9 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
         return;
       }
 
-      toast.success(`已提交 · 扣除 ${r.cost} 点，剩余 ${r.credits}`);
-      await refreshProfile();
-
       if (r.imageUrl) {
+        // sync 模型：服务端已扣费，刷新余额
+        await refreshProfile();
         onProgress?.(null);
         onGenerateDone(r.imageUrl);
         return;
@@ -416,6 +420,8 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
       await pollTask({
         taskId: r.taskId,
         modelName,
+        modelKey: activeModel.model_key,
+        prompt: finalPrompt,
         tStart,
         initialPos,
         renderBudget,
