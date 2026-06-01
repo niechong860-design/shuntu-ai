@@ -246,6 +246,13 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
                           />
                         </button>
                         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/0 opacity-0 transition-opacity group-hover:opacity-100" />
+                        {isAdmin && (item.authorName || item.authorEmail) && (
+                          <div className="pointer-events-none absolute inset-x-0 top-0 bg-gradient-to-b from-black/70 to-transparent px-2 py-1">
+                            <span className="line-clamp-1 text-[9px] font-medium text-white/90" title={item.authorEmail ?? ""}>
+                              👤 {item.authorName || item.authorEmail}
+                            </span>
+                          </div>
+                        )}
                         <div className="absolute left-2 top-2 opacity-0 transition-opacity group-hover:opacity-100">
                           <span className="glass rounded-full px-1.5 py-0.5 text-[8px] font-semibold uppercase text-primary">{item.model.split(" ")[0]}</span>
                         </div>
