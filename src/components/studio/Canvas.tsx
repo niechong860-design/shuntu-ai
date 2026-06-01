@@ -194,7 +194,7 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
               <h2 className="font-display text-base font-semibold tracking-tight">历史记录</h2>
             </div>
             <p className="mt-0.5 text-[11px] font-light text-muted-foreground">
-              共 {total || history.length} 张 · 最多保留 100 张 · 超过 15 天自动清理
+              共 {total || history.length} 张 · 最多保留 {maxKeep} 张 · 超过 {maxDays} 天自动清理
             </p>
           </div>
           <div className="scrollbar-thin h-[calc(100vh-72px)] overflow-y-auto p-4">
