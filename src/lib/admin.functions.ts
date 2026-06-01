@@ -394,11 +394,51 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
     offset: Math.max(0, Number(input?.offset ?? 0)),
   }))
   .handler(async ({ context, data }) => {
-    const { supabase } = context;
+    const { userId } = context;
     const { limit, offset } = data;
-    const { data: rows, error, count } = await supabase
+
+    // 判断是否管理员（admin / founder）
+    const { data: roles } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .in("role", ["admin", "founder"]);
+    const isAdmin = !!(roles && roles.length > 0);
+    const maxKeep = isAdmin ? 300 : 100;
+    const maxDays = 15;
+
+    // 自动清理：超过 15 天 或 超过 maxKeep 张，删除最旧的
+    try {
+      const cutoff = new Date(Date.now() - maxDays * 24 * 60 * 60 * 1000).toISOString();
+      await supabaseAdmin
+        .from("generation_history")
+        .delete()
+        .eq("user_id", userId)
+        .lt("created_at", cutoff);
+
+      const { data: keepIds } = await supabaseAdmin
+        .from("generation_history")
+        .select("id")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .range(0, maxKeep - 1);
+      const keepSet = (keepIds ?? []).map((r: any) => r.id);
+      if (keepSet.length >= maxKeep) {
+        await supabaseAdmin
+          .from("generation_history")
+          .delete()
+          .eq("user_id", userId)
+          .not("id", "in", `(${keepSet.map((id: string) => `"${id}"`).join(",")})`);
+      }
+    } catch (e) {
+      console.warn("[history] prune failed", e);
+    }
+
+    // 始终只查询当前用户的历史，避免管理员看到全部用户的重复内容
+    const { data: rows, error, count } = await supabaseAdmin
       .from("generation_history")
       .select("id, user_id, model, prompt, image_url, created_at, cost", { count: "exact" })
+      .eq("user_id", userId)
       .not("image_url", "is", null)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
@@ -420,7 +460,7 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
       image_url: r.image_url as string,
       created_at: r.created_at as string,
     }));
-    return { items, total: count ?? items.length, limit, offset };
+    return { items, total: count ?? items.length, limit, offset, maxKeep, maxDays, isAdmin };
   });
 
 // --- NEW: Dynamic upstream image generation (per-model API routing) ---
