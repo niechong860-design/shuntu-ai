@@ -435,23 +435,18 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
     }
 
     // 管理员可以查看所有用户的历史（用于核查违规）；普通用户只能看自己的
+    if (isAdmin && offset >= maxKeep) {
+      return { items: [], total: maxKeep, limit, offset, maxKeep, maxDays, isAdmin };
+    }
+    const endIdx = isAdmin ? Math.min(offset + limit, maxKeep) - 1 : offset + limit - 1;
     let query = supabaseAdmin
       .from("generation_history")
       .select("id, user_id, model, prompt, image_url, created_at, cost", { count: "exact" })
       .not("image_url", "is", null)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .range(offset, endIdx);
     if (!isAdmin) {
       query = query.eq("user_id", userId);
-    } else {
-      // 管理员最多展示最近 maxKeep 条
-      const hardCap = Math.min(offset + limit, maxKeep);
-      if (offset >= maxKeep) {
-        return { items: [], total: maxKeep, limit, offset, maxKeep, maxDays, isAdmin };
-      }
-      query = query.range(offset, hardCap - 1);
-    }
-    if (!isAdmin) {
-      query = query.range(offset, offset + limit - 1);
     }
     const { data: rows, error, count } = await query;
     if (error) throw new Error(error.message);
