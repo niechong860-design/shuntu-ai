@@ -91,6 +91,7 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
   const [total, setTotal] = useState(0);
   const [maxKeep, setMaxKeep] = useState(100);
   const [maxDays, setMaxDays] = useState(15);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -109,11 +110,12 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
     try {
       const offset = mode === "append" ? history.length : 0;
       const res = (await fetchHistory({ data: { limit: PAGE_SIZE, offset } })) as {
-        items: HistoryItem[]; total: number; limit: number; offset: number; maxKeep?: number; maxDays?: number;
+        items: HistoryItem[]; total: number; limit: number; offset: number; maxKeep?: number; maxDays?: number; isAdmin?: boolean;
       };
       setTotal(res.total);
       if (res.maxKeep) setMaxKeep(res.maxKeep);
       if (res.maxDays) setMaxDays(res.maxDays);
+      if (typeof res.isAdmin === "boolean") setIsAdmin(res.isAdmin);
       setHistory((prev) => (mode === "append" ? [...prev, ...res.items] : res.items));
     } catch (e: any) {
       console.warn("[history] load failed", e);
