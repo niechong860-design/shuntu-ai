@@ -20,6 +20,8 @@ type HistoryItem = {
   thumbnailUrl: string | null;
   originalImageUrl: string;
   cost: number;
+  authorName?: string | null;
+  authorEmail?: string | null;
   // legacy
   image_url: string;
   created_at: string;
@@ -89,6 +91,7 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
   const [total, setTotal] = useState(0);
   const [maxKeep, setMaxKeep] = useState(100);
   const [maxDays, setMaxDays] = useState(15);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -107,11 +110,12 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
     try {
       const offset = mode === "append" ? history.length : 0;
       const res = (await fetchHistory({ data: { limit: PAGE_SIZE, offset } })) as {
-        items: HistoryItem[]; total: number; limit: number; offset: number; maxKeep?: number; maxDays?: number;
+        items: HistoryItem[]; total: number; limit: number; offset: number; maxKeep?: number; maxDays?: number; isAdmin?: boolean;
       };
       setTotal(res.total);
       if (res.maxKeep) setMaxKeep(res.maxKeep);
       if (res.maxDays) setMaxDays(res.maxDays);
+      if (typeof res.isAdmin === "boolean") setIsAdmin(res.isAdmin);
       setHistory((prev) => (mode === "append" ? [...prev, ...res.items] : res.items));
     } catch (e: any) {
       console.warn("[history] load failed", e);
@@ -242,6 +246,13 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
                           />
                         </button>
                         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/0 opacity-0 transition-opacity group-hover:opacity-100" />
+                        {isAdmin && (item.authorName || item.authorEmail) && (
+                          <div className="pointer-events-none absolute inset-x-0 top-0 bg-gradient-to-b from-black/70 to-transparent px-2 py-1">
+                            <span className="line-clamp-1 text-[9px] font-medium text-white/90" title={item.authorEmail ?? ""}>
+                              👤 {item.authorName || item.authorEmail}
+                            </span>
+                          </div>
+                        )}
                         <div className="absolute left-2 top-2 opacity-0 transition-opacity group-hover:opacity-100">
                           <span className="glass rounded-full px-1.5 py-0.5 text-[8px] font-semibold uppercase text-primary">{item.model.split(" ")[0]}</span>
                         </div>

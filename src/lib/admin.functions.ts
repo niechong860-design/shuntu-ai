@@ -434,33 +434,60 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
       console.warn("[history] prune failed", e);
     }
 
-    // 始终只查询当前用户的历史，避免管理员看到全部用户的重复内容
-    const { data: rows, error, count } = await supabaseAdmin
+    // 管理员可以查看所有用户的历史（用于核查违规）；普通用户只能看自己的
+    if (isAdmin && offset >= maxKeep) {
+      return { items: [], total: maxKeep, limit, offset, maxKeep, maxDays, isAdmin };
+    }
+    const endIdx = isAdmin ? Math.min(offset + limit, maxKeep) - 1 : offset + limit - 1;
+    let query = supabaseAdmin
       .from("generation_history")
       .select("id, user_id, model, prompt, image_url, created_at, cost", { count: "exact" })
-      .eq("user_id", userId)
       .not("image_url", "is", null)
       .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
+      .range(offset, endIdx);
+    if (!isAdmin) {
+      query = query.eq("user_id", userId);
+    }
+    const { data: rows, error, count } = await query;
     if (error) throw new Error(error.message);
-    const items = (rows ?? []).map((r: any) => ({
-      id: r.id as string,
-      userId: r.user_id as string,
-      model: r.model as string,
-      prompt: (r.prompt ?? null) as string | null,
-      finalPrompt: (r.prompt ?? null) as string | null,
-      styleName: null as string | null,
-      aspectRatio: null as string | null,
-      createdAt: r.created_at as string,
-      originalImageUrl: r.image_url as string,
-      thumbnailUrl: buildHistoryThumbUrl(r.image_url),
-      status: "done" as const,
-      cost: Number(r.cost ?? 0),
-      // backward-compat:
-      image_url: r.image_url as string,
-      created_at: r.created_at as string,
-    }));
-    return { items, total: count ?? items.length, limit, offset, maxKeep, maxDays, isAdmin };
+
+    // 管理员需要显示作者信息
+    let authorMap = new Map<string, { name: string | null; email: string | null }>();
+    if (isAdmin && rows && rows.length > 0) {
+      const uids = Array.from(new Set(rows.map((r: any) => r.user_id)));
+      const { data: profs } = await supabaseAdmin
+        .from("profiles")
+        .select("id, display_name, email")
+        .in("id", uids);
+      authorMap = new Map(
+        (profs ?? []).map((p: any) => [p.id, { name: p.display_name ?? null, email: p.email ?? null }]),
+      );
+    }
+
+    const items = (rows ?? []).map((r: any) => {
+      const author = authorMap.get(r.user_id);
+      return {
+        id: r.id as string,
+        userId: r.user_id as string,
+        model: r.model as string,
+        prompt: (r.prompt ?? null) as string | null,
+        finalPrompt: (r.prompt ?? null) as string | null,
+        styleName: null as string | null,
+        aspectRatio: null as string | null,
+        createdAt: r.created_at as string,
+        originalImageUrl: r.image_url as string,
+        thumbnailUrl: buildHistoryThumbUrl(r.image_url),
+        status: "done" as const,
+        cost: Number(r.cost ?? 0),
+        authorName: author?.name ?? null,
+        authorEmail: author?.email ?? null,
+        // backward-compat:
+        image_url: r.image_url as string,
+        created_at: r.created_at as string,
+      };
+    });
+    const total = isAdmin ? Math.min(count ?? items.length, maxKeep) : (count ?? items.length);
+    return { items, total, limit, offset, maxKeep, maxDays, isAdmin };
   });
 
 // --- NEW: Dynamic upstream image generation (per-model API routing) ---
