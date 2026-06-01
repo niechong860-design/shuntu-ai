@@ -20,6 +20,8 @@ type HistoryItem = {
   thumbnailUrl: string | null;
   originalImageUrl: string;
   cost: number;
+  authorName?: string | null;
+  authorEmail?: string | null;
   // legacy
   image_url: string;
   created_at: string;
