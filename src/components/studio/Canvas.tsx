@@ -87,6 +87,8 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
   const [heroLightbox, setHeroLightbox] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [total, setTotal] = useState(0);
+  const [maxKeep, setMaxKeep] = useState(100);
+  const [maxDays, setMaxDays] = useState(15);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -105,9 +107,11 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
     try {
       const offset = mode === "append" ? history.length : 0;
       const res = (await fetchHistory({ data: { limit: PAGE_SIZE, offset } })) as {
-        items: HistoryItem[]; total: number; limit: number; offset: number;
+        items: HistoryItem[]; total: number; limit: number; offset: number; maxKeep?: number; maxDays?: number;
       };
       setTotal(res.total);
+      if (res.maxKeep) setMaxKeep(res.maxKeep);
+      if (res.maxDays) setMaxDays(res.maxDays);
       setHistory((prev) => (mode === "append" ? [...prev, ...res.items] : res.items));
     } catch (e: any) {
       console.warn("[history] load failed", e);
@@ -190,7 +194,7 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
               <h2 className="font-display text-base font-semibold tracking-tight">历史记录</h2>
             </div>
             <p className="mt-0.5 text-[11px] font-light text-muted-foreground">
-              共 {total || history.length} 张 · 最多保留 100 张 · 超过 15 天自动清理
+              共 {total || history.length} 张 · 最多保留 {maxKeep} 张 · 超过 {maxDays} 天自动清理
             </p>
           </div>
           <div className="scrollbar-thin h-[calc(100vh-72px)] overflow-y-auto p-4">
