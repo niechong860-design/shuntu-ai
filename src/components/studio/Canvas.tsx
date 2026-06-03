@@ -274,19 +274,8 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
                           }}
                           className="absolute inset-0"
                         >
-                          <img
-                            src={thumb}
-                            alt=""
-                            width={480}
-                            height={480}
-                            loading="lazy"
-                            decoding="async"
-                            onError={(e) => {
-                              const img = e.currentTarget as HTMLImageElement;
-                              if (!img.src.endsWith(FALLBACK_THUMB)) img.src = FALLBACK_THUMB;
-                            }}
-                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-                          />
+                          <LazyThumb src={thumb} fallback={FALLBACK_THUMB} />
+
                         </button>
                         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/0 opacity-0 transition-opacity group-hover:opacity-100" />
                         {isAdmin && (item.authorName || item.authorEmail) && (
