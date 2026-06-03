@@ -39,6 +39,49 @@ function timeAgo(iso: string) {
   return `${d} 天前`;
 }
 
+function LazyThumb({ src, fallback }: { src: string; fallback: string }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [visible, setVisible] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || visible) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisible(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [visible]);
+  return (
+    <div ref={ref} className="h-full w-full bg-muted/40">
+      {visible && (
+        <img
+          src={src}
+          alt=""
+          width={480}
+          height={480}
+          loading="lazy"
+          decoding="async"
+          onLoad={() => setLoaded(true)}
+          onError={(e) => {
+            const img = e.currentTarget as HTMLImageElement;
+            if (!img.src.endsWith(fallback)) img.src = fallback;
+          }}
+          className={`h-full w-full object-cover transition-all duration-500 group-hover:scale-110 ${loaded ? "opacity-100" : "opacity-0"}`}
+        />
+      )}
+    </div>
+  );
+}
+
+
+
 
 type Props = {
   generating: boolean;
@@ -231,19 +274,8 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
                           }}
                           className="absolute inset-0"
                         >
-                          <img
-                            src={thumb}
-                            alt=""
-                            width={480}
-                            height={480}
-                            loading="lazy"
-                            decoding="async"
-                            onError={(e) => {
-                              const img = e.currentTarget as HTMLImageElement;
-                              if (!img.src.endsWith(FALLBACK_THUMB)) img.src = FALLBACK_THUMB;
-                            }}
-                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-                          />
+                          <LazyThumb src={thumb} fallback={FALLBACK_THUMB} />
+
                         </button>
                         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/0 opacity-0 transition-opacity group-hover:opacity-100" />
                         {isAdmin && (item.authorName || item.authorEmail) && (
