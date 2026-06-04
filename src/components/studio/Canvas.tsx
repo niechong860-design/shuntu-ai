@@ -95,41 +95,54 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(true);
   const fetchHistory = useServerFn(getMyGenerationHistory);
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const inFlightRef = useRef(false);
   const historyRef = useRef<HistoryItem[]>([]);
   const totalRef = useRef(0);
+  const hasMoreRef = useRef(true);
   useEffect(() => { historyRef.current = history; }, [history]);
   useEffect(() => { totalRef.current = total; }, [total]);
+  useEffect(() => { hasMoreRef.current = hasMore; }, [hasMore]);
 
   const loadHistory = useCallback(async (mode: "reset" | "append" = "reset") => {
     if (inFlightRef.current) return;
     if (mode === "append") {
+      if (!hasMoreRef.current) return;
       if (totalRef.current > 0 && historyRef.current.length >= totalRef.current) return;
     }
     inFlightRef.current = true;
     if (mode === "reset") {
       setLoadingHistory(true);
       setHistoryError(null);
+      setHasMore(true);
+      hasMoreRef.current = true;
     } else {
       setLoadingMore(true);
     }
     try {
       const offset = mode === "append" ? historyRef.current.length : 0;
       const res = (await fetchHistory({ data: { limit: PAGE_SIZE, offset } })) as {
-        items: HistoryItem[]; total: number; limit: number; offset: number; maxKeep?: number; maxDays?: number; isAdmin?: boolean;
+        items: HistoryItem[]; total?: number; limit: number; offset: number; maxKeep?: number; maxDays?: number; isAdmin?: boolean;
       };
-      setTotal(res.total);
+      const items = res.items ?? [];
+      const returnedTotal = Number(res.total ?? 0);
+      const nextHasMore = returnedTotal > 0
+        ? offset + items.length < returnedTotal
+        : items.length >= PAGE_SIZE;
+      setTotal(returnedTotal);
+      setHasMore(nextHasMore);
+      hasMoreRef.current = nextHasMore;
       if (res.maxKeep) setMaxKeep(res.maxKeep);
       if (res.maxDays) setMaxDays(res.maxDays);
       if (typeof res.isAdmin === "boolean") setIsAdmin(res.isAdmin);
       setHistory((prev) => {
-        if (mode !== "append") return res.items;
+        if (mode !== "append") return items;
         // 双保险：按 id 去重，杜绝任何竞态导致的重复
         const seen = new Set(prev.map((i) => i.id));
         const merged = [...prev];
-        for (const it of res.items) if (!seen.has(it.id)) merged.push(it);
+        for (const it of items) if (!seen.has(it.id)) merged.push(it);
         return merged;
       });
     } catch (e: any) {
@@ -154,16 +167,15 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
   }, [generatedUrl]);
 
   // 无限滚动：sentinel 进入视口时加载下一页
-  useEffect(() => {
-    if (!historyOpen) return;
-    const el = sentinelRef.current;
-    if (!el) return;
-    const io = new IntersectionObserver((entries) => {
-      if (entries[0]?.isIntersecting) loadHistory("append");
-    }, { rootMargin: "200px" });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [historyOpen, loadHistory]);
+  const handleHistoryScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (loadingHistory || loadingMore || historyError) return;
+    if (!hasMore) return;
+    if (total > 0 && history.length >= total) return;
+    const el = e.currentTarget;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 300) {
+      loadHistory("append");
+    }
+  }, [loadingHistory, loadingMore, historyError, hasMore, total, history.length, loadHistory]);
 
   const heroPrompt = currentPrompt ?? "";
   const heroModel = currentModel ?? "当前模型";
@@ -217,7 +229,7 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
               共 {total || history.length} 张 · 最多保留 {maxKeep} 张 · 超过 {maxDays} 天自动清理
             </p>
           </div>
-          <div className="scrollbar-thin h-[calc(100vh-72px)] overflow-y-auto p-4">
+          <div ref={scrollContainerRef} onScroll={handleHistoryScroll} className="scrollbar-thin h-[calc(100vh-72px)] overflow-y-auto p-4">
             {loadingHistory ? (
               <div className="py-20 text-center text-xs text-muted-foreground">正在加载历史记录…</div>
             ) : historyError ? (
@@ -302,11 +314,11 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
                     );
                   })}
                 </div>
-                <div ref={sentinelRef} className="h-8" />
+                <div className="h-8" />
                 {loadingMore && (
                   <div className="py-3 text-center text-[11px] text-muted-foreground">正在加载更多…</div>
                 )}
-                {!loadingMore && history.length >= total && total > 0 && (
+                {!loadingMore && !hasMore && history.length > 0 && (
                   <div className="py-3 text-center text-[10px] text-muted-foreground/70">没有更多历史记录了</div>
                 )}
               </>
