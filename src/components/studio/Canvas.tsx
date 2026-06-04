@@ -97,18 +97,26 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
   const [historyError, setHistoryError] = useState<string | null>(null);
   const fetchHistory = useServerFn(getMyGenerationHistory);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const inFlightRef = useRef(false);
+  const historyRef = useRef<HistoryItem[]>([]);
+  const totalRef = useRef(0);
+  useEffect(() => { historyRef.current = history; }, [history]);
+  useEffect(() => { totalRef.current = total; }, [total]);
 
   const loadHistory = useCallback(async (mode: "reset" | "append" = "reset") => {
+    if (inFlightRef.current) return;
+    if (mode === "append") {
+      if (totalRef.current > 0 && historyRef.current.length >= totalRef.current) return;
+    }
+    inFlightRef.current = true;
     if (mode === "reset") {
       setLoadingHistory(true);
       setHistoryError(null);
     } else {
-      if (loadingMore || loadingHistory) return;
-      if (history.length >= total && total > 0) return;
       setLoadingMore(true);
     }
     try {
-      const offset = mode === "append" ? history.length : 0;
+      const offset = mode === "append" ? historyRef.current.length : 0;
       const res = (await fetchHistory({ data: { limit: PAGE_SIZE, offset } })) as {
         items: HistoryItem[]; total: number; limit: number; offset: number; maxKeep?: number; maxDays?: number; isAdmin?: boolean;
       };
@@ -116,15 +124,23 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
       if (res.maxKeep) setMaxKeep(res.maxKeep);
       if (res.maxDays) setMaxDays(res.maxDays);
       if (typeof res.isAdmin === "boolean") setIsAdmin(res.isAdmin);
-      setHistory((prev) => (mode === "append" ? [...prev, ...res.items] : res.items));
+      setHistory((prev) => {
+        if (mode !== "append") return res.items;
+        // 双保险：按 id 去重，杜绝任何竞态导致的重复
+        const seen = new Set(prev.map((i) => i.id));
+        const merged = [...prev];
+        for (const it of res.items) if (!seen.has(it.id)) merged.push(it);
+        return merged;
+      });
     } catch (e: any) {
       console.warn("[history] load failed", e);
       if (mode === "reset") setHistoryError(e?.message ?? "加载失败，请稍后再试");
     } finally {
       setLoadingHistory(false);
       setLoadingMore(false);
+      inFlightRef.current = false;
     }
-  }, [fetchHistory, history.length, loadingMore, loadingHistory, total]);
+  }, [fetchHistory]);
 
   useEffect(() => {
     if (historyOpen) loadHistory("reset");
