@@ -203,7 +203,7 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
           </div>
           <div className="scrollbar-thin h-[calc(100vh-72px)] overflow-y-auto p-4">
             {loadingHistory ? (
-              <div className="py-20 text-center text-xs text-muted-foreground">加载中…</div>
+              <div className="py-20 text-center text-xs text-muted-foreground">正在加载历史记录…</div>
             ) : historyError ? (
               <div className="py-20 text-center text-xs text-muted-foreground">
                 <div className="mb-3">{historyError}</div>
@@ -288,10 +288,10 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
                 </div>
                 <div ref={sentinelRef} className="h-8" />
                 {loadingMore && (
-                  <div className="py-3 text-center text-[11px] text-muted-foreground">加载更多…</div>
+                  <div className="py-3 text-center text-[11px] text-muted-foreground">正在加载更多…</div>
                 )}
                 {!loadingMore && history.length >= total && total > 0 && (
-                  <div className="py-3 text-center text-[10px] text-muted-foreground/70">已加载全部</div>
+                  <div className="py-3 text-center text-[10px] text-muted-foreground/70">没有更多历史记录了</div>
                 )}
               </>
             )}
