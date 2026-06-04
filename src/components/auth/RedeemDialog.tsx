@@ -60,7 +60,7 @@ const PLANS: Plan[] = [
     name: "高端套餐",
     price: 199,
     desc: "工作室与商业变现必备",
-    features: ["20,000 积分", "最高优先级算力", "支持 API 批量调用", "提供商业授权"],
+    features: ["20,000 积分", "最高优先级算力", "支持 API 批量调用", "客服24小时在线服务"],
     icon: <Crown className="h-4 w-4" />,
     url: "https://www.kufaka.com/item/9a7qf1",
   },
