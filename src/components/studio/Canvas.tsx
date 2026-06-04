@@ -203,7 +203,7 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
           </div>
           <div className="scrollbar-thin h-[calc(100vh-72px)] overflow-y-auto p-4">
             {loadingHistory ? (
-              <div className="py-20 text-center text-xs text-muted-foreground">加载中…</div>
+              <div className="py-20 text-center text-xs text-muted-foreground">正在加载历史记录…</div>
             ) : historyError ? (
               <div className="py-20 text-center text-xs text-muted-foreground">
                 <div className="mb-3">{historyError}</div>
