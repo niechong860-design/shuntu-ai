@@ -27,6 +27,19 @@ type HistoryItem = {
   created_at: string;
 };
 
+function normalizeHistoryImageKey(item: HistoryItem) {
+  const raw = item.originalImageUrl || item.image_url || item.thumbnailUrl || "";
+  if (!raw) return item.id;
+  try {
+    const url = new URL(raw);
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return raw.split(/[?#]/, 1)[0] || item.id;
+  }
+}
+
 function timeAgo(iso: string) {
   const t = new Date(iso).getTime();
   const diff = Math.max(0, Date.now() - t);
@@ -95,41 +108,63 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(true);
   const fetchHistory = useServerFn(getMyGenerationHistory);
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const inFlightRef = useRef(false);
   const historyRef = useRef<HistoryItem[]>([]);
   const totalRef = useRef(0);
+  const rawLoadedCountRef = useRef(0);
+  const hasMoreRef = useRef(true);
   useEffect(() => { historyRef.current = history; }, [history]);
   useEffect(() => { totalRef.current = total; }, [total]);
+  useEffect(() => { hasMoreRef.current = hasMore; }, [hasMore]);
 
   const loadHistory = useCallback(async (mode: "reset" | "append" = "reset") => {
     if (inFlightRef.current) return;
     if (mode === "append") {
-      if (totalRef.current > 0 && historyRef.current.length >= totalRef.current) return;
+      if (!hasMoreRef.current) return;
+      if (totalRef.current > 0 && rawLoadedCountRef.current >= totalRef.current) return;
     }
     inFlightRef.current = true;
     if (mode === "reset") {
       setLoadingHistory(true);
       setHistoryError(null);
+      setHasMore(true);
+      hasMoreRef.current = true;
+      rawLoadedCountRef.current = 0;
     } else {
       setLoadingMore(true);
     }
     try {
-      const offset = mode === "append" ? historyRef.current.length : 0;
+      const offset = mode === "append" ? rawLoadedCountRef.current : 0;
       const res = (await fetchHistory({ data: { limit: PAGE_SIZE, offset } })) as {
-        items: HistoryItem[]; total: number; limit: number; offset: number; maxKeep?: number; maxDays?: number; isAdmin?: boolean;
+        items: HistoryItem[]; total?: number; limit: number; offset: number; maxKeep?: number; maxDays?: number; isAdmin?: boolean;
       };
-      setTotal(res.total);
+      const items = res.items ?? [];
+      const returnedTotal = Number(res.total ?? 0);
+      const nextRawLoadedCount = offset + items.length;
+      const nextHasMore = returnedTotal > 0
+        ? nextRawLoadedCount < returnedTotal
+        : items.length >= PAGE_SIZE;
+      rawLoadedCountRef.current = nextRawLoadedCount;
+      setTotal(returnedTotal);
+      setHasMore(nextHasMore);
+      hasMoreRef.current = nextHasMore;
       if (res.maxKeep) setMaxKeep(res.maxKeep);
       if (res.maxDays) setMaxDays(res.maxDays);
       if (typeof res.isAdmin === "boolean") setIsAdmin(res.isAdmin);
       setHistory((prev) => {
-        if (mode !== "append") return res.items;
-        // 双保险：按 id 去重，杜绝任何竞态导致的重复
-        const seen = new Set(prev.map((i) => i.id));
-        const merged = [...prev];
-        for (const it of res.items) if (!seen.has(it.id)) merged.push(it);
+        const base = mode === "append" ? prev : [];
+        // 双保险：按图片 URL 去重，杜绝同一张图片重复展示
+        const seen = new Set(base.map(normalizeHistoryImageKey));
+        const merged = [...base];
+        for (const it of items) {
+          const key = normalizeHistoryImageKey(it);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          merged.push(it);
+        }
         return merged;
       });
     } catch (e: any) {
@@ -153,17 +188,16 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [generatedUrl]);
 
-  // 无限滚动：sentinel 进入视口时加载下一页
-  useEffect(() => {
-    if (!historyOpen) return;
-    const el = sentinelRef.current;
-    if (!el) return;
-    const io = new IntersectionObserver((entries) => {
-      if (entries[0]?.isIntersecting) loadHistory("append");
-    }, { rootMargin: "200px" });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [historyOpen, loadHistory]);
+  // 无限滚动：接近滚动容器底部时加载下一页
+  const handleHistoryScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (loadingHistory || loadingMore || historyError) return;
+    if (!hasMore) return;
+    if (totalRef.current > 0 && rawLoadedCountRef.current >= totalRef.current) return;
+    const el = e.currentTarget;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 300) {
+      loadHistory("append");
+    }
+  }, [loadingHistory, loadingMore, historyError, hasMore, loadHistory]);
 
   const heroPrompt = currentPrompt ?? "";
   const heroModel = currentModel ?? "当前模型";
@@ -214,10 +248,12 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
               <h2 className="font-display text-base font-semibold tracking-tight">历史记录</h2>
             </div>
             <p className="mt-0.5 text-[11px] font-light text-muted-foreground">
-              共 {total || history.length} 张 · 最多保留 {maxKeep} 张 · 超过 {maxDays} 天自动清理
+              {isAdmin
+                ? `管理员历史记录 · 全站最近 ${maxKeep} 张 · 重复图片已合并展示`
+                : `最近历史记录 · 重复图片已合并展示 · 最多显示 ${maxKeep} 张`}
             </p>
           </div>
-          <div className="scrollbar-thin h-[calc(100vh-72px)] overflow-y-auto p-4">
+          <div ref={scrollContainerRef} onScroll={handleHistoryScroll} className="scrollbar-thin h-[calc(100vh-72px)] overflow-y-auto p-4">
             {loadingHistory ? (
               <div className="py-20 text-center text-xs text-muted-foreground">正在加载历史记录…</div>
             ) : historyError ? (
@@ -302,11 +338,11 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
                     );
                   })}
                 </div>
-                <div ref={sentinelRef} className="h-8" />
+                <div className="h-8" />
                 {loadingMore && (
                   <div className="py-3 text-center text-[11px] text-muted-foreground">正在加载更多…</div>
                 )}
-                {!loadingMore && history.length >= total && total > 0 && (
+                {!loadingMore && !hasMore && history.length > 0 && (
                   <div className="py-3 text-center text-[10px] text-muted-foreground/70">没有更多历史记录了</div>
                 )}
               </>
