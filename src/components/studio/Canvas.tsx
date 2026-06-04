@@ -8,6 +8,7 @@ import type { GenProgress } from "./ControlPanel";
 
 const FALLBACK_THUMB = "/style-previews/default.webp";
 const PAGE_SIZE = 20;
+const HISTORY_RESET_CACHE_MS = 60_000;
 
 type HistoryItem = {
   id: string;
@@ -116,6 +117,7 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
   const totalRef = useRef(0);
   const rawLoadedCountRef = useRef(0);
   const hasMoreRef = useRef(true);
+  const lastHistoryResetAtRef = useRef(0);
   useEffect(() => { historyRef.current = history; }, [history]);
   useEffect(() => { totalRef.current = total; }, [total]);
   useEffect(() => { hasMoreRef.current = hasMore; }, [hasMore]);
@@ -167,6 +169,7 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
         }
         return merged;
       });
+      if (mode === "reset") lastHistoryResetAtRef.current = Date.now();
     } catch (e: any) {
       console.warn("[history] load failed", e);
       if (mode === "reset") setHistoryError(e?.message ?? "加载失败，请稍后再试");
@@ -178,7 +181,9 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
   }, [fetchHistory]);
 
   useEffect(() => {
-    if (historyOpen) loadHistory("reset");
+    if (!historyOpen) return;
+    if (Date.now() - lastHistoryResetAtRef.current <= HISTORY_RESET_CACHE_MS) return;
+    loadHistory("reset");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyOpen]);
 
