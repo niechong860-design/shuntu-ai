@@ -66,17 +66,20 @@ export function TaskFloatingPanel({ tasks, maxTasks = 3 }: { tasks: FloatingTask
             </div>
           )}
 
-          <div className="mt-3 grid grid-cols-5 gap-1">
-            {(Object.keys(STATUS_META) as TaskStatus[]).map((status) => {
-              const meta = STATUS_META[status];
-              const Icon = meta.icon;
-              return (
-                <div key={status} className="flex flex-col items-center gap-1 rounded-md bg-white/[0.03] px-1 py-2">
-                  <Icon className={`h-3 w-3 ${meta.className} ${status === "generating" ? "animate-spin" : ""}`} />
-                  <span className="text-[9px] text-muted-foreground">{meta.label}</span>
-                </div>
-              );
-            })}
+          <div className="mt-3">
+            <div className="mb-1.5 text-[10px] font-medium text-muted-foreground">状态说明</div>
+            <div className="grid grid-cols-5 gap-1">
+              {(Object.keys(STATUS_META) as TaskStatus[]).map((status) => {
+                const meta = STATUS_META[status];
+                const Icon = meta.icon;
+                return (
+                  <div key={status} className="flex flex-col items-center gap-1 rounded-md bg-white/[0.03] px-1 py-2">
+                    <Icon className={`h-3 w-3 ${meta.className}`} />
+                    <span className="text-[9px] text-muted-foreground">{meta.label}</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
