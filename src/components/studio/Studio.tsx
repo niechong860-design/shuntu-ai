@@ -37,6 +37,16 @@ export function Studio() {
     task.status === "waiting" || task.status === "submitting" || task.status === "generating"
   ).length;
 
+  const trimPanelTasks = (tasks: FloatingTask[]) => {
+    const queueTasks = tasks.filter((task) =>
+      task.status === "waiting" || task.status === "submitting" || task.status === "generating"
+    );
+    const recentTasks = tasks.filter((task) =>
+      task.status !== "waiting" && task.status !== "submitting" && task.status !== "generating"
+    );
+    return [...queueTasks, ...recentTasks].slice(0, 3);
+  };
+
   const mapRecoveredTaskStatus = (status: string, deductionStatus?: string | null, deductionId?: string | null): FloatingTask["status"] => {
     if (status === "queued") return "waiting";
     if (status === "running") return "generating";
@@ -72,7 +82,6 @@ export function Studio() {
       .then((res) => {
         if (cancelled) return;
         const recovered = (res?.items ?? [])
-          .filter((task: { status: string }) => task.status === "queued" || task.status === "running")
           .map((task: {
             id: string;
             prompt: string | null;
@@ -92,9 +101,15 @@ export function Studio() {
               resultImageUrl: task.resultImageUrl ?? null,
             };
           })
-          .reverse()
           .slice(0, 3);
-        setAdminTasks(recovered);
+        const trimmed = trimPanelTasks(recovered);
+        setAdminTasks(trimmed);
+        const latestDone = trimmed.find((task) => task.status === "done" && !!task.resultImageUrl);
+        if (latestDone?.resultImageUrl) {
+          setGeneratedUrl(latestDone.resultImageUrl);
+          setCurrentPrompt(latestDone.prompt ?? latestDone.title);
+          setCurrentModel(latestDone.modelName ?? "");
+        }
       })
       .catch((error) => {
         console.warn("[generation-tasks] restore failed", error);
@@ -127,7 +142,11 @@ export function Studio() {
             };
             if (task.status === "succeeded" && task.deductionStatus === "charged" && !!task.historyId) {
               const matchedTask = adminTasks.find((item) => item.id === task.taskId);
-              setAdminTasks((tasks) => tasks.filter((item) => item.id !== task.taskId));
+              setAdminTasks((tasks) =>
+                trimPanelTasks(tasks.map((item) =>
+                  item.id === task.taskId ? { ...item, status: "done" as const, resultImageUrl: task.resultImageUrl ?? item.resultImageUrl ?? null } : item,
+                )),
+              );
               if (task.resultImageUrl) {
                 setGeneratedUrl(task.resultImageUrl);
                 setCurrentPrompt(matchedTask?.prompt ?? matchedTask?.title ?? "");
@@ -167,13 +186,17 @@ export function Studio() {
     setGenerating(false);
     setAdminPreparingNextTask(false);
     setAdminTasks((tasks) =>
-      url
-        ? tasks.filter((task) => !task.id.startsWith("admin-preview-"))
+      trimPanelTasks(url
+        ? tasks.map((task) =>
+            task.id.startsWith("admin-preview-") && task.status === "generating"
+              ? { ...task, status: "done" as const, resultImageUrl: url }
+              : task,
+          )
         : tasks.map((task) =>
             task.id.startsWith("admin-preview-") && task.status === "generating"
               ? { ...task, status: "failed" as const }
               : task,
-          ),
+          )),
     );
     setProgress(null);
     if (url) setGeneratedUrl(url);
@@ -182,16 +205,18 @@ export function Studio() {
   const handleAdminPrepareNextTask = (info: { prompt: string; modelName: string }) => {
     if (!isAdmin || adminPreparingNextTask) return;
     const title = info.prompt.trim().slice(0, 20) || info.modelName || "当前生成任务";
-    setAdminTasks((tasks) => [
-      ...tasks,
-      {
-        id: `admin-preview-${Date.now()}`,
-        title,
-        status: "generating" as const,
-        prompt: info.prompt,
-        modelName: info.modelName,
-      },
-    ].slice(-3));
+    setAdminTasks((tasks) =>
+      trimPanelTasks([
+        ...tasks,
+        {
+          id: `admin-preview-${Date.now()}`,
+          title,
+          status: "generating" as const,
+          prompt: info.prompt,
+          modelName: info.modelName,
+        },
+      ]),
+    );
     setAdminPreparingNextTask(true);
   };
 
@@ -215,16 +240,18 @@ export function Studio() {
     });
 
     const title = task.prompt.trim().slice(0, 20) || input.modelName || task.modelId;
-    setAdminTasks((tasks) => [
-      ...tasks,
-      {
-        id: task.taskId,
-        title,
-        status: "waiting" as const,
-        prompt: input.prompt,
-        modelName: input.modelName,
-      },
-    ].slice(-3));
+    setAdminTasks((tasks) =>
+      trimPanelTasks([
+        ...tasks,
+        {
+          id: task.taskId,
+          title,
+          status: "waiting" as const,
+          prompt: input.prompt,
+          modelName: input.modelName,
+        },
+      ]),
+    );
     return true;
   };
 
@@ -290,11 +317,13 @@ export function Studio() {
           ? "failed"
           : "generating";
       setAdminTasks((tasks) =>
-        finalized
-          ? tasks.filter((item) => item.id !== task.taskId)
+        trimPanelTasks(finalized
+          ? tasks.map((item) =>
+              item.id === task.taskId ? { ...item, status: "done" as const, resultImageUrl: task.resultImageUrl ?? item.resultImageUrl ?? null } : item,
+            )
           : tasks.map((item) =>
               item.id === task.taskId ? { ...item, status: nextStatus as FloatingTask["status"], resultImageUrl: task.resultImageUrl ?? item.resultImageUrl ?? null } : item,
-            ),
+            )),
       );
       if (finalized) {
         if (task.resultImageUrl) {

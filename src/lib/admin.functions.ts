@@ -506,14 +506,31 @@ export const getMyGenerationTasks = createServerFn({ method: "POST" })
       return { items: [], isAdmin: false };
     }
 
-    const { data: rows, error } = await (supabaseAdmin as any)
+    const { data: activeRows, error: activeError } = await (supabaseAdmin as any)
       .from("generation_tasks")
       .select("id, request_id, user_id, status, model_id, prompt, created_at, updated_at, started_at, completed_at, result_image_url, error_code, error_message, deduction_status, deduction_id")
       .eq("user_id", userId)
       .in("status", ["queued", "running"])
-      .order("created_at", { ascending: false })
+      .order("created_at", { ascending: true })
       .limit(3);
-    if (error) throw new Error(error.message);
+    if (activeError) throw new Error(activeError.message);
+
+    const activeItems = activeRows ?? [];
+    let rows = activeItems;
+    const remaining = Math.max(0, 3 - activeItems.length);
+    if (remaining > 0) {
+      const { data: doneRows, error: doneError } = await (supabaseAdmin as any)
+        .from("generation_tasks")
+        .select("id, request_id, user_id, status, model_id, prompt, created_at, updated_at, started_at, completed_at, result_image_url, error_code, error_message, deduction_status, deduction_id")
+        .eq("user_id", userId)
+        .eq("status", "succeeded")
+        .eq("deduction_status", "charged")
+        .not("deduction_id", "is", null)
+        .order("completed_at", { ascending: false, nullsFirst: false })
+        .limit(remaining);
+      if (doneError) throw new Error(doneError.message);
+      rows = [...activeItems, ...(doneRows ?? [])];
+    }
 
     const items = (rows ?? []).map((r: any) => ({
       id: r.id as string,
