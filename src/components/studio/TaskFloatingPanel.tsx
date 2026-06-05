@@ -7,6 +7,9 @@ export type FloatingTask = {
   id: string;
   title: string;
   status: TaskStatus;
+  prompt?: string;
+  modelName?: string;
+  resultImageUrl?: string | null;
 };
 
 const STATUS_META: Record<TaskStatus, { label: string; icon: typeof Clock3; className: string }> = {

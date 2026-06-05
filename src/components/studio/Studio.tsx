@@ -73,12 +73,16 @@ export function Studio() {
           prompt: string | null;
           modelId: string;
           status: string;
+          resultImageUrl?: string | null;
         }) => {
           const promptTitle = task.prompt?.trim().slice(0, 20);
           return {
             id: task.id,
             title: promptTitle || task.modelId || "生成任务",
             status: mapRecoveredTaskStatus(task.status),
+            prompt: task.prompt ?? "",
+            modelName: task.modelId,
+            resultImageUrl: task.resultImageUrl ?? null,
           };
         });
         setAdminTasks(recovered);
@@ -107,13 +111,20 @@ export function Studio() {
             const task = taskResult as {
               taskId: string;
               status: string;
+              resultImageUrl?: string | null;
             };
             if (task.status === "succeeded") {
+              const matchedTask = adminTasks.find((item) => item.id === task.taskId);
               setAdminTasks((tasks) =>
                 tasks.map((item) =>
-                  item.id === task.taskId ? { ...item, status: "done" as const } : item,
+                  item.id === task.taskId ? { ...item, status: "done" as const, resultImageUrl: task.resultImageUrl ?? item.resultImageUrl ?? null } : item,
                 ),
               );
+              if (task.resultImageUrl) {
+                setGeneratedUrl(task.resultImageUrl);
+                setCurrentPrompt(matchedTask?.prompt ?? matchedTask?.title ?? "");
+                setCurrentModel(matchedTask?.modelName ?? "");
+              }
               return;
             }
             if (task.status === "failed") {
@@ -167,6 +178,8 @@ export function Studio() {
         id: `admin-preview-${Date.now()}`,
         title,
         status: "generating" as const,
+        prompt: info.prompt,
+        modelName: info.modelName,
       },
     ].slice(-3));
     setAdminPreparingNextTask(true);
@@ -198,6 +211,8 @@ export function Studio() {
         id: task.taskId,
         title,
         status: "waiting" as const,
+        prompt: input.prompt,
+        modelName: input.modelName,
       },
     ].slice(-3));
     return true;
@@ -228,8 +243,10 @@ export function Studio() {
       const task = await startTask({ data: { taskId } }) as {
         taskId: string;
         status: string;
+        resultImageUrl?: string | null;
         errorMessage?: string | null;
       };
+      const matchedTask = adminTasks.find((item) => item.id === task.taskId);
       const nextStatus =
         task.status === "succeeded"
           ? "done"
@@ -238,10 +255,15 @@ export function Studio() {
           : "generating";
       setAdminTasks((tasks) =>
         tasks.map((item) =>
-          item.id === task.taskId ? { ...item, status: nextStatus as FloatingTask["status"] } : item,
+          item.id === task.taskId ? { ...item, status: nextStatus as FloatingTask["status"], resultImageUrl: task.resultImageUrl ?? item.resultImageUrl ?? null } : item,
         ),
       );
       if (task.status === "succeeded") {
+        if (task.resultImageUrl) {
+          setGeneratedUrl(task.resultImageUrl);
+          setCurrentPrompt(matchedTask?.prompt ?? matchedTask?.title ?? "");
+          setCurrentModel(matchedTask?.modelName ?? "");
+        }
         toast.success("任务已完成");
       } else if (task.status === "failed") {
         toast.error(task.errorMessage ?? "任务生成失败");
