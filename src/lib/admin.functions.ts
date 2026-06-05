@@ -406,10 +406,10 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
     const isAdmin = !!(roles && roles.length > 0);
     const maxKeep = isAdmin ? 300 : 100;
     const maxDays = 15;
+    const cutoff = new Date(Date.now() - maxDays * 24 * 60 * 60 * 1000).toISOString();
 
     // 自动清理：超过 15 天 或 超过 maxKeep 张，删除最旧的
     try {
-      const cutoff = new Date(Date.now() - maxDays * 24 * 60 * 60 * 1000).toISOString();
       await supabaseAdmin
         .from("generation_history")
         .delete()
@@ -435,10 +435,10 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
     }
 
     // 管理员可以查看所有用户的历史（用于核查违规）；普通用户只能看自己的
-    if (isAdmin && offset >= maxKeep) {
+    if (offset >= maxKeep) {
       return { items: [], total: maxKeep, limit, offset, maxKeep, maxDays, isAdmin };
     }
-    const endIdx = isAdmin ? Math.min(offset + limit, maxKeep) - 1 : offset + limit - 1;
+    const endIdx = Math.min(offset + limit, maxKeep) - 1;
     let query = supabaseAdmin
       .from("generation_history")
       .select("id, user_id, model, prompt, image_url, created_at, cost", { count: "exact" })
@@ -446,7 +446,9 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
       .order("created_at", { ascending: false })
       .range(offset, endIdx);
     if (!isAdmin) {
-      query = query.eq("user_id", userId);
+      query = query
+        .eq("user_id", userId)
+        .gte("created_at", cutoff);
     }
     const { data: rows, error, count } = await query;
     if (error) throw new Error(error.message);
@@ -486,7 +488,7 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
         created_at: r.created_at as string,
       };
     });
-    const total = isAdmin ? Math.min(count ?? items.length, maxKeep) : (count ?? items.length);
+    const total = Math.min(count ?? items.length, maxKeep);
     return { items, total, limit, offset, maxKeep, maxDays, isAdmin };
   });
 
