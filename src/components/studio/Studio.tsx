@@ -5,7 +5,7 @@ import { Canvas } from "./Canvas";
 import { TopBar } from "./TopBar";
 import { TaskFloatingPanel, type FloatingTask } from "./TaskFloatingPanel";
 import { useAuth } from "@/hooks/use-auth";
-import { checkIsAdmin } from "@/lib/admin.functions";
+import { checkIsAdmin, getMyGenerationTasks } from "@/lib/admin.functions";
 
 const AnnouncementCenter = lazy(() => import("./AnnouncementCenter").then((m) => ({ default: m.AnnouncementCenter })));
 const AuthModal = lazy(() => import("@/components/auth/AuthModal").then((m) => ({ default: m.AuthModal })));
@@ -13,6 +13,7 @@ const AuthModal = lazy(() => import("@/components/auth/AuthModal").then((m) => (
 export function Studio() {
   const { session, profile, loading } = useAuth();
   const checkAdmin = useServerFn(checkIsAdmin);
+  const fetchGenerationTasks = useServerFn(getMyGenerationTasks);
   const [generating, setGenerating] = useState(false);
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
   const [currentPrompt, setCurrentPrompt] = useState<string>("");
@@ -24,6 +25,14 @@ export function Studio() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminTasks, setAdminTasks] = useState<FloatingTask[]>([]);
   const [adminPreparingNextTask, setAdminPreparingNextTask] = useState(false);
+
+  const mapRecoveredTaskStatus = (status: string): FloatingTask["status"] => {
+    if (status === "queued") return "waiting";
+    if (status === "running") return "generating";
+    if (status === "succeeded") return "done";
+    if (status === "failed") return "failed";
+    return "waiting";
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -39,6 +48,39 @@ export function Studio() {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!session || !isAdmin) {
+      setAdminTasks([]);
+      return;
+    }
+
+    fetchGenerationTasks({})
+      .then((res) => {
+        if (cancelled) return;
+        const recovered = (res?.items ?? []).map((task: {
+          id: string;
+          prompt: string | null;
+          modelId: string;
+          status: string;
+        }) => {
+          const promptTitle = task.prompt?.trim().slice(0, 20);
+          return {
+            id: task.id,
+            title: promptTitle || task.modelId || "生成任务",
+            status: mapRecoveredTaskStatus(task.status),
+          };
+        });
+        setAdminTasks(recovered);
+      })
+      .catch((error) => {
+        console.warn("[generation-tasks] restore failed", error);
+      });
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id, isAdmin]);
 
   const handleGenerateStart = (info: { prompt: string; modelName: string }) => {
     setGenerating(true);

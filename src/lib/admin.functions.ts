@@ -490,6 +490,50 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
     return { items, total, limit, offset, maxKeep, maxDays, isAdmin };
   });
 
+export const getMyGenerationTasks = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { userId } = context;
+    const { data: roles, error: roleError } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .in("role", ["admin", "founder"]);
+    if (roleError) throw new Error(roleError.message);
+
+    const isAdmin = !!(roles && roles.length > 0);
+    if (!isAdmin) {
+      return { items: [], isAdmin: false };
+    }
+
+    const { data: rows, error } = await (supabaseAdmin as any)
+      .from("generation_tasks")
+      .select("id, request_id, user_id, status, model_id, prompt, created_at, updated_at, started_at, completed_at, result_image_url, error_code, error_message")
+      .eq("user_id", userId)
+      .in("status", ["queued", "running", "succeeded", "failed"])
+      .order("created_at", { ascending: false })
+      .limit(30);
+    if (error) throw new Error(error.message);
+
+    const items = (rows ?? []).map((r: any) => ({
+      id: r.id as string,
+      requestId: r.request_id as string,
+      userId: r.user_id as string,
+      status: r.status as "queued" | "running" | "succeeded" | "failed",
+      modelId: r.model_id as string,
+      prompt: (r.prompt ?? null) as string | null,
+      createdAt: r.created_at as string,
+      updatedAt: r.updated_at as string,
+      startedAt: (r.started_at ?? null) as string | null,
+      completedAt: (r.completed_at ?? null) as string | null,
+      resultImageUrl: (r.result_image_url ?? null) as string | null,
+      errorCode: (r.error_code ?? null) as string | null,
+      errorMessage: (r.error_message ?? null) as string | null,
+    }));
+
+    return { items, isAdmin: true };
+  });
+
 // --- NEW: Dynamic upstream image generation (per-model API routing) ---
 function extractImageUrl(payload: any): string | null {
   if (!payload) return null;
