@@ -37,11 +37,12 @@ export function Studio() {
     task.status === "waiting" || task.status === "submitting" || task.status === "generating"
   ).length;
 
-  const mapRecoveredTaskStatus = (status: string): FloatingTask["status"] => {
+  const mapRecoveredTaskStatus = (status: string, deductionStatus?: string | null, deductionId?: string | null): FloatingTask["status"] => {
     if (status === "queued") return "waiting";
     if (status === "running") return "generating";
-    if (status === "succeeded") return "done";
+    if (status === "succeeded") return deductionStatus === "charged" && !!deductionId ? "done" : "failed";
     if (status === "failed") return "failed";
+    if (status === "canceled") return "failed";
     return "waiting";
   };
 
@@ -71,18 +72,21 @@ export function Studio() {
       .then((res) => {
         if (cancelled) return;
         const recovered = (res?.items ?? [])
+          .filter((task: { status: string }) => task.status !== "canceled")
           .map((task: {
             id: string;
             prompt: string | null;
             modelId: string;
             status: string;
             resultImageUrl?: string | null;
+            deductionStatus?: string | null;
+            deductionId?: string | null;
           }) => {
             const promptTitle = task.prompt?.trim().slice(0, 20);
             return {
               id: task.id,
               title: promptTitle || task.modelId || "生成任务",
-              status: mapRecoveredTaskStatus(task.status),
+              status: mapRecoveredTaskStatus(task.status, task.deductionStatus, task.deductionId),
               prompt: task.prompt ?? "",
               modelName: task.modelId,
               resultImageUrl: task.resultImageUrl ?? null,
@@ -116,8 +120,11 @@ export function Studio() {
               taskId: string;
               status: string;
               resultImageUrl?: string | null;
+              deductionStatus?: string | null;
+              historyId?: string | null;
+              errorMessage?: string | null;
             };
-            if (task.status === "succeeded") {
+            if (task.status === "succeeded" && task.deductionStatus === "charged" && !!task.historyId) {
               const matchedTask = adminTasks.find((item) => item.id === task.taskId);
               setAdminTasks((tasks) =>
                 tasks.map((item) =>
@@ -131,7 +138,7 @@ export function Studio() {
               }
               return;
             }
-            if (task.status === "failed") {
+            if (task.status === "failed" || task.status === "succeeded") {
               setAdminTasks((tasks) =>
                 tasks.map((item) =>
                   item.id === task.taskId ? { ...item, status: "failed" as const } : item,
@@ -272,12 +279,15 @@ export function Studio() {
         status: string;
         resultImageUrl?: string | null;
         errorMessage?: string | null;
+        deductionStatus?: string | null;
+        historyId?: string | null;
       };
       const matchedTask = adminTasks.find((item) => item.id === task.taskId);
+      const finalized = task.status === "succeeded" && task.deductionStatus === "charged" && !!task.historyId;
       const nextStatus =
-        task.status === "succeeded"
+        finalized
           ? "done"
-          : task.status === "failed"
+          : task.status === "failed" || task.status === "succeeded"
           ? "failed"
           : "generating";
       setAdminTasks((tasks) =>
@@ -285,14 +295,14 @@ export function Studio() {
           item.id === task.taskId ? { ...item, status: nextStatus as FloatingTask["status"], resultImageUrl: task.resultImageUrl ?? item.resultImageUrl ?? null } : item,
         ),
       );
-      if (task.status === "succeeded") {
+      if (finalized) {
         if (task.resultImageUrl) {
           setGeneratedUrl(task.resultImageUrl);
           setCurrentPrompt(matchedTask?.prompt ?? matchedTask?.title ?? "");
           setCurrentModel(matchedTask?.modelName ?? "");
         }
         toast.success("任务已完成");
-      } else if (task.status === "failed") {
+      } else if (task.status === "failed" || task.status === "succeeded") {
         toast.error(task.errorMessage ?? "任务生成失败");
       } else {
         toast.success("任务已进入生成中");

@@ -508,7 +508,7 @@ export const getMyGenerationTasks = createServerFn({ method: "POST" })
 
     const { data: rows, error } = await (supabaseAdmin as any)
       .from("generation_tasks")
-      .select("id, request_id, user_id, status, model_id, prompt, created_at, updated_at, started_at, completed_at, result_image_url, error_code, error_message")
+      .select("id, request_id, user_id, status, model_id, prompt, created_at, updated_at, started_at, completed_at, result_image_url, error_code, error_message, deduction_status, deduction_id")
       .eq("user_id", userId)
       .in("status", ["queued", "running", "succeeded", "failed"])
       .order("created_at", { ascending: false })
@@ -529,6 +529,8 @@ export const getMyGenerationTasks = createServerFn({ method: "POST" })
       resultImageUrl: (r.result_image_url ?? null) as string | null,
       errorCode: (r.error_code ?? null) as string | null,
       errorMessage: (r.error_message ?? null) as string | null,
+      deductionStatus: (r.deduction_status ?? null) as string | null,
+      deductionId: (r.deduction_id ?? null) as string | null,
     }));
 
     return { items, isAdmin: true };
@@ -694,6 +696,9 @@ async function finalizeAdminPreviewGenerationTaskOnce(
   if (!row?.success) {
     throw new Error(row?.message ?? "Finalize task failed");
   }
+  if (row.deduction_status !== "charged" || !row.history_id) {
+    throw new Error(row?.message ?? "Task finalized without charged deduction or history");
+  }
 
   return {
     deductionStatus: (row.deduction_status ?? null) as string | null,
@@ -848,7 +853,7 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
 
     const { data: task, error } = await (supabaseAdmin as any)
       .from("generation_tasks")
-      .select("id, status, result_payload, result_image_url, error_message")
+      .select("id, status, result_payload, result_image_url, error_message, deduction_status, deduction_id")
       .eq("id", data.taskId)
       .eq("user_id", userId)
       .contains("input_params", { adminPreviewOnly: true })
@@ -856,12 +861,15 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     if (!task) throw new Error("任务不存在，或不属于当前内测任务。");
     if (task.status !== "running") {
+      const finalized = task.status === "succeeded" && task.deduction_status === "charged" && !!task.deduction_id;
       return {
         taskId: task.id as string,
-        status: task.status as "succeeded" | "failed" | "queued" | "canceled",
+        status: finalized ? "succeeded" as const : task.status === "succeeded" ? "failed" as const : task.status as "failed" | "queued" | "canceled",
         resultImageUrl: (task.result_image_url ?? null) as string | null,
-        errorMessage: (task.error_message ?? null) as string | null,
+        errorMessage: finalized ? (task.error_message ?? null) as string | null : task.status === "succeeded" ? "Task completed without charged deduction or history" : (task.error_message ?? null) as string | null,
         resultPayload: task.result_payload ?? null,
+        deductionStatus: (task.deduction_status ?? null) as string | null,
+        historyId: (task.deduction_id ?? null) as string | null,
       };
     }
 
