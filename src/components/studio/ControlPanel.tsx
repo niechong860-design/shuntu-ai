@@ -95,6 +95,8 @@ type Props = {
   isAdmin?: boolean;
   adminPreparingNextTask?: boolean;
   adminActiveTaskCount?: number;
+  adminCurrentBatchTaskCount?: number;
+  canPrepareNextAdminTask?: boolean;
   onAdminPrepareNextTask?: (info: { prompt: string; modelName: string }) => void;
   onAdminCreateQueuedTask?: (input: {
     prompt: string;
@@ -112,6 +114,8 @@ export function ControlPanel({
   isAdmin = false,
   adminPreparingNextTask = false,
   adminActiveTaskCount = 0,
+  adminCurrentBatchTaskCount = 0,
+  canPrepareNextAdminTask = false,
   onAdminPrepareNextTask,
   onAdminCreateQueuedTask,
 }: Props) {
@@ -377,7 +381,7 @@ export function ControlPanel({
   }, [session]);
 
   const handleAdminPrepareNextTask = () => {
-    if (!isAdmin || adminPreparingNextTask || adminActiveTaskCount >= 3) return;
+    if (!canPrepareNextAdminTask) return;
     onAdminPrepareNextTask?.({
       prompt,
       modelName: activeModel?.name ?? activeModel?.model_key ?? "当前模型",
@@ -392,8 +396,8 @@ export function ControlPanel({
   const handleGenerate = async () => {
     if (isPreparingNextTask) {
       if (isCreatingQueuedTask) return;
-      if (adminActiveTaskCount >= 3) {
-        toast.error("当前已有 3 个进行中任务，请等待任务完成后再提交。");
+      if (adminCurrentBatchTaskCount >= 3) {
+        toast.error("本轮任务已满 3 个，请开始新一轮后再提交。");
         return;
       }
       if (!activeModel) return;
@@ -823,7 +827,7 @@ export function ControlPanel({
 
       {/* 立即生成 — 紧贴风格模板 */}
       <div className="shrink-0 border-t border-primary/15 bg-gradient-to-b from-primary/[0.04] to-background/85 p-3 backdrop-blur-xl">
-        {isAdmin && !isPreparingNextTask && adminActiveTaskCount < 3 && (
+        {canPrepareNextAdminTask && (
           <button
             type="button"
             onClick={handleAdminPrepareNextTask}
@@ -835,7 +839,7 @@ export function ControlPanel({
         )}
         <button
           onClick={handleGenerate}
-          disabled={(generating && !isPreparingNextTask) || !activeModel || (isPreparingNextTask && (adminActiveTaskCount >= 3 || isCreatingQueuedTask))}
+          disabled={(generating && !isPreparingNextTask) || !activeModel || (isPreparingNextTask && (adminCurrentBatchTaskCount >= 3 || isCreatingQueuedTask))}
           className="group relative flex w-full items-center justify-between gap-2 overflow-hidden rounded-2xl bg-gradient-aurora px-5 py-3.5 text-sm font-bold text-primary-foreground shadow-glow transition-all duration-150 ease-out hover:brightness-110 active:scale-[0.97] disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100"
         >
           <div className="flex items-center gap-2">
@@ -850,7 +854,7 @@ export function ControlPanel({
                 {isPreparingNextTask
                   ? isCreatingQueuedTask
                     ? "加入队列中..."
-                    : adminActiveTaskCount >= 3
+                    : adminCurrentBatchTaskCount >= 3
                     ? "任务已满 3/3"
                     : "加入等待队列"
                   : "立即生成"}

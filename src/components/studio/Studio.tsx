@@ -36,6 +36,12 @@ export function Studio() {
   const adminActiveTaskCount = adminTasks.filter((task) =>
     task.status === "waiting" || task.status === "submitting" || task.status === "generating"
   ).length;
+  const adminCurrentBatchTaskCount = adminTasks.length;
+  const canPrepareNextAdminTask =
+    isAdmin &&
+    !adminPreparingNextTask &&
+    adminCurrentBatchTaskCount < 3 &&
+    (generating || adminActiveTaskCount > 0);
 
   const trimPanelTasks = (tasks: FloatingTask[]) => {
     const queueTasks = tasks.filter((task) =>
@@ -176,6 +182,9 @@ export function Studio() {
   }, [session?.user?.id, isAdmin, adminTasks]);
 
   const handleGenerateStart = (info: { prompt: string; modelName: string }) => {
+    if (isAdmin && adminActiveTaskCount === 0) {
+      setAdminTasks([]);
+    }
     setGenerating(true);
     setAdminPreparingNextTask(false);
     setGeneratedUrl(null);
@@ -203,7 +212,7 @@ export function Studio() {
   };
 
   const handleAdminPrepareNextTask = (info: { prompt: string; modelName: string }) => {
-    if (!isAdmin || adminPreparingNextTask || adminActiveTaskCount >= 3) return;
+    if (!canPrepareNextAdminTask) return;
     const title = info.prompt.trim().slice(0, 20) || info.modelName || "当前生成任务";
     if (generating) {
       setAdminTasks((tasks) =>
@@ -229,8 +238,8 @@ export function Studio() {
     inputParams: Record<string, unknown>;
   }) => {
     if (!isAdmin) return false;
-    if (adminActiveTaskCount >= 3) {
-      throw new Error("当前已有 3 个进行中任务，请等待任务完成后再提交。");
+    if (adminCurrentBatchTaskCount >= 3) {
+      throw new Error("本轮任务已满 3 个，请开始新一轮后再提交。");
     }
 
     const task = await createTask({
@@ -391,6 +400,8 @@ export function Studio() {
             isAdmin={isAdmin}
             adminPreparingNextTask={adminPreparingNextTask}
             adminActiveTaskCount={adminActiveTaskCount}
+            adminCurrentBatchTaskCount={adminCurrentBatchTaskCount}
+            canPrepareNextAdminTask={canPrepareNextAdminTask}
             onAdminPrepareNextTask={handleAdminPrepareNextTask}
             onAdminCreateQueuedTask={handleAdminCreateQueuedTask}
           />
