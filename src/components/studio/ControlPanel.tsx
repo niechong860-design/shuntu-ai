@@ -94,7 +94,6 @@ type Props = {
   generating: boolean;
   isAdmin?: boolean;
   adminPreparingNextTask?: boolean;
-  adminActiveTaskCount?: number;
   adminCurrentBatchTaskCount?: number;
   canPrepareNextAdminTask?: boolean;
   onAdminPrepareNextTask?: (info: { prompt: string; modelName: string }) => void;
@@ -113,7 +112,6 @@ export function ControlPanel({
   generating,
   isAdmin = false,
   adminPreparingNextTask = false,
-  adminActiveTaskCount = 0,
   adminCurrentBatchTaskCount = 0,
   canPrepareNextAdminTask = false,
   onAdminPrepareNextTask,

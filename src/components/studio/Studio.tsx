@@ -36,11 +36,11 @@ export function Studio() {
   const adminActiveTaskCount = adminTasks.filter((task) =>
     task.status === "waiting" || task.status === "submitting" || task.status === "generating"
   ).length;
-  const adminCurrentBatchTaskCount = adminTasks.length;
+  const effectiveCurrentBatchTaskCount = adminActiveTaskCount === 0 ? 0 : adminTasks.length;
   const canPrepareNextAdminTask =
     isAdmin &&
     !adminPreparingNextTask &&
-    adminCurrentBatchTaskCount < 3 &&
+    effectiveCurrentBatchTaskCount < 3 &&
     (generating || adminActiveTaskCount > 0);
 
   const trimPanelTasks = (tasks: FloatingTask[]) => {
@@ -238,7 +238,7 @@ export function Studio() {
     inputParams: Record<string, unknown>;
   }) => {
     if (!isAdmin) return false;
-    if (adminCurrentBatchTaskCount >= 3) {
+    if (effectiveCurrentBatchTaskCount >= 3) {
       throw new Error("本轮任务已满 3 个，请开始新一轮后再提交。");
     }
 
@@ -253,7 +253,7 @@ export function Studio() {
     const title = task.prompt.trim().slice(0, 20) || input.modelName || task.modelId;
     setAdminTasks((tasks) =>
       trimPanelTasks([
-        ...tasks,
+        ...(adminActiveTaskCount === 0 ? [] : tasks),
         {
           id: task.taskId,
           title,
@@ -399,8 +399,7 @@ export function Studio() {
             generating={generating}
             isAdmin={isAdmin}
             adminPreparingNextTask={adminPreparingNextTask}
-            adminActiveTaskCount={adminActiveTaskCount}
-            adminCurrentBatchTaskCount={adminCurrentBatchTaskCount}
+            adminCurrentBatchTaskCount={effectiveCurrentBatchTaskCount}
             canPrepareNextAdminTask={canPrepareNextAdminTask}
             onAdminPrepareNextTask={handleAdminPrepareNextTask}
             onAdminCreateQueuedTask={handleAdminCreateQueuedTask}

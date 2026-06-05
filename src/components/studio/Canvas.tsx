@@ -217,7 +217,7 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
           <>
             <img src={generatedUrl} alt="生成结果" className="h-full w-full object-contain bg-black" />
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/30 opacity-0 transition-opacity group-hover:opacity-100" />
-            <div className="absolute right-3 top-3 flex items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
+            <div className="absolute left-3 top-3 z-20 flex items-center gap-1.5 opacity-70 transition-opacity group-hover:opacity-100">
               <HeroAction label="查看大图" onClick={() => setHeroLightbox(true)}>
                 <Maximize2 className="h-3.5 w-3.5" />
               </HeroAction>
