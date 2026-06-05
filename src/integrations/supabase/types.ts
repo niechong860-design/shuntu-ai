@@ -263,6 +263,75 @@ export type Database = {
         }
         Relationships: []
       }
+      generation_tasks: {
+        Row: {
+          charged_at: string | null
+          completed_at: string | null
+          created_at: string
+          credits_required: number
+          deduction_id: string | null
+          deduction_status: string
+          error_code: string | null
+          error_message: string | null
+          id: string
+          input_params: Json
+          model_id: string
+          prompt: string | null
+          refunded_at: string | null
+          request_id: string
+          result_image_url: string | null
+          result_payload: Json | null
+          started_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          charged_at?: string | null
+          completed_at?: string | null
+          created_at?: string
+          credits_required?: number
+          deduction_id?: string | null
+          deduction_status?: string
+          error_code?: string | null
+          error_message?: string | null
+          id?: string
+          input_params?: Json
+          model_id: string
+          prompt?: string | null
+          refunded_at?: string | null
+          request_id: string
+          result_image_url?: string | null
+          result_payload?: Json | null
+          started_at?: string | null
+          status: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          charged_at?: string | null
+          completed_at?: string | null
+          created_at?: string
+          credits_required?: number
+          deduction_id?: string | null
+          deduction_status?: string
+          error_code?: string | null
+          error_message?: string | null
+          id?: string
+          input_params?: Json
+          model_id?: string
+          prompt?: string | null
+          refunded_at?: string | null
+          request_id?: string
+          result_image_url?: string | null
+          result_payload?: Json | null
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       global_config: {
         Row: {
           base_url: string
