@@ -24,7 +24,6 @@ export function TaskFloatingPanel({
   tasks,
   maxTasks = 3,
   onClearTestTasks,
-  onStartTask,
   startingTaskIds = [],
   onCancelTask,
   cancelingTaskIds = [],
@@ -32,7 +31,6 @@ export function TaskFloatingPanel({
   tasks: FloatingTask[];
   maxTasks?: number;
   onClearTestTasks?: () => void | Promise<void>;
-  onStartTask?: (taskId: string) => void | Promise<void>;
   startingTaskIds?: string[];
   onCancelTask?: (taskId: string) => void | Promise<void>;
   cancelingTaskIds?: string[];
@@ -56,7 +54,7 @@ export function TaskFloatingPanel({
           <div className="mb-3 flex items-center justify-between">
             <div>
               <div className="text-sm font-semibold text-foreground">管理员多任务内测</div>
-              <div className="mt-0.5 text-[11px] text-muted-foreground">当前仅展示任务面板，不会并发提交</div>
+              <div className="mt-0.5 text-[11px] text-muted-foreground">任务会按队列自动生成，最多 3 个进行中</div>
             </div>
             <div className="flex items-center gap-2">
               {onClearTestTasks && (
@@ -92,16 +90,6 @@ export function TaskFloatingPanel({
                       <div className="truncate text-xs font-medium text-foreground">{task.title}</div>
                       <div className={`text-[10px] ${meta.className}`}>{meta.label}</div>
                     </div>
-                    {task.status === "waiting" && onStartTask && (
-                      <button
-                        type="button"
-                        disabled={starting || canceling}
-                        onClick={() => onStartTask(task.id)}
-                        className="shrink-0 rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary transition-colors hover:border-primary/60 hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {starting ? "启动中..." : "开始执行"}
-                      </button>
-                    )}
                     {task.status === "waiting" && onCancelTask && (
                       <button
                         type="button"

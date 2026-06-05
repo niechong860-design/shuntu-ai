@@ -70,23 +70,25 @@ export function Studio() {
     fetchGenerationTasks({})
       .then((res) => {
         if (cancelled) return;
-        const recovered = (res?.items ?? []).map((task: {
-          id: string;
-          prompt: string | null;
-          modelId: string;
-          status: string;
-          resultImageUrl?: string | null;
-        }) => {
-          const promptTitle = task.prompt?.trim().slice(0, 20);
-          return {
-            id: task.id,
-            title: promptTitle || task.modelId || "生成任务",
-            status: mapRecoveredTaskStatus(task.status),
-            prompt: task.prompt ?? "",
-            modelName: task.modelId,
-            resultImageUrl: task.resultImageUrl ?? null,
-          };
-        });
+        const recovered = (res?.items ?? [])
+          .map((task: {
+            id: string;
+            prompt: string | null;
+            modelId: string;
+            status: string;
+            resultImageUrl?: string | null;
+          }) => {
+            const promptTitle = task.prompt?.trim().slice(0, 20);
+            return {
+              id: task.id,
+              title: promptTitle || task.modelId || "生成任务",
+              status: mapRecoveredTaskStatus(task.status),
+              prompt: task.prompt ?? "",
+              modelName: task.modelId,
+              resultImageUrl: task.resultImageUrl ?? null,
+            };
+          })
+          .reverse();
         setAdminTasks(recovered);
       })
       .catch((error) => {
@@ -259,6 +261,11 @@ export function Studio() {
     if (!isAdmin) return;
     if (startingTaskIds.includes(taskId)) return;
     setStartingTaskIds((ids) => ids.includes(taskId) ? ids : [...ids, taskId]);
+    setAdminTasks((tasks) =>
+      tasks.map((item) =>
+        item.id === taskId && item.status === "waiting" ? { ...item, status: "submitting" as const } : item,
+      ),
+    );
     try {
       const task = await startTask({ data: { taskId } }) as {
         taskId: string;
@@ -292,11 +299,37 @@ export function Studio() {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "任务启动失败";
+      setAdminTasks((tasks) =>
+        tasks.map((item) =>
+          item.id === taskId ? { ...item, status: "failed" as const } : item,
+        ),
+      );
       toast.error(message);
     } finally {
       setStartingTaskIds((ids) => ids.filter((id) => id !== taskId));
     }
   };
+
+  useEffect(() => {
+    if (!session || !isAdmin) return;
+    const runningOrStartingIds = new Set(startingTaskIds);
+    for (const task of adminTasks) {
+      if (task.status === "submitting" || task.status === "generating") {
+        runningOrStartingIds.add(task.id);
+      }
+    }
+    const runningOrStartingCount = runningOrStartingIds.size;
+    if (runningOrStartingCount >= 3) return;
+
+    const tasksToStart = adminTasks
+      .filter((task) => task.status === "waiting" && !startingTaskIds.includes(task.id))
+      .slice(0, 3 - runningOrStartingCount);
+
+    for (const task of tasksToStart) {
+      void handleAdminStartTask(task.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id, isAdmin, adminTasks, startingTaskIds]);
 
   const showAuth = !loading && (!session || forceAuth);
   const credits = profile?.credits ?? 0;
@@ -343,7 +376,6 @@ export function Studio() {
             tasks={adminTasks}
             maxTasks={3}
             onClearTestTasks={handleAdminClearTestTasks}
-            onStartTask={handleAdminStartTask}
             startingTaskIds={startingTaskIds}
             onCancelTask={handleAdminCancelTask}
             cancelingTaskIds={cancelingTaskIds}
