@@ -26,12 +26,16 @@ export function TaskFloatingPanel({
   onClearTestTasks,
   onStartTask,
   startingTaskIds = [],
+  onCancelTask,
+  cancelingTaskIds = [],
 }: {
   tasks: FloatingTask[];
   maxTasks?: number;
   onClearTestTasks?: () => void | Promise<void>;
   onStartTask?: (taskId: string) => void | Promise<void>;
   startingTaskIds?: string[];
+  onCancelTask?: (taskId: string) => void | Promise<void>;
+  cancelingTaskIds?: string[];
 }) {
   const [open, setOpen] = useState(false);
   const activeCount = tasks.filter((task) => task.status === "waiting" || task.status === "submitting" || task.status === "generating").length;
@@ -80,6 +84,7 @@ export function TaskFloatingPanel({
                 const meta = STATUS_META[task.status];
                 const Icon = meta.icon;
                 const starting = startingTaskIds.includes(task.id);
+                const canceling = cancelingTaskIds.includes(task.id);
                 return (
                   <div key={task.id} className="flex items-center gap-2 rounded-lg border border-border/60 bg-white/[0.03] px-3 py-2">
                     <Icon className={`h-3.5 w-3.5 ${meta.className} ${task.status === "generating" ? "animate-spin" : ""}`} />
@@ -90,11 +95,21 @@ export function TaskFloatingPanel({
                     {task.status === "waiting" && onStartTask && (
                       <button
                         type="button"
-                        disabled={starting}
+                        disabled={starting || canceling}
                         onClick={() => onStartTask(task.id)}
                         className="shrink-0 rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary transition-colors hover:border-primary/60 hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {starting ? "启动中..." : "开始执行"}
+                      </button>
+                    )}
+                    {task.status === "waiting" && onCancelTask && (
+                      <button
+                        type="button"
+                        disabled={starting || canceling}
+                        onClick={() => onCancelTask(task.id)}
+                        className="shrink-0 rounded-md border border-border/70 bg-white/[0.03] px-2 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:border-destructive/50 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {canceling ? "取消中..." : "取消"}
                       </button>
                     )}
                   </div>

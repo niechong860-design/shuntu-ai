@@ -638,6 +638,39 @@ export const cancelMyQueuedGenerationTasks = createServerFn({ method: "POST" })
     return { canceledCount: (data ?? []).length };
   });
 
+export const cancelGenerationTask = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ taskId: z.string().uuid() }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    const { userId } = context;
+    await assertAdmin(userId);
+
+    const now = new Date().toISOString();
+    const { data: task, error } = await (supabaseAdmin as any)
+      .from("generation_tasks")
+      .update({
+        status: "canceled",
+        completed_at: now,
+        updated_at: now,
+      })
+      .eq("id", data.taskId)
+      .eq("user_id", userId)
+      .eq("status", "queued")
+      .eq("deduction_status", "not_charged")
+      .contains("input_params", { adminPreviewOnly: true })
+      .select("id, status")
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!task) throw new Error("任务已开始、已完成、已取消，或不属于当前内测任务。");
+
+    return {
+      taskId: task.id as string,
+      status: "canceled" as const,
+    };
+  });
+
 export const startGenerationTask = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>

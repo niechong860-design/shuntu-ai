@@ -5,7 +5,7 @@ import { Canvas } from "./Canvas";
 import { TopBar } from "./TopBar";
 import { TaskFloatingPanel, type FloatingTask } from "./TaskFloatingPanel";
 import { useAuth } from "@/hooks/use-auth";
-import { cancelMyQueuedGenerationTasks, checkIsAdmin, createGenerationTask, getMyGenerationTasks, pollGenerationTask, startGenerationTask } from "@/lib/admin.functions";
+import { cancelGenerationTask, cancelMyQueuedGenerationTasks, checkIsAdmin, createGenerationTask, getMyGenerationTasks, pollGenerationTask, startGenerationTask } from "@/lib/admin.functions";
 import { toast } from "sonner";
 
 const AnnouncementCenter = lazy(() => import("./AnnouncementCenter").then((m) => ({ default: m.AnnouncementCenter })));
@@ -16,6 +16,7 @@ export function Studio() {
   const checkAdmin = useServerFn(checkIsAdmin);
   const fetchGenerationTasks = useServerFn(getMyGenerationTasks);
   const createTask = useServerFn(createGenerationTask);
+  const cancelTask = useServerFn(cancelGenerationTask);
   const cancelQueuedTasks = useServerFn(cancelMyQueuedGenerationTasks);
   const startTask = useServerFn(startGenerationTask);
   const pollTask = useServerFn(pollGenerationTask);
@@ -31,6 +32,7 @@ export function Studio() {
   const [adminTasks, setAdminTasks] = useState<FloatingTask[]>([]);
   const [adminPreparingNextTask, setAdminPreparingNextTask] = useState(false);
   const [startingTaskIds, setStartingTaskIds] = useState<string[]>([]);
+  const [cancelingTaskIds, setCancelingTaskIds] = useState<string[]>([]);
   const adminActiveTaskCount = adminTasks.filter((task) =>
     task.status === "waiting" || task.status === "submitting" || task.status === "generating"
   ).length;
@@ -235,6 +237,24 @@ export function Studio() {
     }
   };
 
+  const handleAdminCancelTask = async (taskId: string) => {
+    if (!isAdmin) return;
+    if (cancelingTaskIds.includes(taskId)) return;
+    setCancelingTaskIds((ids) => ids.includes(taskId) ? ids : [...ids, taskId]);
+    try {
+      const task = await cancelTask({ data: { taskId } }) as { taskId: string; status: string };
+      if (task.status === "canceled") {
+        setAdminTasks((tasks) => tasks.filter((item) => item.id !== task.taskId));
+        toast.success("任务已取消");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "任务取消失败";
+      toast.error(message);
+    } finally {
+      setCancelingTaskIds((ids) => ids.filter((id) => id !== taskId));
+    }
+  };
+
   const handleAdminStartTask = async (taskId: string) => {
     if (!isAdmin) return;
     if (startingTaskIds.includes(taskId)) return;
@@ -325,6 +345,8 @@ export function Studio() {
             onClearTestTasks={handleAdminClearTestTasks}
             onStartTask={handleAdminStartTask}
             startingTaskIds={startingTaskIds}
+            onCancelTask={handleAdminCancelTask}
+            cancelingTaskIds={cancelingTaskIds}
           />
         )}
       </div>
