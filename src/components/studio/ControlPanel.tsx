@@ -92,9 +92,10 @@ type Props = {
  onGenerateDone: (imageUrl: string | null) => void;
   onProgress?: (p: GenProgress | null) => void;
   generating: boolean;
+  isAdmin?: boolean;
 };
 
-export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, generating }: Props) {
+export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, generating, isAdmin = false }: Props) {
   const fetchModels = useServerFn(listModelsConfig);
   const generate = useServerFn(generateImage);
   const checkStatus = useServerFn(checkImageStatus);
@@ -735,6 +736,16 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
 
       {/* 立即生成 — 紧贴风格模板 */}
       <div className="shrink-0 border-t border-primary/15 bg-gradient-to-b from-primary/[0.04] to-background/85 p-3 backdrop-blur-xl">
+        {isAdmin && generating && (
+          <button
+            type="button"
+            onClick={() => toast.info("管理员多任务内测入口已开启，真实并发提交将在后续阶段接入")}
+            className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/[0.06] px-4 py-2.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/[0.1]"
+          >
+            <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+            开始下一个任务
+          </button>
+        )}
         <button
           onClick={handleGenerate}
           disabled={generating || !activeModel}

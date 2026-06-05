@@ -1,0 +1,85 @@
+import { useState } from "react";
+import { CheckCircle2, CircleDashed, Clock3, ListChecks, Loader2, XCircle } from "lucide-react";
+
+export type TaskStatus = "waiting" | "submitting" | "generating" | "done" | "failed";
+
+export type FloatingTask = {
+  id: string;
+  title: string;
+  status: TaskStatus;
+};
+
+const STATUS_META: Record<TaskStatus, { label: string; icon: typeof Clock3; className: string }> = {
+  waiting: { label: "等待中", icon: Clock3, className: "text-muted-foreground" },
+  submitting: { label: "提交中", icon: CircleDashed, className: "text-sky-300" },
+  generating: { label: "生成中", icon: Loader2, className: "text-primary" },
+  done: { label: "完成", icon: CheckCircle2, className: "text-emerald-300" },
+  failed: { label: "失败", icon: XCircle, className: "text-destructive" },
+};
+
+export function TaskFloatingPanel({ tasks, maxTasks = 3 }: { tasks: FloatingTask[]; maxTasks?: number }) {
+  const [open, setOpen] = useState(false);
+  const activeCount = tasks.filter((task) => task.status === "waiting" || task.status === "submitting" || task.status === "generating").length;
+
+  return (
+    <div className="fixed right-4 top-16 z-50">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="glass-elevated flex items-center gap-2 rounded-full border border-primary/30 bg-card/90 px-3 py-2 text-xs font-semibold text-foreground shadow-glow backdrop-blur-xl transition-colors hover:border-primary/60"
+      >
+        <ListChecks className="h-3.5 w-3.5 text-primary" />
+        任务 {activeCount}/{maxTasks}
+      </button>
+
+      {open && (
+        <div className="mt-2 w-80 rounded-xl border border-border/70 bg-card/95 p-3 shadow-2xl backdrop-blur-2xl">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <div className="text-sm font-semibold text-foreground">管理员多任务内测</div>
+              <div className="mt-0.5 text-[11px] text-muted-foreground">当前仅展示任务面板，不会并发提交</div>
+            </div>
+            <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
+              {activeCount}/{maxTasks}
+            </span>
+          </div>
+
+          {tasks.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border/70 bg-white/[0.02] px-3 py-4 text-center text-xs text-muted-foreground">
+              暂无多任务队列
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {tasks.map((task) => {
+                const meta = STATUS_META[task.status];
+                const Icon = meta.icon;
+                return (
+                  <div key={task.id} className="flex items-center gap-2 rounded-lg border border-border/60 bg-white/[0.03] px-3 py-2">
+                    <Icon className={`h-3.5 w-3.5 ${meta.className} ${task.status === "generating" ? "animate-spin" : ""}`} />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs font-medium text-foreground">{task.title}</div>
+                      <div className={`text-[10px] ${meta.className}`}>{meta.label}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="mt-3 grid grid-cols-5 gap-1">
+            {(Object.keys(STATUS_META) as TaskStatus[]).map((status) => {
+              const meta = STATUS_META[status];
+              const Icon = meta.icon;
+              return (
+                <div key={status} className="flex flex-col items-center gap-1 rounded-md bg-white/[0.03] px-1 py-2">
+                  <Icon className={`h-3 w-3 ${meta.className} ${status === "generating" ? "animate-spin" : ""}`} />
+                  <span className="text-[9px] text-muted-foreground">{meta.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
