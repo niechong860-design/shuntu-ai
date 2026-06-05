@@ -92,9 +92,31 @@ type Props = {
  onGenerateDone: (imageUrl: string | null) => void;
   onProgress?: (p: GenProgress | null) => void;
   generating: boolean;
+  isAdmin?: boolean;
+  adminPreparingNextTask?: boolean;
+  adminCurrentBatchTaskCount?: number;
+  canPrepareNextAdminTask?: boolean;
+  onAdminPrepareNextTask?: (info: { prompt: string; modelName: string }) => void;
+  onAdminCreateQueuedTask?: (input: {
+    prompt: string;
+    modelKey: string;
+    modelName: string;
+    inputParams: Record<string, unknown>;
+  }) => Promise<boolean>;
 };
 
-export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, generating }: Props) {
+export function ControlPanel({
+  onGenerateStart,
+  onGenerateDone,
+  onProgress,
+  generating,
+  isAdmin = false,
+  adminPreparingNextTask = false,
+  adminCurrentBatchTaskCount = 0,
+  canPrepareNextAdminTask = false,
+  onAdminPrepareNextTask,
+  onAdminCreateQueuedTask,
+}: Props) {
   const fetchModels = useServerFn(listModelsConfig);
   const generate = useServerFn(generateImage);
   const checkStatus = useServerFn(checkImageStatus);
@@ -116,6 +138,8 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
   const [inspirationMode, setInspirationMode] = useState(false);
   const [cfg, setCfg] = useState([7.5]);
   const [steps, setSteps] = useState([32]);
+  const [isCreatingQueuedTask, setIsCreatingQueuedTask] = useState(false);
+  const isPreparingNextTask = isAdmin && adminPreparingNextTask;
 
   useEffect(() => {
     if (!session) return;
@@ -354,7 +378,73 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
+  const handleAdminPrepareNextTask = () => {
+    if (!canPrepareNextAdminTask) return;
+    onAdminPrepareNextTask?.({
+      prompt,
+      modelName: activeModel?.name ?? activeModel?.model_key ?? "当前模型",
+    });
+    setPrompt("");
+    setRefs([]);
+    setStyleId("");
+    setInspirationMode(false);
+    toast.success("已加入任务面板，可以准备下一个提示词");
+  };
+
   const handleGenerate = async () => {
+    if (isPreparingNextTask) {
+      if (isCreatingQueuedTask) return;
+      if (adminCurrentBatchTaskCount >= 3) {
+        toast.error("本轮任务已满 3 个，请开始新一轮后再提交。");
+        return;
+      }
+      if (!activeModel) return;
+      if (!prompt || !prompt.trim()) {
+        toast.error("请输入图片描述后再生成。");
+        return;
+      }
+      const effectiveStyleId = inspirationMode ? "" : styleId;
+      const finalPrompt = applyStyleSuffix(prompt, effectiveStyleId);
+      const safety = checkPromptSafety(`${prompt}\n${finalPrompt}`);
+      if (!safety.allowed) {
+        console.warn("[generation-task] prompt blocked by safety filter", { category: safety.category });
+        toast.error(SAFETY_BLOCK_MESSAGE);
+        return;
+      }
+      setIsCreatingQueuedTask(true);
+      try {
+        const httpRefs = isTextOnly ? [] : refs.filter((u) => /^https?:\/\//i.test(u));
+        const ok = await onAdminCreateQueuedTask?.({
+          modelKey: activeModel.model_key,
+          modelName: activeModel.name ?? activeModel.model_key,
+          prompt: finalPrompt,
+          inputParams: {
+            aspectRatio: ratio,
+            size,
+            referenceImages: httpRefs,
+            styleId: effectiveStyleId || null,
+            inspirationMode,
+          },
+        });
+        if (ok) {
+          setPrompt("");
+          setRefs([]);
+          setStyleId("");
+          setInspirationMode(false);
+          toast.success("任务已加入等待队列，可继续准备下一张。");
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "任务创建失败，请稍后重试。";
+        if (message.includes("generation_tasks") || message.includes("任务表尚未启用")) {
+          toast.error("任务表尚未启用，暂不能创建多任务。");
+        } else {
+          toast.error(message);
+        }
+      } finally {
+        setIsCreatingQueuedTask(false);
+      }
+      return;
+    }
     if (generating || !activeModel) return;
     if (!prompt || !prompt.trim()) {
       toast.error("请输入图片描述后再生成。");
@@ -735,13 +825,23 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
 
       {/* 立即生成 — 紧贴风格模板 */}
       <div className="shrink-0 border-t border-primary/15 bg-gradient-to-b from-primary/[0.04] to-background/85 p-3 backdrop-blur-xl">
+        {canPrepareNextAdminTask && (
+          <button
+            type="button"
+            onClick={handleAdminPrepareNextTask}
+            className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/[0.06] px-4 py-2.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/[0.1]"
+          >
+            <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+            准备下一个任务
+          </button>
+        )}
         <button
           onClick={handleGenerate}
-          disabled={generating || !activeModel}
+          disabled={(generating && !isPreparingNextTask) || !activeModel || (isPreparingNextTask && (adminCurrentBatchTaskCount >= 3 || isCreatingQueuedTask))}
           className="group relative flex w-full items-center justify-between gap-2 overflow-hidden rounded-2xl bg-gradient-aurora px-5 py-3.5 text-sm font-bold text-primary-foreground shadow-glow transition-all duration-150 ease-out hover:brightness-110 active:scale-[0.97] disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100"
         >
           <div className="flex items-center gap-2">
-            {generating ? (
+            {generating && !isPreparingNextTask ? (
               <>
                 <Sparkles className="h-4 w-4 animate-spin" />
                 生成中…
@@ -749,7 +849,13 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
             ) : (
               <>
                 <Wand2 className="h-4 w-4" strokeWidth={2.5} />
-                立即生成
+                {isPreparingNextTask
+                  ? isCreatingQueuedTask
+                    ? "加入队列中..."
+                    : adminCurrentBatchTaskCount >= 3
+                    ? "任务已满 3/3"
+                    : "加入等待队列"
+                  : "立即生成"}
               </>
             )}
           </div>

@@ -55,6 +55,7 @@ function timeAgo(iso: string) {
 
 
 type Props = {
+  userId?: string | null;
   generating: boolean;
   heroIndex?: number;
   generatedUrl?: string | null;
@@ -98,7 +99,7 @@ async function copyToClipboard(text: string) {
   }
 }
 
-export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, progress, historyOpen, onHistoryOpenChange, onSelectHistory }: Props) {
+export function Canvas({ userId, generating, generatedUrl, currentPrompt, currentModel, progress, historyOpen, onHistoryOpenChange, onSelectHistory }: Props) {
   const [lightbox, setLightbox] = useState<HistoryItem | null>(null);
   const [heroLightbox, setHeroLightbox] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -117,12 +118,36 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
   const totalRef = useRef(0);
   const rawLoadedCountRef = useRef(0);
   const hasMoreRef = useRef(true);
+  const userIdRef = useRef<string | null | undefined>(userId);
   const lastHistoryResetAtRef = useRef(0);
   useEffect(() => { historyRef.current = history; }, [history]);
   useEffect(() => { totalRef.current = total; }, [total]);
   useEffect(() => { hasMoreRef.current = hasMore; }, [hasMore]);
+  useEffect(() => { userIdRef.current = userId; }, [userId]);
+
+  useEffect(() => {
+    inFlightRef.current = false;
+    historyRef.current = [];
+    totalRef.current = 0;
+    rawLoadedCountRef.current = 0;
+    hasMoreRef.current = true;
+    lastHistoryResetAtRef.current = 0;
+    setHistory([]);
+    setTotal(0);
+    setMaxKeep(100);
+    setMaxDays(15);
+    setIsAdmin(false);
+    setHistoryError(null);
+    setHasMore(true);
+    setLoadingHistory(false);
+    setLoadingMore(false);
+    setLightbox(null);
+    setHeroLightbox(false);
+  }, [userId]);
 
   const loadHistory = useCallback(async (mode: "reset" | "append" = "reset") => {
+    const requestUserId = userIdRef.current;
+    if (!requestUserId) return;
     if (inFlightRef.current) return;
     if (mode === "append") {
       if (!hasMoreRef.current) return;
@@ -143,6 +168,7 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
       const res = (await fetchHistory({ data: { limit: PAGE_SIZE, offset } })) as {
         items: HistoryItem[]; total?: number; limit: number; offset: number; maxKeep?: number; maxDays?: number; isAdmin?: boolean;
       };
+      if (userIdRef.current !== requestUserId) return;
       const items = res.items ?? [];
       const returnedTotal = Number(res.total ?? 0);
       const nextRawLoadedCount = offset + items.length;
@@ -185,7 +211,7 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
     if (Date.now() - lastHistoryResetAtRef.current <= HISTORY_RESET_CACHE_MS) return;
     loadHistory("reset");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historyOpen]);
+  }, [historyOpen, userId]);
 
   // 当主画布出现新图（生成完成）时，自动刷新历史，确保下次打开抽屉是最新的
   useEffect(() => {
@@ -217,7 +243,7 @@ export function Canvas({ generating, generatedUrl, currentPrompt, currentModel, 
           <>
             <img src={generatedUrl} alt="生成结果" className="h-full w-full object-contain bg-black" />
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/30 opacity-0 transition-opacity group-hover:opacity-100" />
-            <div className="absolute right-3 top-3 flex items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
+            <div className="absolute left-3 top-3 z-20 flex items-center gap-1.5 opacity-70 transition-opacity group-hover:opacity-100">
               <HeroAction label="查看大图" onClick={() => setHeroLightbox(true)}>
                 <Maximize2 className="h-3.5 w-3.5" />
               </HeroAction>
