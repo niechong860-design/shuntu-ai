@@ -591,7 +591,7 @@ export const createGenerationTask = createServerFn({ method: "POST" })
         status: "queued",
         model_id: data.modelKey,
         prompt: data.prompt,
-        input_params: data.inputParams ?? {},
+        input_params: { ...(data.inputParams ?? {}), adminPreviewOnly: true },
         credits_required: creditsRequired,
         deduction_status: "not_charged",
       })
@@ -630,11 +630,48 @@ export const cancelMyQueuedGenerationTasks = createServerFn({ method: "POST" })
       })
       .eq("user_id", userId)
       .eq("deduction_status", "not_charged")
-      .eq("status", "queued")
+      .in("status", ["queued", "running"])
+      .contains("input_params", { adminPreviewOnly: true })
       .select("id");
     if (error) throw new Error(error.message);
 
     return { canceledCount: (data ?? []).length };
+  });
+
+export const startGenerationTask = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ taskId: z.string().uuid() }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    const { userId } = context;
+    await assertAdmin(userId);
+
+    const now = new Date().toISOString();
+    const { data: task, error } = await (supabaseAdmin as any)
+      .from("generation_tasks")
+      .update({
+        status: "running",
+        started_at: now,
+        updated_at: now,
+      })
+      .eq("id", data.taskId)
+      .eq("user_id", userId)
+      .eq("status", "queued")
+      .eq("deduction_status", "not_charged")
+      .contains("input_params", { adminPreviewOnly: true })
+      .select("id, status, started_at")
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!task) {
+      throw new Error("任务已被处理、取消，或不属于当前内测任务。");
+    }
+
+    return {
+      taskId: task.id as string,
+      status: task.status as "running",
+      startedAt: task.started_at as string,
+    };
   });
 
 // --- NEW: Dynamic upstream image generation (per-model API routing) ---

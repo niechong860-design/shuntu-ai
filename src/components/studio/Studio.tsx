@@ -5,7 +5,7 @@ import { Canvas } from "./Canvas";
 import { TopBar } from "./TopBar";
 import { TaskFloatingPanel, type FloatingTask } from "./TaskFloatingPanel";
 import { useAuth } from "@/hooks/use-auth";
-import { cancelMyQueuedGenerationTasks, checkIsAdmin, createGenerationTask, getMyGenerationTasks } from "@/lib/admin.functions";
+import { cancelMyQueuedGenerationTasks, checkIsAdmin, createGenerationTask, getMyGenerationTasks, startGenerationTask } from "@/lib/admin.functions";
 import { toast } from "sonner";
 
 const AnnouncementCenter = lazy(() => import("./AnnouncementCenter").then((m) => ({ default: m.AnnouncementCenter })));
@@ -17,6 +17,7 @@ export function Studio() {
   const fetchGenerationTasks = useServerFn(getMyGenerationTasks);
   const createTask = useServerFn(createGenerationTask);
   const cancelQueuedTasks = useServerFn(cancelMyQueuedGenerationTasks);
+  const startTask = useServerFn(startGenerationTask);
   const [generating, setGenerating] = useState(false);
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
   const [currentPrompt, setCurrentPrompt] = useState<string>("");
@@ -160,13 +161,29 @@ export function Studio() {
       await cancelQueuedTasks({});
       setAdminTasks((tasks) =>
         tasks.filter((task) =>
-          task.status !== "waiting" && task.status !== "submitting"
+          task.status !== "waiting" && task.status !== "submitting" && task.status !== "generating"
         ),
       );
       setAdminPreparingNextTask(false);
-      toast.success("等待测试任务已清空");
+      toast.success("内测任务已清空");
     } catch (error) {
       const message = error instanceof Error ? error.message : "清空测试任务失败";
+      toast.error(message);
+    }
+  };
+
+  const handleAdminStartTask = async (taskId: string) => {
+    if (!isAdmin) return;
+    try {
+      const task = await startTask({ data: { taskId } });
+      setAdminTasks((tasks) =>
+        tasks.map((item) =>
+          item.id === task.taskId ? { ...item, status: "generating" as const } : item,
+        ),
+      );
+      toast.success("任务已进入生成中");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "任务启动失败";
       toast.error(message);
     }
   };
@@ -211,7 +228,14 @@ export function Studio() {
             }}
           />
         </div>
-        {isAdmin && <TaskFloatingPanel tasks={adminTasks} maxTasks={3} onClearTestTasks={handleAdminClearTestTasks} />}
+        {isAdmin && (
+          <TaskFloatingPanel
+            tasks={adminTasks}
+            maxTasks={3}
+            onClearTestTasks={handleAdminClearTestTasks}
+            onStartTask={handleAdminStartTask}
+          />
+        )}
       </div>
       {!showAuth && (
         <Suspense fallback={null}>
