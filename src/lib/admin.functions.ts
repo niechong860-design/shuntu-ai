@@ -671,13 +671,46 @@ export const cancelGenerationTask = createServerFn({ method: "POST" })
     };
   });
 
+type AdminPreviewFinalizeResult = {
+  deductionStatus: string | null;
+  historyId: string | null;
+  credits: number | null;
+  cost: number | null;
+  finalizeMessage: string | null;
+};
+
+async function finalizeAdminPreviewGenerationTaskOnce(
+  supabase: any,
+  taskId: string,
+  imageUrl: string,
+): Promise<AdminPreviewFinalizeResult> {
+  const { data, error } = await supabase.rpc("finalize_generation_task_once", {
+    p_task_id: taskId,
+    p_image_url: imageUrl,
+  });
+  if (error) throw new Error(error.message);
+
+  const row: any = Array.isArray(data) ? data[0] : data;
+  if (!row?.success) {
+    throw new Error(row?.message ?? "Finalize task failed");
+  }
+
+  return {
+    deductionStatus: (row.deduction_status ?? null) as string | null,
+    historyId: (row.history_id ?? null) as string | null,
+    credits: row.credits == null ? null : Number(row.credits),
+    cost: row.cost == null ? null : Number(row.cost),
+    finalizeMessage: (row.message ?? null) as string | null,
+  };
+}
+
 export const startGenerationTask = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
     z.object({ taskId: z.string().uuid() }).parse(d),
   )
   .handler(async ({ context, data }) => {
-    const { userId } = context;
+    const { userId, supabase } = context;
     await assertAdmin(userId);
 
     const now = new Date().toISOString();
@@ -705,29 +738,55 @@ export const startGenerationTask = createServerFn({ method: "POST" })
       const finishedAt = new Date().toISOString();
 
       if (result.status === "succeeded") {
-        const { error: updateError } = await (supabaseAdmin as any)
-          .from("generation_tasks")
-          .update({
-            status: "succeeded",
-            result_image_url: result.resultImageUrl,
-            result_payload: result.resultPayload,
-            completed_at: finishedAt,
-            updated_at: finishedAt,
-          })
-          .eq("id", task.id)
-          .eq("user_id", userId)
-          .eq("status", "running")
-          .eq("deduction_status", "not_charged")
-          .contains("input_params", { adminPreviewOnly: true });
-        if (updateError) throw new Error(updateError.message);
-        return {
-          taskId: task.id as string,
-          status: "succeeded" as const,
-          startedAt: task.started_at as string,
-          resultImageUrl: result.resultImageUrl,
-          errorMessage: null as string | null,
-          resultPayload: result.resultPayload,
-        };
+        try {
+          const finalizeResult = await finalizeAdminPreviewGenerationTaskOnce(supabase, task.id as string, result.resultImageUrl);
+          const { error: payloadUpdateError } = await (supabaseAdmin as any)
+            .from("generation_tasks")
+            .update({
+              result_payload: result.resultPayload,
+              updated_at: finishedAt,
+            })
+            .eq("id", task.id)
+            .eq("user_id", userId)
+            .contains("input_params", { adminPreviewOnly: true });
+          if (payloadUpdateError) {
+            console.warn("[startGenerationTask] result_payload update failed after finalize", payloadUpdateError);
+          }
+          return {
+            taskId: task.id as string,
+            status: "succeeded" as const,
+            startedAt: task.started_at as string,
+            resultImageUrl: result.resultImageUrl,
+            errorMessage: null as string | null,
+            resultPayload: result.resultPayload,
+            ...finalizeResult,
+          };
+        } catch (e) {
+          const message = e instanceof Error ? e.message : "Finalize task failed";
+          await (supabaseAdmin as any)
+            .from("generation_tasks")
+            .update({
+              status: "failed",
+              error_message: message,
+              result_image_url: result.resultImageUrl,
+              result_payload: result.resultPayload,
+              completed_at: finishedAt,
+              updated_at: finishedAt,
+            })
+            .eq("id", task.id)
+            .eq("user_id", userId)
+            .eq("status", "running")
+            .eq("deduction_status", "not_charged")
+            .contains("input_params", { adminPreviewOnly: true });
+          return {
+            taskId: task.id as string,
+            status: "failed" as const,
+            startedAt: task.started_at as string,
+            resultImageUrl: null as string | null,
+            errorMessage: message,
+            resultPayload: result.resultPayload,
+          };
+        }
       }
 
       const { error: updateError } = await (supabaseAdmin as any)
@@ -784,7 +843,7 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
     z.object({ taskId: z.string().uuid() }).parse(d),
   )
   .handler(async ({ context, data }) => {
-    const { userId } = context;
+    const { userId, supabase } = context;
     await assertAdmin(userId);
 
     const { data: task, error } = await (supabaseAdmin as any)
@@ -821,28 +880,52 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
     const now = new Date().toISOString();
     if (pollResult.status === "succeeded") {
       const resultPayload = { ...(task.result_payload ?? {}), ...pollResult.resultPayload, providerStatus: "succeeded" };
-      const { error: updateError } = await (supabaseAdmin as any)
-        .from("generation_tasks")
-        .update({
-          status: "succeeded",
-          result_image_url: pollResult.resultImageUrl,
-          result_payload: resultPayload,
-          completed_at: now,
-          updated_at: now,
-        })
-        .eq("id", task.id)
-        .eq("user_id", userId)
-        .eq("status", "running")
-        .eq("deduction_status", "not_charged")
-        .contains("input_params", { adminPreviewOnly: true });
-      if (updateError) throw new Error(updateError.message);
-      return {
-        taskId: task.id as string,
-        status: "succeeded" as const,
-        resultImageUrl: pollResult.resultImageUrl,
-        errorMessage: null as string | null,
-        resultPayload,
-      };
+      try {
+        const finalizeResult = await finalizeAdminPreviewGenerationTaskOnce(supabase, task.id as string, pollResult.resultImageUrl);
+        const { error: payloadUpdateError } = await (supabaseAdmin as any)
+          .from("generation_tasks")
+          .update({
+            result_payload: resultPayload,
+            updated_at: now,
+          })
+          .eq("id", task.id)
+          .eq("user_id", userId)
+          .contains("input_params", { adminPreviewOnly: true });
+        if (payloadUpdateError) {
+          console.warn("[pollGenerationTask] result_payload update failed after finalize", payloadUpdateError);
+        }
+        return {
+          taskId: task.id as string,
+          status: "succeeded" as const,
+          resultImageUrl: pollResult.resultImageUrl,
+          errorMessage: null as string | null,
+          resultPayload,
+          ...finalizeResult,
+        };
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Finalize task failed";
+        await (supabaseAdmin as any)
+          .from("generation_tasks")
+          .update({
+            status: "failed",
+            error_message: message,
+            result_payload: resultPayload,
+            completed_at: now,
+            updated_at: now,
+          })
+          .eq("id", task.id)
+          .eq("user_id", userId)
+          .eq("status", "running")
+          .eq("deduction_status", "not_charged")
+          .contains("input_params", { adminPreviewOnly: true });
+        return {
+          taskId: task.id as string,
+          status: "failed" as const,
+          resultImageUrl: null as string | null,
+          errorMessage: message,
+          resultPayload,
+        };
+      }
     }
 
     if (pollResult.status === "failed") {
