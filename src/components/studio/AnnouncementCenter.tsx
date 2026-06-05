@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { listAnnouncements } from "@/lib/admin.functions";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Megaphone, Sparkles, AlertTriangle, CheckCircle2, Pin, X, ArrowUpRight, Bell } from "lucide-react";
+import { Megaphone, Sparkles, AlertTriangle, CheckCircle2, Pin, ArrowUpRight, Bell } from "lucide-react";
 import { thumbUrl } from "@/lib/image-url";
 
 export type Announcement = {
@@ -202,14 +202,6 @@ export function AnnouncementCenter({ open, onOpenChange, autoOpenLatest = false 
             <div
               className={`pointer-events-none absolute inset-x-0 top-0 h-48 bg-gradient-to-b ${style.gradient}`}
             />
-            <button
-              type="button"
-              onClick={() => onOpenChange(false)}
-              className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-black/40 text-muted-foreground transition-colors hover:bg-black/60 hover:text-foreground"
-              aria-label="关闭"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
 
             <div className="relative max-h-[82vh] overflow-auto p-8 md:p-10">
               {!active ? (
