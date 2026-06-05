@@ -5,7 +5,8 @@ import { Canvas } from "./Canvas";
 import { TopBar } from "./TopBar";
 import { TaskFloatingPanel, type FloatingTask } from "./TaskFloatingPanel";
 import { useAuth } from "@/hooks/use-auth";
-import { checkIsAdmin, createGenerationTask, getMyGenerationTasks } from "@/lib/admin.functions";
+import { cancelMyQueuedGenerationTasks, checkIsAdmin, createGenerationTask, getMyGenerationTasks } from "@/lib/admin.functions";
+import { toast } from "sonner";
 
 const AnnouncementCenter = lazy(() => import("./AnnouncementCenter").then((m) => ({ default: m.AnnouncementCenter })));
 const AuthModal = lazy(() => import("@/components/auth/AuthModal").then((m) => ({ default: m.AuthModal })));
@@ -15,6 +16,7 @@ export function Studio() {
   const checkAdmin = useServerFn(checkIsAdmin);
   const fetchGenerationTasks = useServerFn(getMyGenerationTasks);
   const createTask = useServerFn(createGenerationTask);
+  const cancelQueuedTasks = useServerFn(cancelMyQueuedGenerationTasks);
   const [generating, setGenerating] = useState(false);
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
   const [currentPrompt, setCurrentPrompt] = useState<string>("");
@@ -152,6 +154,23 @@ export function Studio() {
     return true;
   };
 
+  const handleAdminClearTestTasks = async () => {
+    if (!isAdmin) return;
+    try {
+      await cancelQueuedTasks({});
+      setAdminTasks((tasks) =>
+        tasks.filter((task) =>
+          task.status !== "waiting" && task.status !== "submitting"
+        ),
+      );
+      setAdminPreparingNextTask(false);
+      toast.success("等待测试任务已清空");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "清空测试任务失败";
+      toast.error(message);
+    }
+  };
+
   const showAuth = !loading && (!session || forceAuth);
   const credits = profile?.credits ?? 0;
 
@@ -192,7 +211,7 @@ export function Studio() {
             }}
           />
         </div>
-        {isAdmin && <TaskFloatingPanel tasks={adminTasks} maxTasks={3} />}
+        {isAdmin && <TaskFloatingPanel tasks={adminTasks} maxTasks={3} onClearTestTasks={handleAdminClearTestTasks} />}
       </div>
       {!showAuth && (
         <Suspense fallback={null}>

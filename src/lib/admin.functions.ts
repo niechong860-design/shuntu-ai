@@ -614,6 +614,29 @@ export const createGenerationTask = createServerFn({ method: "POST" })
     };
   });
 
+export const cancelMyQueuedGenerationTasks = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { userId } = context;
+    await assertAdmin(userId);
+
+    const now = new Date().toISOString();
+    const { data, error } = await (supabaseAdmin as any)
+      .from("generation_tasks")
+      .update({
+        status: "canceled",
+        completed_at: now,
+        updated_at: now,
+      })
+      .eq("user_id", userId)
+      .eq("deduction_status", "not_charged")
+      .eq("status", "queued")
+      .select("id");
+    if (error) throw new Error(error.message);
+
+    return { canceledCount: (data ?? []).length };
+  });
+
 // --- NEW: Dynamic upstream image generation (per-model API routing) ---
 function extractImageUrl(payload: any): string | null {
   if (!payload) return null;

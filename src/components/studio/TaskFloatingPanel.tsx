@@ -17,7 +17,15 @@ const STATUS_META: Record<TaskStatus, { label: string; icon: typeof Clock3; clas
   failed: { label: "失败", icon: XCircle, className: "text-destructive" },
 };
 
-export function TaskFloatingPanel({ tasks, maxTasks = 3 }: { tasks: FloatingTask[]; maxTasks?: number }) {
+export function TaskFloatingPanel({
+  tasks,
+  maxTasks = 3,
+  onClearTestTasks,
+}: {
+  tasks: FloatingTask[];
+  maxTasks?: number;
+  onClearTestTasks?: () => void | Promise<void>;
+}) {
   const [open, setOpen] = useState(false);
   const activeCount = tasks.filter((task) => task.status === "waiting" || task.status === "submitting" || task.status === "generating").length;
 
@@ -39,9 +47,20 @@ export function TaskFloatingPanel({ tasks, maxTasks = 3 }: { tasks: FloatingTask
               <div className="text-sm font-semibold text-foreground">管理员多任务内测</div>
               <div className="mt-0.5 text-[11px] text-muted-foreground">当前仅展示任务面板，不会并发提交</div>
             </div>
-            <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
-              {activeCount}/{maxTasks}
-            </span>
+            <div className="flex items-center gap-2">
+              {onClearTestTasks && (
+                <button
+                  type="button"
+                  onClick={onClearTestTasks}
+                  className="rounded-full border border-border/70 bg-white/[0.03] px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:border-destructive/50 hover:text-destructive"
+                >
+                  清空等待任务
+                </button>
+              )}
+              <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
+                {activeCount}/{maxTasks}
+              </span>
+            </div>
           </div>
 
           {tasks.length === 0 ? (
