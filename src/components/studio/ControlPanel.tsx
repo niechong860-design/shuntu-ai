@@ -93,9 +93,19 @@ type Props = {
   onProgress?: (p: GenProgress | null) => void;
   generating: boolean;
   isAdmin?: boolean;
+  adminPreparingNextTask?: boolean;
+  onAdminPrepareNextTask?: (info: { prompt: string; modelName: string }) => void;
 };
 
-export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, generating, isAdmin = false }: Props) {
+export function ControlPanel({
+  onGenerateStart,
+  onGenerateDone,
+  onProgress,
+  generating,
+  isAdmin = false,
+  adminPreparingNextTask = false,
+  onAdminPrepareNextTask,
+}: Props) {
   const fetchModels = useServerFn(listModelsConfig);
   const generate = useServerFn(generateImage);
   const checkStatus = useServerFn(checkImageStatus);
@@ -355,7 +365,24 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
+  const handleAdminPrepareNextTask = () => {
+    if (!isAdmin || !generating || adminPreparingNextTask) return;
+    onAdminPrepareNextTask?.({
+      prompt,
+      modelName: activeModel?.name ?? activeModel?.model_key ?? "当前模型",
+    });
+    setPrompt("");
+    setRefs([]);
+    setStyleId("");
+    setInspirationMode(false);
+    toast.success("已加入任务面板，可以准备下一个提示词");
+  };
+
   const handleGenerate = async () => {
+    if (generating && isAdmin && adminPreparingNextTask) {
+      toast.info("真实多任务提交将在后端任务系统完成后开放。");
+      return;
+    }
     if (generating || !activeModel) return;
     if (!prompt || !prompt.trim()) {
       toast.error("请输入图片描述后再生成。");
@@ -736,10 +763,10 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
 
       {/* 立即生成 — 紧贴风格模板 */}
       <div className="shrink-0 border-t border-primary/15 bg-gradient-to-b from-primary/[0.04] to-background/85 p-3 backdrop-blur-xl">
-        {isAdmin && generating && (
+        {isAdmin && generating && !adminPreparingNextTask && (
           <button
             type="button"
-            onClick={() => toast.info("管理员多任务内测入口已开启，真实并发提交将在后续阶段接入")}
+            onClick={handleAdminPrepareNextTask}
             className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/[0.06] px-4 py-2.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/[0.1]"
           >
             <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
@@ -748,11 +775,11 @@ export function ControlPanel({ onGenerateStart, onGenerateDone, onProgress, gene
         )}
         <button
           onClick={handleGenerate}
-          disabled={generating || !activeModel}
+          disabled={(generating && !(isAdmin && adminPreparingNextTask)) || !activeModel}
           className="group relative flex w-full items-center justify-between gap-2 overflow-hidden rounded-2xl bg-gradient-aurora px-5 py-3.5 text-sm font-bold text-primary-foreground shadow-glow transition-all duration-150 ease-out hover:brightness-110 active:scale-[0.97] disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100"
         >
           <div className="flex items-center gap-2">
-            {generating ? (
+            {generating && !adminPreparingNextTask ? (
               <>
                 <Sparkles className="h-4 w-4 animate-spin" />
                 生成中…

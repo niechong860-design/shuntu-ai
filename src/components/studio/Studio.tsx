@@ -3,7 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { ControlPanel, type GenProgress } from "./ControlPanel";
 import { Canvas } from "./Canvas";
 import { TopBar } from "./TopBar";
-import { TaskFloatingPanel } from "./TaskFloatingPanel";
+import { TaskFloatingPanel, type FloatingTask } from "./TaskFloatingPanel";
 import { useAuth } from "@/hooks/use-auth";
 import { checkIsAdmin } from "@/lib/admin.functions";
 
@@ -22,6 +22,8 @@ export function Studio() {
   const [announcementsOpen, setAnnouncementsOpen] = useState(false);
   const [progress, setProgress] = useState<GenProgress | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [adminTasks, setAdminTasks] = useState<FloatingTask[]>([]);
+  const [adminPreparingNextTask, setAdminPreparingNextTask] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,14 +42,37 @@ export function Studio() {
 
   const handleGenerateStart = (info: { prompt: string; modelName: string }) => {
     setGenerating(true);
+    setAdminPreparingNextTask(false);
     setGeneratedUrl(null);
     setCurrentPrompt(info.prompt);
     setCurrentModel(info.modelName);
   };
   const handleGenerateDone = (url: string | null) => {
     setGenerating(false);
+    setAdminPreparingNextTask(false);
+    setAdminTasks((tasks) =>
+      tasks.map((task) =>
+        task.status === "generating"
+          ? { ...task, status: url ? "done" : "failed" }
+          : task,
+      ),
+    );
     setProgress(null);
     if (url) setGeneratedUrl(url);
+  };
+
+  const handleAdminPrepareNextTask = (info: { prompt: string; modelName: string }) => {
+    if (!isAdmin || adminPreparingNextTask) return;
+    const title = info.prompt.trim().slice(0, 20) || info.modelName || "当前生成任务";
+    setAdminTasks((tasks) => [
+      ...tasks,
+      {
+        id: `admin-preview-${Date.now()}`,
+        title,
+        status: "generating" as const,
+      },
+    ].slice(-3));
+    setAdminPreparingNextTask(true);
   };
 
   const showAuth = !loading && (!session || forceAuth);
@@ -69,6 +94,8 @@ export function Studio() {
             onProgress={setProgress}
             generating={generating}
             isAdmin={isAdmin}
+            adminPreparingNextTask={adminPreparingNextTask}
+            onAdminPrepareNextTask={handleAdminPrepareNextTask}
           />
           <Canvas
             generating={generating}
@@ -86,7 +113,7 @@ export function Studio() {
             }}
           />
         </div>
-        {isAdmin && <TaskFloatingPanel tasks={[]} maxTasks={3} />}
+        {isAdmin && <TaskFloatingPanel tasks={adminTasks} maxTasks={3} />}
       </div>
       {!showAuth && (
         <Suspense fallback={null}>
