@@ -11,6 +11,72 @@ import { toast } from "sonner";
 const AnnouncementCenter = lazy(() => import("./AnnouncementCenter").then((m) => ({ default: m.AnnouncementCenter })));
 const AuthModal = lazy(() => import("@/components/auth/AuthModal").then((m) => ({ default: m.AuthModal })));
 
+const latestResultStorageKey = (userId: string) => `shuntu:studio:last-result:${userId}`;
+const panelTasksStorageKey = (userId: string) => `shuntu:studio:panel-tasks:${userId}`;
+
+type StoredLatestResult = {
+  url: string;
+  prompt: string;
+  modelName: string;
+};
+
+function readSessionJson<T>(key: string): T | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(key);
+    return raw ? JSON.parse(raw) as T : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionJson(key: string, value: unknown) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Session storage is best-effort UI state only.
+  }
+}
+
+function removeSessionItem(key: string) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(key);
+  } catch {
+    // Ignore storage cleanup failures.
+  }
+}
+
+function loadSessionLatestResult(userId: string): StoredLatestResult | null {
+  const result = readSessionJson<StoredLatestResult>(latestResultStorageKey(userId));
+  return result?.url ? result : null;
+}
+
+function saveSessionLatestResult(userId: string, result: StoredLatestResult) {
+  if (!result.url) return;
+  writeSessionJson(latestResultStorageKey(userId), result);
+}
+
+function loadSessionPanelTasks(userId: string): FloatingTask[] {
+  const tasks = readSessionJson<FloatingTask[]>(panelTasksStorageKey(userId));
+  if (!Array.isArray(tasks)) return [];
+  return tasks
+    .filter((task) => task?.id && task.status === "done" && !!task.resultImageUrl)
+    .slice(0, 3);
+}
+
+function saveSessionPanelTasks(userId: string, tasks: FloatingTask[]) {
+  const doneTasks = tasks
+    .filter((task) => task.status === "done" && !!task.resultImageUrl)
+    .slice(0, 3);
+  if (doneTasks.length === 0) {
+    removeSessionItem(panelTasksStorageKey(userId));
+    return;
+  }
+  writeSessionJson(panelTasksStorageKey(userId), doneTasks);
+}
+
 export function Studio() {
   const { session, profile, loading } = useAuth();
   const checkAdmin = useServerFn(checkIsAdmin);
@@ -30,13 +96,18 @@ export function Studio() {
   const [progress, setProgress] = useState<GenProgress | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminTasks, setAdminTasks] = useState<FloatingTask[]>([]);
+  const [adminTasksHydrated, setAdminTasksHydrated] = useState(false);
+  const [adminPrimaryTaskInBatch, setAdminPrimaryTaskInBatch] = useState(false);
   const [adminPreparingNextTask, setAdminPreparingNextTask] = useState(false);
   const [startingTaskIds, setStartingTaskIds] = useState<string[]>([]);
   const [cancelingTaskIds, setCancelingTaskIds] = useState<string[]>([]);
   const adminActiveTaskCount = adminTasks.filter((task) =>
     task.status === "waiting" || task.status === "submitting" || task.status === "generating"
   ).length;
-  const effectiveCurrentBatchTaskCount = adminActiveTaskCount === 0 ? 0 : adminTasks.length;
+  const adminBatchHasContext = generating || adminActiveTaskCount > 0 || adminPreparingNextTask;
+  const effectiveCurrentBatchTaskCount = adminBatchHasContext
+    ? adminTasks.length + (adminPrimaryTaskInBatch ? 1 : 0)
+    : 0;
   const canPrepareNextAdminTask =
     isAdmin &&
     !adminPreparingNextTask &&
@@ -51,6 +122,12 @@ export function Studio() {
       task.status !== "waiting" && task.status !== "submitting" && task.status !== "generating"
     );
     return [...queueTasks, ...recentTasks].slice(0, 3);
+  };
+
+  const rememberLatestResult = (url: string, prompt: string, modelName: string) => {
+    const userId = session?.user?.id;
+    if (!userId) return;
+    saveSessionLatestResult(userId, { url, prompt, modelName });
   };
 
   const mapRecoveredTaskStatus = (status: string, deductionStatus?: string | null, deductionId?: string | null): FloatingTask["status"] => {
@@ -78,11 +155,42 @@ export function Studio() {
   }, [session?.user?.id]);
 
   useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId) {
+      setGeneratedUrl(null);
+      setCurrentPrompt("");
+      setCurrentModel("");
+      return;
+    }
+
+    const latestResult = loadSessionLatestResult(userId);
+    if (!latestResult) {
+      setGeneratedUrl(null);
+      setCurrentPrompt("");
+      setCurrentModel("");
+      return;
+    }
+
+    setGeneratedUrl(latestResult.url);
+    setCurrentPrompt(latestResult.prompt);
+    setCurrentModel(latestResult.modelName);
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId || !isAdmin || !adminTasksHydrated) return;
+    saveSessionPanelTasks(userId, adminTasks);
+  }, [session?.user?.id, isAdmin, adminTasksHydrated, adminTasks]);
+
+  useEffect(() => {
     let cancelled = false;
     if (!session || !isAdmin) {
       setAdminTasks([]);
+      setAdminTasksHydrated(false);
+      setAdminPrimaryTaskInBatch(false);
       return;
     }
+    setAdminTasksHydrated(false);
 
     fetchGenerationTasks({})
       .then((res) => {
@@ -108,17 +216,17 @@ export function Studio() {
             };
           })
           .slice(0, 3);
-        const trimmed = trimPanelTasks(recovered);
+        const sessionPanelTasks = loadSessionPanelTasks(session.user.id);
+        const trimmed = trimPanelTasks([...recovered, ...sessionPanelTasks]);
         setAdminTasks(trimmed);
-        const latestDone = trimmed.find((task) => task.status === "done" && !!task.resultImageUrl);
-        if (latestDone?.resultImageUrl) {
-          setGeneratedUrl(latestDone.resultImageUrl);
-          setCurrentPrompt(latestDone.prompt ?? latestDone.title);
-          setCurrentModel(latestDone.modelName ?? "");
-        }
+        setAdminTasksHydrated(true);
       })
       .catch((error) => {
         console.warn("[generation-tasks] restore failed", error);
+        if (!cancelled) {
+          setAdminTasks(trimPanelTasks(loadSessionPanelTasks(session.user.id)));
+          setAdminTasksHydrated(true);
+        }
       });
 
     return () => { cancelled = true; };
@@ -155,8 +263,11 @@ export function Studio() {
               );
               if (task.resultImageUrl) {
                 setGeneratedUrl(task.resultImageUrl);
-                setCurrentPrompt(matchedTask?.prompt ?? matchedTask?.title ?? "");
-                setCurrentModel(matchedTask?.modelName ?? "");
+                const prompt = matchedTask?.prompt ?? matchedTask?.title ?? "";
+                const modelName = matchedTask?.modelName ?? "";
+                setCurrentPrompt(prompt);
+                setCurrentModel(modelName);
+                rememberLatestResult(task.resultImageUrl, prompt, modelName);
               }
               return;
             }
@@ -182,12 +293,12 @@ export function Studio() {
   }, [session?.user?.id, isAdmin, adminTasks]);
 
   const handleGenerateStart = (info: { prompt: string; modelName: string }) => {
-    if (isAdmin && adminActiveTaskCount === 0) {
+    if (isAdmin && !adminBatchHasContext) {
       setAdminTasks([]);
     }
+    setAdminPrimaryTaskInBatch(isAdmin);
     setGenerating(true);
     setAdminPreparingNextTask(false);
-    setGeneratedUrl(null);
     setCurrentPrompt(info.prompt);
     setCurrentModel(info.modelName);
   };
@@ -208,26 +319,14 @@ export function Studio() {
           )),
     );
     setProgress(null);
-    if (url) setGeneratedUrl(url);
+    if (url) {
+      setGeneratedUrl(url);
+      rememberLatestResult(url, currentPrompt, currentModel);
+    }
   };
 
-  const handleAdminPrepareNextTask = (info: { prompt: string; modelName: string }) => {
+  const handleAdminPrepareNextTask = () => {
     if (!canPrepareNextAdminTask) return;
-    const title = info.prompt.trim().slice(0, 20) || info.modelName || "当前生成任务";
-    if (generating) {
-      setAdminTasks((tasks) =>
-        trimPanelTasks([
-          ...tasks,
-          {
-            id: `admin-preview-${Date.now()}`,
-            title,
-            status: "generating" as const,
-            prompt: info.prompt,
-            modelName: info.modelName,
-          },
-        ]),
-      );
-    }
     setAdminPreparingNextTask(true);
   };
 
@@ -253,7 +352,7 @@ export function Studio() {
     const title = task.prompt.trim().slice(0, 20) || input.modelName || task.modelId;
     setAdminTasks((tasks) =>
       trimPanelTasks([
-        ...(adminActiveTaskCount === 0 ? [] : tasks),
+        ...(!adminBatchHasContext ? [] : tasks),
         {
           id: task.taskId,
           title,
@@ -340,8 +439,11 @@ export function Studio() {
       if (finalized) {
         if (task.resultImageUrl) {
           setGeneratedUrl(task.resultImageUrl);
-          setCurrentPrompt(matchedTask?.prompt ?? matchedTask?.title ?? "");
-          setCurrentModel(matchedTask?.modelName ?? "");
+          const prompt = matchedTask?.prompt ?? matchedTask?.title ?? "";
+          const modelName = matchedTask?.modelName ?? "";
+          setCurrentPrompt(prompt);
+          setCurrentModel(modelName);
+          rememberLatestResult(task.resultImageUrl, prompt, modelName);
         }
         toast.success("任务已完成");
       } else if (task.status === "failed" || task.status === "succeeded") {
@@ -364,6 +466,7 @@ export function Studio() {
 
   useEffect(() => {
     if (!session || !isAdmin) return;
+    if (generating) return;
     const runningOrStartingIds = new Set(startingTaskIds);
     for (const task of adminTasks) {
       if (task.status === "submitting" || task.status === "generating") {
@@ -377,7 +480,7 @@ export function Studio() {
 
     void handleAdminStartTask(taskToStart.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user?.id, isAdmin, adminTasks, startingTaskIds]);
+  }, [session?.user?.id, isAdmin, adminTasks, startingTaskIds, generating]);
 
   const showAuth = !loading && (!session || forceAuth);
   const credits = profile?.credits ?? 0;
@@ -428,6 +531,7 @@ export function Studio() {
             startingTaskIds={startingTaskIds}
             onCancelTask={handleAdminCancelTask}
             cancelingTaskIds={cancelingTaskIds}
+            currentTaskCount={effectiveCurrentBatchTaskCount}
           />
         )}
       </div>

@@ -27,6 +27,7 @@ export function TaskFloatingPanel({
   startingTaskIds = [],
   onCancelTask,
   cancelingTaskIds = [],
+  currentTaskCount,
 }: {
   tasks: FloatingTask[];
   maxTasks?: number;
@@ -34,9 +35,11 @@ export function TaskFloatingPanel({
   startingTaskIds?: string[];
   onCancelTask?: (taskId: string) => void | Promise<void>;
   cancelingTaskIds?: string[];
+  currentTaskCount?: number;
 }) {
   const [open, setOpen] = useState(false);
   const activeCount = tasks.filter((task) => task.status === "waiting" || task.status === "submitting" || task.status === "generating").length;
+  const displayCount = currentTaskCount ?? activeCount;
 
   return (
     <div className="fixed right-4 top-16 z-50">
@@ -46,7 +49,7 @@ export function TaskFloatingPanel({
         className="glass-elevated flex items-center gap-2 rounded-full border border-primary/30 bg-card/90 px-3 py-2 text-xs font-semibold text-foreground shadow-glow backdrop-blur-xl transition-colors hover:border-primary/60"
       >
         <ListChecks className="h-3.5 w-3.5 text-primary" />
-        任务 {activeCount}/{maxTasks}
+        任务 {displayCount}/{maxTasks}
       </button>
 
       {open && (
@@ -67,7 +70,7 @@ export function TaskFloatingPanel({
                 </button>
               )}
               <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
-                {activeCount}/{maxTasks}
+                {displayCount}/{maxTasks}
               </span>
             </div>
           </div>
