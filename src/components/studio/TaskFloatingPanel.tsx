@@ -66,7 +66,7 @@ export function TaskFloatingPanel({
                   onClick={onClearTestTasks}
                   className="rounded-full border border-border/70 bg-white/[0.03] px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:border-destructive/50 hover:text-destructive"
                 >
-                  清空内测任务
+                  清除未完成任务
                 </button>
               )}
               <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
