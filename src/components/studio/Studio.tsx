@@ -203,20 +203,22 @@ export function Studio() {
   };
 
   const handleAdminPrepareNextTask = (info: { prompt: string; modelName: string }) => {
-    if (!isAdmin || adminPreparingNextTask) return;
+    if (!isAdmin || adminPreparingNextTask || adminActiveTaskCount >= 3) return;
     const title = info.prompt.trim().slice(0, 20) || info.modelName || "当前生成任务";
-    setAdminTasks((tasks) =>
-      trimPanelTasks([
-        ...tasks,
-        {
-          id: `admin-preview-${Date.now()}`,
-          title,
-          status: "generating" as const,
-          prompt: info.prompt,
-          modelName: info.modelName,
-        },
-      ]),
-    );
+    if (generating) {
+      setAdminTasks((tasks) =>
+        trimPanelTasks([
+          ...tasks,
+          {
+            id: `admin-preview-${Date.now()}`,
+            title,
+            status: "generating" as const,
+            prompt: info.prompt,
+            modelName: info.modelName,
+          },
+        ]),
+      );
+    }
     setAdminPreparingNextTask(true);
   };
 
@@ -252,6 +254,7 @@ export function Studio() {
         },
       ]),
     );
+    setAdminPreparingNextTask(false);
     return true;
   };
 

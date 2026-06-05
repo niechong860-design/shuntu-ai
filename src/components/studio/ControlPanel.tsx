@@ -377,7 +377,7 @@ export function ControlPanel({
   }, [session]);
 
   const handleAdminPrepareNextTask = () => {
-    if (!isAdmin || !generating || adminPreparingNextTask) return;
+    if (!isAdmin || adminPreparingNextTask || adminActiveTaskCount >= 3) return;
     onAdminPrepareNextTask?.({
       prompt,
       modelName: activeModel?.name ?? activeModel?.model_key ?? "当前模型",
@@ -823,7 +823,7 @@ export function ControlPanel({
 
       {/* 立即生成 — 紧贴风格模板 */}
       <div className="shrink-0 border-t border-primary/15 bg-gradient-to-b from-primary/[0.04] to-background/85 p-3 backdrop-blur-xl">
-        {isAdmin && generating && !isPreparingNextTask && (
+        {isAdmin && !isPreparingNextTask && adminActiveTaskCount < 3 && (
           <button
             type="button"
             onClick={handleAdminPrepareNextTask}
@@ -852,7 +852,7 @@ export function ControlPanel({
                     ? "加入队列中..."
                     : adminActiveTaskCount >= 3
                     ? "任务已满 3/3"
-                    : "待后端开放后提交"
+                    : "加入等待队列"
                   : "立即生成"}
               </>
             )}
