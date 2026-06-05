@@ -127,6 +127,7 @@ export function ControlPanel({
   const [inspirationMode, setInspirationMode] = useState(false);
   const [cfg, setCfg] = useState([7.5]);
   const [steps, setSteps] = useState([32]);
+  const isPreparingNextTask = isAdmin && adminPreparingNextTask;
 
   useEffect(() => {
     if (!session) return;
@@ -379,7 +380,7 @@ export function ControlPanel({
   };
 
   const handleGenerate = async () => {
-    if (generating && isAdmin && adminPreparingNextTask) {
+    if (generating && isPreparingNextTask) {
       toast.info("真实多任务提交将在后端任务系统完成后开放。");
       return;
     }
@@ -763,23 +764,23 @@ export function ControlPanel({
 
       {/* 立即生成 — 紧贴风格模板 */}
       <div className="shrink-0 border-t border-primary/15 bg-gradient-to-b from-primary/[0.04] to-background/85 p-3 backdrop-blur-xl">
-        {isAdmin && generating && !adminPreparingNextTask && (
+        {isAdmin && generating && !isPreparingNextTask && (
           <button
             type="button"
             onClick={handleAdminPrepareNextTask}
             className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/[0.06] px-4 py-2.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/[0.1]"
           >
             <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
-            开始下一个任务
+            准备下一个任务
           </button>
         )}
         <button
           onClick={handleGenerate}
-          disabled={(generating && !(isAdmin && adminPreparingNextTask)) || !activeModel}
+          disabled={(generating && !isPreparingNextTask) || !activeModel}
           className="group relative flex w-full items-center justify-between gap-2 overflow-hidden rounded-2xl bg-gradient-aurora px-5 py-3.5 text-sm font-bold text-primary-foreground shadow-glow transition-all duration-150 ease-out hover:brightness-110 active:scale-[0.97] disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100"
         >
           <div className="flex items-center gap-2">
-            {generating && !adminPreparingNextTask ? (
+            {generating && !isPreparingNextTask ? (
               <>
                 <Sparkles className="h-4 w-4 animate-spin" />
                 生成中…
@@ -787,7 +788,7 @@ export function ControlPanel({
             ) : (
               <>
                 <Wand2 className="h-4 w-4" strokeWidth={2.5} />
-                立即生成
+                {isPreparingNextTask ? "待后端开放后提交" : "立即生成"}
               </>
             )}
           </div>
