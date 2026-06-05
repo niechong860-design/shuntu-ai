@@ -328,16 +328,12 @@ export function Studio() {
         runningOrStartingIds.add(task.id);
       }
     }
-    const runningOrStartingCount = runningOrStartingIds.size;
-    if (runningOrStartingCount >= 3) return;
+    if (runningOrStartingIds.size > 0) return;
 
-    const tasksToStart = adminTasks
-      .filter((task) => task.status === "waiting" && !startingTaskIds.includes(task.id))
-      .slice(0, 3 - runningOrStartingCount);
+    const taskToStart = adminTasks.find((task) => task.status === "waiting" && !startingTaskIds.includes(task.id));
+    if (!taskToStart) return;
 
-    for (const task of tasksToStart) {
-      void handleAdminStartTask(task.id);
-    }
+    void handleAdminStartTask(taskToStart.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id, isAdmin, adminTasks, startingTaskIds]);
 
