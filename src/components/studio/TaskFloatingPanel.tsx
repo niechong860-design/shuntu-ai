@@ -22,11 +22,13 @@ export function TaskFloatingPanel({
   maxTasks = 3,
   onClearTestTasks,
   onStartTask,
+  startingTaskIds = [],
 }: {
   tasks: FloatingTask[];
   maxTasks?: number;
   onClearTestTasks?: () => void | Promise<void>;
   onStartTask?: (taskId: string) => void | Promise<void>;
+  startingTaskIds?: string[];
 }) {
   const [open, setOpen] = useState(false);
   const activeCount = tasks.filter((task) => task.status === "waiting" || task.status === "submitting" || task.status === "generating").length;
@@ -74,6 +76,7 @@ export function TaskFloatingPanel({
               {tasks.map((task) => {
                 const meta = STATUS_META[task.status];
                 const Icon = meta.icon;
+                const starting = startingTaskIds.includes(task.id);
                 return (
                   <div key={task.id} className="flex items-center gap-2 rounded-lg border border-border/60 bg-white/[0.03] px-3 py-2">
                     <Icon className={`h-3.5 w-3.5 ${meta.className} ${task.status === "generating" ? "animate-spin" : ""}`} />
@@ -84,10 +87,11 @@ export function TaskFloatingPanel({
                     {task.status === "waiting" && onStartTask && (
                       <button
                         type="button"
+                        disabled={starting}
                         onClick={() => onStartTask(task.id)}
-                        className="shrink-0 rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary transition-colors hover:border-primary/60 hover:bg-primary/15"
+                        className="shrink-0 rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary transition-colors hover:border-primary/60 hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        开始执行
+                        {starting ? "启动中..." : "开始执行"}
                       </button>
                     )}
                   </div>

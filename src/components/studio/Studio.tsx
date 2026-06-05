@@ -5,7 +5,7 @@ import { Canvas } from "./Canvas";
 import { TopBar } from "./TopBar";
 import { TaskFloatingPanel, type FloatingTask } from "./TaskFloatingPanel";
 import { useAuth } from "@/hooks/use-auth";
-import { cancelMyQueuedGenerationTasks, checkIsAdmin, createGenerationTask, getMyGenerationTasks, startGenerationTask } from "@/lib/admin.functions";
+import { cancelMyQueuedGenerationTasks, checkIsAdmin, createGenerationTask, getMyGenerationTasks, pollGenerationTask, startGenerationTask } from "@/lib/admin.functions";
 import { toast } from "sonner";
 
 const AnnouncementCenter = lazy(() => import("./AnnouncementCenter").then((m) => ({ default: m.AnnouncementCenter })));
@@ -18,6 +18,7 @@ export function Studio() {
   const createTask = useServerFn(createGenerationTask);
   const cancelQueuedTasks = useServerFn(cancelMyQueuedGenerationTasks);
   const startTask = useServerFn(startGenerationTask);
+  const pollTask = useServerFn(pollGenerationTask);
   const [generating, setGenerating] = useState(false);
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
   const [currentPrompt, setCurrentPrompt] = useState<string>("");
@@ -29,6 +30,7 @@ export function Studio() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminTasks, setAdminTasks] = useState<FloatingTask[]>([]);
   const [adminPreparingNextTask, setAdminPreparingNextTask] = useState(false);
+  const [startingTaskIds, setStartingTaskIds] = useState<string[]>([]);
   const adminActiveTaskCount = adminTasks.filter((task) =>
     task.status === "waiting" || task.status === "submitting" || task.status === "generating"
   ).length;
@@ -88,6 +90,52 @@ export function Studio() {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id, isAdmin]);
+
+  useEffect(() => {
+    if (!session || !isAdmin) return;
+    const runningTaskIds = adminTasks
+      .filter((task) => task.status === "generating")
+      .map((task) => task.id);
+    if (runningTaskIds.length === 0) return;
+
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      for (const taskId of runningTaskIds) {
+        pollTask({ data: { taskId } })
+          .then((taskResult) => {
+            if (cancelled) return;
+            const task = taskResult as {
+              taskId: string;
+              status: string;
+            };
+            if (task.status === "succeeded") {
+              setAdminTasks((tasks) =>
+                tasks.map((item) =>
+                  item.id === task.taskId ? { ...item, status: "done" as const } : item,
+                ),
+              );
+              return;
+            }
+            if (task.status === "failed") {
+              setAdminTasks((tasks) =>
+                tasks.map((item) =>
+                  item.id === task.taskId ? { ...item, status: "failed" as const } : item,
+                ),
+              );
+            }
+          })
+          .catch((error) => {
+            console.warn("[generation-tasks] poll failed", error);
+          });
+      }
+    }, 4000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id, isAdmin, adminTasks]);
 
   const handleGenerateStart = (info: { prompt: string; modelName: string }) => {
     setGenerating(true);
@@ -174,17 +222,37 @@ export function Studio() {
 
   const handleAdminStartTask = async (taskId: string) => {
     if (!isAdmin) return;
+    if (startingTaskIds.includes(taskId)) return;
+    setStartingTaskIds((ids) => ids.includes(taskId) ? ids : [...ids, taskId]);
     try {
-      const task = await startTask({ data: { taskId } });
+      const task = await startTask({ data: { taskId } }) as {
+        taskId: string;
+        status: string;
+        errorMessage?: string | null;
+      };
+      const nextStatus =
+        task.status === "succeeded"
+          ? "done"
+          : task.status === "failed"
+          ? "failed"
+          : "generating";
       setAdminTasks((tasks) =>
         tasks.map((item) =>
-          item.id === task.taskId ? { ...item, status: "generating" as const } : item,
+          item.id === task.taskId ? { ...item, status: nextStatus as FloatingTask["status"] } : item,
         ),
       );
-      toast.success("任务已进入生成中");
+      if (task.status === "succeeded") {
+        toast.success("任务已完成");
+      } else if (task.status === "failed") {
+        toast.error(task.errorMessage ?? "任务生成失败");
+      } else {
+        toast.success("任务已进入生成中");
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "任务启动失败";
       toast.error(message);
+    } finally {
+      setStartingTaskIds((ids) => ids.filter((id) => id !== taskId));
     }
   };
 
@@ -234,6 +302,7 @@ export function Studio() {
             maxTasks={3}
             onClearTestTasks={handleAdminClearTestTasks}
             onStartTask={handleAdminStartTask}
+            startingTaskIds={startingTaskIds}
           />
         )}
       </div>

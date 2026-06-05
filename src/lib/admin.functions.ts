@@ -660,19 +660,384 @@ export const startGenerationTask = createServerFn({ method: "POST" })
       .eq("status", "queued")
       .eq("deduction_status", "not_charged")
       .contains("input_params", { adminPreviewOnly: true })
-      .select("id, status, started_at")
+      .select("id, request_id, status, model_id, prompt, input_params, started_at")
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!task) {
       throw new Error("任务已被处理、取消，或不属于当前内测任务。");
     }
 
+    try {
+      const result = await submitAdminPreviewGenerationTask(task);
+      const finishedAt = new Date().toISOString();
+
+      if (result.status === "succeeded") {
+        const { error: updateError } = await (supabaseAdmin as any)
+          .from("generation_tasks")
+          .update({
+            status: "succeeded",
+            result_image_url: result.resultImageUrl,
+            result_payload: result.resultPayload,
+            completed_at: finishedAt,
+            updated_at: finishedAt,
+          })
+          .eq("id", task.id)
+          .eq("user_id", userId)
+          .eq("status", "running")
+          .eq("deduction_status", "not_charged")
+          .contains("input_params", { adminPreviewOnly: true });
+        if (updateError) throw new Error(updateError.message);
+        return {
+          taskId: task.id as string,
+          status: "succeeded" as const,
+          startedAt: task.started_at as string,
+          resultImageUrl: result.resultImageUrl,
+          errorMessage: null as string | null,
+          resultPayload: result.resultPayload,
+        };
+      }
+
+      const { error: updateError } = await (supabaseAdmin as any)
+        .from("generation_tasks")
+        .update({
+          status: "running",
+          result_payload: result.resultPayload,
+          updated_at: finishedAt,
+        })
+        .eq("id", task.id)
+        .eq("user_id", userId)
+        .eq("status", "running")
+        .eq("deduction_status", "not_charged")
+        .contains("input_params", { adminPreviewOnly: true });
+      if (updateError) throw new Error(updateError.message);
+      return {
+        taskId: task.id as string,
+        status: "running" as const,
+        startedAt: task.started_at as string,
+        resultImageUrl: null as string | null,
+        errorMessage: null as string | null,
+        resultPayload: result.resultPayload,
+      };
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "上游提交失败";
+      const failedAt = new Date().toISOString();
+      await (supabaseAdmin as any)
+        .from("generation_tasks")
+        .update({
+          status: "failed",
+          error_message: message,
+          completed_at: failedAt,
+          updated_at: failedAt,
+        })
+        .eq("id", task.id)
+        .eq("user_id", userId)
+        .eq("status", "running")
+        .eq("deduction_status", "not_charged")
+        .contains("input_params", { adminPreviewOnly: true });
+      return {
+        taskId: task.id as string,
+        status: "failed" as const,
+        startedAt: task.started_at as string,
+        resultImageUrl: null as string | null,
+        errorMessage: message,
+        resultPayload: null as any,
+      };
+    }
+  });
+
+export const pollGenerationTask = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ taskId: z.string().uuid() }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    const { userId } = context;
+    await assertAdmin(userId);
+
+    const { data: task, error } = await (supabaseAdmin as any)
+      .from("generation_tasks")
+      .select("id, status, result_payload, result_image_url, error_message")
+      .eq("id", data.taskId)
+      .eq("user_id", userId)
+      .contains("input_params", { adminPreviewOnly: true })
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!task) throw new Error("任务不存在，或不属于当前内测任务。");
+    if (task.status !== "running") {
+      return {
+        taskId: task.id as string,
+        status: task.status as "succeeded" | "failed" | "queued" | "canceled",
+        resultImageUrl: (task.result_image_url ?? null) as string | null,
+        errorMessage: (task.error_message ?? null) as string | null,
+        resultPayload: task.result_payload ?? null,
+      };
+    }
+
+    const providerTaskId = task.result_payload?.providerTaskId;
+    if (!providerTaskId) {
+      return {
+        taskId: task.id as string,
+        status: "running" as const,
+        resultImageUrl: null as string | null,
+        errorMessage: null as string | null,
+        resultPayload: task.result_payload ?? null,
+      };
+    }
+
+    const pollResult = await pollAdminPreviewProviderTask(String(providerTaskId));
+    const now = new Date().toISOString();
+    if (pollResult.status === "succeeded") {
+      const resultPayload = { ...(task.result_payload ?? {}), ...pollResult.resultPayload, providerStatus: "succeeded" };
+      const { error: updateError } = await (supabaseAdmin as any)
+        .from("generation_tasks")
+        .update({
+          status: "succeeded",
+          result_image_url: pollResult.resultImageUrl,
+          result_payload: resultPayload,
+          completed_at: now,
+          updated_at: now,
+        })
+        .eq("id", task.id)
+        .eq("user_id", userId)
+        .eq("status", "running")
+        .eq("deduction_status", "not_charged")
+        .contains("input_params", { adminPreviewOnly: true });
+      if (updateError) throw new Error(updateError.message);
+      return {
+        taskId: task.id as string,
+        status: "succeeded" as const,
+        resultImageUrl: pollResult.resultImageUrl,
+        errorMessage: null as string | null,
+        resultPayload,
+      };
+    }
+
+    if (pollResult.status === "failed") {
+      const resultPayload = { ...(task.result_payload ?? {}), ...pollResult.resultPayload, providerStatus: "failed" };
+      const { error: updateError } = await (supabaseAdmin as any)
+        .from("generation_tasks")
+        .update({
+          status: "failed",
+          error_message: pollResult.errorMessage,
+          result_payload: resultPayload,
+          completed_at: now,
+          updated_at: now,
+        })
+        .eq("id", task.id)
+        .eq("user_id", userId)
+        .eq("status", "running")
+        .eq("deduction_status", "not_charged")
+        .contains("input_params", { adminPreviewOnly: true });
+      if (updateError) throw new Error(updateError.message);
+      return {
+        taskId: task.id as string,
+        status: "failed" as const,
+        resultImageUrl: null as string | null,
+        errorMessage: pollResult.errorMessage,
+        resultPayload,
+      };
+    }
+
     return {
       taskId: task.id as string,
-      status: task.status as "running",
-      startedAt: task.started_at as string,
+      status: "running" as const,
+      resultImageUrl: null as string | null,
+      errorMessage: null as string | null,
+      resultPayload: { ...(task.result_payload ?? {}), ...pollResult.resultPayload, providerStatus: "running" },
     };
   });
+
+async function submitAdminPreviewGenerationTask(task: any): Promise<
+  | { status: "succeeded"; resultImageUrl: string; resultPayload: Record<string, any> }
+  | { status: "running"; resultImageUrl: null; resultPayload: Record<string, any> }
+> {
+  const inputParams = (task.input_params ?? {}) as Record<string, any>;
+  const { base_url, global_api_key } = await loadGlobalConfig();
+  const { data: model, error: modelError } = await supabaseAdmin
+    .from("models_config")
+    .select("id, model_key, name, api_url, api_key, request_format, prompt_key, extra_params, is_enabled")
+    .eq("model_key", task.model_id)
+    .maybeSingle();
+  if (modelError) throw new Error(modelError.message);
+  if (!model) throw new Error("模型不存在或已不可用。");
+  if ((model as any).is_enabled === false) throw new Error("模型不存在或已不可用。");
+  if (!(model as any).api_url) throw new Error("该模型尚未配置 API 接口地址。");
+
+  const targetKey = normalizeUpstreamApiKey((model as any).api_key) || normalizeUpstreamApiKey(global_api_key);
+  const pureApiKey = String(targetKey).replace(/Bearer\s+/i, "").trim();
+  if (!pureApiKey) throw new Error("该模型或全局接口设置尚未配置 API Key。");
+
+  const submitUrl = resolveUrl(base_url, (model as any).api_url);
+  const prompt = String(task.prompt ?? "").trim();
+  if (!prompt) throw new Error("任务提示词为空。");
+
+  const aspectRatio = String(inputParams.aspectRatio ?? "1:1");
+  const sizeValue = String(inputParams.size ?? "1K");
+  const referenceImages = Array.isArray(inputParams.referenceImages) ? inputParams.referenceImages : [];
+  const requestFormat = (model as any).request_format || "async_id";
+  const body = buildAdminPreviewUpstreamBody({
+    model,
+    prompt,
+    aspectRatio,
+    size: sizeValue,
+    referenceImages,
+  });
+
+  const res = await fetch(submitUrl, {
+    method: "POST",
+    headers: buildUpstreamHeaders(pureApiKey),
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  const json = parseUpstreamResponse(text);
+  if (!res.ok) throw new Error(friendlyUpstreamError(res.status));
+  if (Number(json?.code) >= 400) throw new Error(friendlyUpstreamError(Number(json?.code) || 500));
+
+  if (requestFormat === "sync_url") {
+    const imageUrl = extractImageUrl(json ?? text);
+    if (!imageUrl) throw new Error(friendlyUpstreamError(502));
+    return {
+      status: "succeeded",
+      resultImageUrl: imageUrl,
+      resultPayload: {
+        requestFormat,
+        providerStatus: "succeeded",
+        requestId: task.request_id,
+        upstreamCode: json?.code ?? null,
+      },
+    };
+  }
+
+  const providerTaskId = json?.data?.id ?? json?.id ?? json?.task_id ?? (typeof json?.data === "string" ? json.data : null);
+  if (!providerTaskId) throw new Error(friendlyUpstreamError(502));
+  return {
+    status: "running",
+    resultImageUrl: null,
+    resultPayload: {
+      providerTaskId,
+      providerStatus: "submitted",
+      requestFormat: "async_id",
+      requestId: task.request_id,
+      upstreamCode: json?.code ?? null,
+    },
+  };
+}
+
+function buildAdminPreviewUpstreamBody(params: {
+  model: any;
+  prompt: string;
+  aspectRatio: string;
+  size: string;
+  referenceImages: unknown[];
+}): Record<string, any> {
+  const promptKey = params.model?.prompt_key || "prompt";
+  const modelKey = params.model?.model_key;
+  const size = VALID_SIZES.has(params.aspectRatio) ? params.aspectRatio : "auto";
+  const textOnlyModels = new Set(["wan26"]);
+  const httpRefs = textOnlyModels.has(modelKey)
+    ? []
+    : params.referenceImages.filter((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u));
+  const urlToken = "__LOVABLE_URLS_ARRAY__";
+  const wanSizeMap: Record<string, string> = {
+    "1:1": "1280*1280",
+    "3:4": "1104*1472",
+    "4:3": "1472*1104",
+    "9:16": "960*1696",
+    "16:9": "1696*960",
+  };
+  const wanSize = wanSizeMap[params.aspectRatio] ?? "1280*1280";
+  const grokAllowed = new Set(["2:3", "3:2", "1:1", "16:9", "9:16"]);
+  const grokFallback: Record<string, string> = {
+    "3:4": "2:3", "4:3": "3:2", "4:5": "2:3", "5:4": "3:2",
+    "9:21": "9:16", "21:9": "16:9", "1:2": "9:16", "2:1": "16:9",
+    "1:3": "9:16", "3:1": "16:9", "auto": "1:1",
+  };
+  const grokAspect = grokAllowed.has(params.aspectRatio)
+    ? params.aspectRatio
+    : (grokFallback[params.aspectRatio] ?? "1:1");
+  const substitute = (v: any): any => {
+    if (typeof v === "string") {
+      const trimmed = v.trim();
+      if (/^\{\{\s*urls\s*\}\}$/.test(trimmed)) return urlToken;
+      return v
+        .replace(/\{\{\s*wan_size\s*\}\}/g, wanSize)
+        .replace(/\{\{\s*grok_aspect\s*\}\}/g, grokAspect)
+        .replace(/\{\{\s*size\s*\}\}/g, params.size)
+        .replace(/\{\{\s*aspect\s*\}\}/g, size)
+        .replace(/\{\{\s*prompt\s*\}\}/g, params.prompt);
+    }
+    if (Array.isArray(v)) return v.map(substitute);
+    if (v && typeof v === "object") {
+      const o: Record<string, any> = {};
+      for (const k of Object.keys(v)) o[k] = substitute(v[k]);
+      return o;
+    }
+    return v;
+  };
+  const extra = substitute(params.model?.extra_params ?? {}) as Record<string, any>;
+  let urlsHandledByExtra = false;
+  for (const [key, val] of Object.entries(extra)) {
+    if (val === urlToken) {
+      if (httpRefs.length > 0) extra[key] = httpRefs;
+      else delete extra[key];
+      urlsHandledByExtra = true;
+    }
+  }
+  if (modelKey === "grok_imagine" && httpRefs.length > 0) {
+    delete (extra as any).aspect_ratio;
+  }
+  const body: Record<string, any> = {
+    [promptKey]: params.prompt,
+    ...extra,
+  };
+  if (!urlsHandledByExtra && httpRefs.length > 0) {
+    body.urls = httpRefs;
+  }
+  return body;
+}
+
+async function pollAdminPreviewProviderTask(providerTaskId: string): Promise<
+  | { status: "running"; resultImageUrl: null; errorMessage: null; resultPayload: Record<string, any> }
+  | { status: "succeeded"; resultImageUrl: string; errorMessage: null; resultPayload: Record<string, any> }
+  | { status: "failed"; resultImageUrl: null; errorMessage: string; resultPayload: Record<string, any> }
+> {
+  const { global_api_key } = await loadGlobalConfig();
+  const pureApiKey = normalizeUpstreamApiKey(global_api_key);
+  if (!pureApiKey) throw new Error("尚未配置全局 API Key，请联系管理员");
+
+  const detailUrl = `https://api.wuyinkeji.com/api/async/detail?id=${encodeURIComponent(providerTaskId)}`;
+  const res = await fetchWithRetry(detailUrl, {
+    method: "GET",
+    headers: buildUpstreamHeaders(pureApiKey),
+  });
+  const text = await res.text();
+  const json = parseUpstreamResponse(text);
+  const code = Number(json?.code);
+  const taskStatus = Number.isFinite(Number(json?.data?.status)) ? Number(json?.data?.status) : null;
+  const rawMsg = (json?.data?.message ?? json?.msg ?? json?.message ?? null) as string | null;
+  const resultPayload = {
+    providerTaskId,
+    code: Number.isFinite(code) ? code : null,
+    taskStatus,
+    message: rawMsg,
+  };
+
+  if (!res.ok) {
+    return { status: "running", resultImageUrl: null, errorMessage: null, resultPayload: { ...resultPayload, httpStatus: res.status } };
+  }
+  if (code >= 400) {
+    return { status: "failed", resultImageUrl: null, errorMessage: friendlyUpstreamError(code), resultPayload };
+  }
+  if (taskStatus === 3) {
+    return { status: "failed", resultImageUrl: null, errorMessage: rawMsg || "任务被拒绝", resultPayload };
+  }
+  if (taskStatus === 2) {
+    const url = extractImageUrl(json?.data) ?? extractImageUrl(json);
+    if (url) return { status: "succeeded", resultImageUrl: url, errorMessage: null, resultPayload };
+    return { status: "running", resultImageUrl: null, errorMessage: null, resultPayload: { ...resultPayload, message: rawMsg ?? "成功但URL未就绪" } };
+  }
+  return { status: "running", resultImageUrl: null, errorMessage: null, resultPayload };
+}
 
 // --- NEW: Dynamic upstream image generation (per-model API routing) ---
 function extractImageUrl(payload: any): string | null {
