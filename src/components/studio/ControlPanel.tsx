@@ -94,7 +94,14 @@ type Props = {
   generating: boolean;
   isAdmin?: boolean;
   adminPreparingNextTask?: boolean;
+  adminActiveTaskCount?: number;
   onAdminPrepareNextTask?: (info: { prompt: string; modelName: string }) => void;
+  onAdminCreateQueuedTask?: (input: {
+    prompt: string;
+    modelKey: string;
+    modelName: string;
+    inputParams: Record<string, unknown>;
+  }) => Promise<boolean>;
 };
 
 export function ControlPanel({
@@ -104,7 +111,9 @@ export function ControlPanel({
   generating,
   isAdmin = false,
   adminPreparingNextTask = false,
+  adminActiveTaskCount = 0,
   onAdminPrepareNextTask,
+  onAdminCreateQueuedTask,
 }: Props) {
   const fetchModels = useServerFn(listModelsConfig);
   const generate = useServerFn(generateImage);
@@ -127,6 +136,7 @@ export function ControlPanel({
   const [inspirationMode, setInspirationMode] = useState(false);
   const [cfg, setCfg] = useState([7.5]);
   const [steps, setSteps] = useState([32]);
+  const [isCreatingQueuedTask, setIsCreatingQueuedTask] = useState(false);
   const isPreparingNextTask = isAdmin && adminPreparingNextTask;
 
   useEffect(() => {
@@ -380,8 +390,57 @@ export function ControlPanel({
   };
 
   const handleGenerate = async () => {
-    if (generating && isPreparingNextTask) {
-      toast.info("真实多任务提交将在后端任务系统完成后开放。");
+    if (isPreparingNextTask) {
+      if (isCreatingQueuedTask) return;
+      if (adminActiveTaskCount >= 3) {
+        toast.error("当前已有 3 个进行中任务，请等待任务完成后再提交。");
+        return;
+      }
+      if (!activeModel) return;
+      if (!prompt || !prompt.trim()) {
+        toast.error("请输入图片描述后再生成。");
+        return;
+      }
+      const effectiveStyleId = inspirationMode ? "" : styleId;
+      const finalPrompt = applyStyleSuffix(prompt, effectiveStyleId);
+      const safety = checkPromptSafety(`${prompt}\n${finalPrompt}`);
+      if (!safety.allowed) {
+        console.warn("[generation-task] prompt blocked by safety filter", { category: safety.category });
+        toast.error(SAFETY_BLOCK_MESSAGE);
+        return;
+      }
+      setIsCreatingQueuedTask(true);
+      try {
+        const httpRefs = isTextOnly ? [] : refs.filter((u) => /^https?:\/\//i.test(u));
+        const ok = await onAdminCreateQueuedTask?.({
+          modelKey: activeModel.model_key,
+          modelName: activeModel.name ?? activeModel.model_key,
+          prompt: finalPrompt,
+          inputParams: {
+            aspectRatio: ratio,
+            size,
+            referenceImages: httpRefs,
+            styleId: effectiveStyleId || null,
+            inspirationMode,
+          },
+        });
+        if (ok) {
+          setPrompt("");
+          setRefs([]);
+          setStyleId("");
+          setInspirationMode(false);
+          toast.success("任务已加入等待队列，可继续准备下一张。");
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "任务创建失败，请稍后重试。";
+        if (message.includes("generation_tasks") || message.includes("任务表尚未启用")) {
+          toast.error("任务表尚未启用，暂不能创建多任务。");
+        } else {
+          toast.error(message);
+        }
+      } finally {
+        setIsCreatingQueuedTask(false);
+      }
       return;
     }
     if (generating || !activeModel) return;
@@ -776,7 +835,7 @@ export function ControlPanel({
         )}
         <button
           onClick={handleGenerate}
-          disabled={(generating && !isPreparingNextTask) || !activeModel}
+          disabled={(generating && !isPreparingNextTask) || !activeModel || (isPreparingNextTask && (adminActiveTaskCount >= 3 || isCreatingQueuedTask))}
           className="group relative flex w-full items-center justify-between gap-2 overflow-hidden rounded-2xl bg-gradient-aurora px-5 py-3.5 text-sm font-bold text-primary-foreground shadow-glow transition-all duration-150 ease-out hover:brightness-110 active:scale-[0.97] disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100"
         >
           <div className="flex items-center gap-2">
@@ -788,7 +847,13 @@ export function ControlPanel({
             ) : (
               <>
                 <Wand2 className="h-4 w-4" strokeWidth={2.5} />
-                {isPreparingNextTask ? "待后端开放后提交" : "立即生成"}
+                {isPreparingNextTask
+                  ? isCreatingQueuedTask
+                    ? "加入队列中..."
+                    : adminActiveTaskCount >= 3
+                    ? "任务已满 3/3"
+                    : "待后端开放后提交"
+                  : "立即生成"}
               </>
             )}
           </div>

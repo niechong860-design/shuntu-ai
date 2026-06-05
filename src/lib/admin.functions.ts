@@ -534,6 +534,86 @@ export const getMyGenerationTasks = createServerFn({ method: "POST" })
     return { items, isAdmin: true };
   });
 
+export const createGenerationTask = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      modelKey: z.string().min(1).max(64),
+      prompt: z.string().min(1).max(4000),
+      inputParams: z.record(z.string(), z.any()).optional(),
+    }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    const { userId } = context;
+    await assertAdmin(userId);
+
+    const { count: activeCount, error: countError } = await (supabaseAdmin as any)
+      .from("generation_tasks")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .in("status", ["queued", "running"]);
+    if (countError) {
+      if (countError.message?.includes("generation_tasks")) {
+        throw new Error("任务表尚未启用，暂不能创建多任务。");
+      }
+      throw new Error(countError.message);
+    }
+    if ((activeCount ?? 0) >= 3) {
+      throw new Error("当前已有 3 个进行中任务，请等待任务完成后再提交。");
+    }
+
+    const { data: model, error: modelError } = await supabaseAdmin
+      .from("models_config")
+      .select("model_key, cost, is_enabled")
+      .eq("model_key", data.modelKey)
+      .maybeSingle();
+    if (modelError) throw new Error(modelError.message);
+    if (!model) throw new Error("模型不存在或已不可用。");
+    if ((model as any).is_enabled === false) throw new Error("模型不存在或已不可用。");
+
+    const creditsRequired = Math.max(0, Number((model as any).cost ?? 0));
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from("profiles")
+      .select("credits")
+      .eq("id", userId)
+      .maybeSingle();
+    if (profileError) throw new Error(profileError.message);
+    if (Number((profile as any)?.credits ?? 0) < creditsRequired) {
+      throw new Error("余额不足，无法创建多任务。");
+    }
+
+    const requestId = `task_${crypto.randomUUID()}`;
+    const { data: task, error: insertError } = await (supabaseAdmin as any)
+      .from("generation_tasks")
+      .insert({
+        request_id: requestId,
+        user_id: userId,
+        status: "queued",
+        model_id: data.modelKey,
+        prompt: data.prompt,
+        input_params: data.inputParams ?? {},
+        credits_required: creditsRequired,
+        deduction_status: "not_charged",
+      })
+      .select("id, request_id, status, prompt, model_id, credits_required")
+      .single();
+    if (insertError) {
+      if (insertError.message?.includes("generation_tasks")) {
+        throw new Error("任务表尚未启用，暂不能创建多任务。");
+      }
+      throw new Error(insertError.message);
+    }
+
+    return {
+      taskId: task.id as string,
+      requestId: task.request_id as string,
+      status: task.status as "queued",
+      prompt: task.prompt as string,
+      modelId: task.model_id as string,
+      creditsRequired: Number(task.credits_required ?? creditsRequired),
+    };
+  });
+
 // --- NEW: Dynamic upstream image generation (per-model API routing) ---
 function extractImageUrl(payload: any): string | null {
   if (!payload) return null;

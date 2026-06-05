@@ -5,7 +5,7 @@ import { Canvas } from "./Canvas";
 import { TopBar } from "./TopBar";
 import { TaskFloatingPanel, type FloatingTask } from "./TaskFloatingPanel";
 import { useAuth } from "@/hooks/use-auth";
-import { checkIsAdmin, getMyGenerationTasks } from "@/lib/admin.functions";
+import { checkIsAdmin, createGenerationTask, getMyGenerationTasks } from "@/lib/admin.functions";
 
 const AnnouncementCenter = lazy(() => import("./AnnouncementCenter").then((m) => ({ default: m.AnnouncementCenter })));
 const AuthModal = lazy(() => import("@/components/auth/AuthModal").then((m) => ({ default: m.AuthModal })));
@@ -14,6 +14,7 @@ export function Studio() {
   const { session, profile, loading } = useAuth();
   const checkAdmin = useServerFn(checkIsAdmin);
   const fetchGenerationTasks = useServerFn(getMyGenerationTasks);
+  const createTask = useServerFn(createGenerationTask);
   const [generating, setGenerating] = useState(false);
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
   const [currentPrompt, setCurrentPrompt] = useState<string>("");
@@ -25,6 +26,9 @@ export function Studio() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminTasks, setAdminTasks] = useState<FloatingTask[]>([]);
   const [adminPreparingNextTask, setAdminPreparingNextTask] = useState(false);
+  const adminActiveTaskCount = adminTasks.filter((task) =>
+    task.status === "waiting" || task.status === "submitting" || task.status === "generating"
+  ).length;
 
   const mapRecoveredTaskStatus = (status: string): FloatingTask["status"] => {
     if (status === "queued") return "waiting";
@@ -117,6 +121,37 @@ export function Studio() {
     setAdminPreparingNextTask(true);
   };
 
+  const handleAdminCreateQueuedTask = async (input: {
+    prompt: string;
+    modelKey: string;
+    modelName: string;
+    inputParams: Record<string, unknown>;
+  }) => {
+    if (!isAdmin) return false;
+    if (adminActiveTaskCount >= 3) {
+      throw new Error("当前已有 3 个进行中任务，请等待任务完成后再提交。");
+    }
+
+    const task = await createTask({
+      data: {
+        modelKey: input.modelKey,
+        prompt: input.prompt,
+        inputParams: input.inputParams,
+      },
+    });
+
+    const title = task.prompt.trim().slice(0, 20) || input.modelName || task.modelId;
+    setAdminTasks((tasks) => [
+      ...tasks,
+      {
+        id: task.taskId,
+        title,
+        status: "waiting" as const,
+      },
+    ].slice(-3));
+    return true;
+  };
+
   const showAuth = !loading && (!session || forceAuth);
   const credits = profile?.credits ?? 0;
 
@@ -137,7 +172,9 @@ export function Studio() {
             generating={generating}
             isAdmin={isAdmin}
             adminPreparingNextTask={adminPreparingNextTask}
+            adminActiveTaskCount={adminActiveTaskCount}
             onAdminPrepareNextTask={handleAdminPrepareNextTask}
+            onAdminCreateQueuedTask={handleAdminCreateQueuedTask}
           />
           <Canvas
             generating={generating}
