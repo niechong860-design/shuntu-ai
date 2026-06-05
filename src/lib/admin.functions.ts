@@ -510,9 +510,9 @@ export const getMyGenerationTasks = createServerFn({ method: "POST" })
       .from("generation_tasks")
       .select("id, request_id, user_id, status, model_id, prompt, created_at, updated_at, started_at, completed_at, result_image_url, error_code, error_message, deduction_status, deduction_id")
       .eq("user_id", userId)
-      .in("status", ["queued", "running", "succeeded", "failed"])
+      .in("status", ["queued", "running"])
       .order("created_at", { ascending: false })
-      .limit(30);
+      .limit(3);
     if (error) throw new Error(error.message);
 
     const items = (rows ?? []).map((r: any) => ({

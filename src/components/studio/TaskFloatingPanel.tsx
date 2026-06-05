@@ -54,7 +54,7 @@ export function TaskFloatingPanel({
           <div className="mb-3 flex items-center justify-between">
             <div>
               <div className="text-sm font-semibold text-foreground">管理员多任务内测</div>
-              <div className="mt-0.5 text-[11px] text-muted-foreground">任务会按队列自动生成，每次生成 1 个</div>
+              <div className="mt-0.5 text-[11px] text-muted-foreground">仅显示当前队列，最多 3 个任务</div>
             </div>
             <div className="flex items-center gap-2">
               {onClearTestTasks && (

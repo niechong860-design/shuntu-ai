@@ -72,7 +72,7 @@ export function Studio() {
       .then((res) => {
         if (cancelled) return;
         const recovered = (res?.items ?? [])
-          .filter((task: { status: string }) => task.status !== "canceled")
+          .filter((task: { status: string }) => task.status === "queued" || task.status === "running")
           .map((task: {
             id: string;
             prompt: string | null;
@@ -92,7 +92,8 @@ export function Studio() {
               resultImageUrl: task.resultImageUrl ?? null,
             };
           })
-          .reverse();
+          .reverse()
+          .slice(0, 3);
         setAdminTasks(recovered);
       })
       .catch((error) => {
@@ -126,11 +127,7 @@ export function Studio() {
             };
             if (task.status === "succeeded" && task.deductionStatus === "charged" && !!task.historyId) {
               const matchedTask = adminTasks.find((item) => item.id === task.taskId);
-              setAdminTasks((tasks) =>
-                tasks.map((item) =>
-                  item.id === task.taskId ? { ...item, status: "done" as const, resultImageUrl: task.resultImageUrl ?? item.resultImageUrl ?? null } : item,
-                ),
-              );
+              setAdminTasks((tasks) => tasks.filter((item) => item.id !== task.taskId));
               if (task.resultImageUrl) {
                 setGeneratedUrl(task.resultImageUrl);
                 setCurrentPrompt(matchedTask?.prompt ?? matchedTask?.title ?? "");
@@ -170,11 +167,13 @@ export function Studio() {
     setGenerating(false);
     setAdminPreparingNextTask(false);
     setAdminTasks((tasks) =>
-      tasks.map((task) =>
-        task.status === "generating"
-          ? { ...task, status: url ? "done" : "failed" }
-          : task,
-      ),
+      url
+        ? tasks.filter((task) => !task.id.startsWith("admin-preview-"))
+        : tasks.map((task) =>
+            task.id.startsWith("admin-preview-") && task.status === "generating"
+              ? { ...task, status: "failed" as const }
+              : task,
+          ),
     );
     setProgress(null);
     if (url) setGeneratedUrl(url);
@@ -291,9 +290,11 @@ export function Studio() {
           ? "failed"
           : "generating";
       setAdminTasks((tasks) =>
-        tasks.map((item) =>
-          item.id === task.taskId ? { ...item, status: nextStatus as FloatingTask["status"], resultImageUrl: task.resultImageUrl ?? item.resultImageUrl ?? null } : item,
-        ),
+        finalized
+          ? tasks.filter((item) => item.id !== task.taskId)
+          : tasks.map((item) =>
+              item.id === task.taskId ? { ...item, status: nextStatus as FloatingTask["status"], resultImageUrl: task.resultImageUrl ?? item.resultImageUrl ?? null } : item,
+            ),
       );
       if (finalized) {
         if (task.resultImageUrl) {
