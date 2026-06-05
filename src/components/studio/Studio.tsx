@@ -156,18 +156,15 @@ export function Studio() {
 
   useEffect(() => {
     const userId = session?.user?.id;
+    setGeneratedUrl(null);
+    setCurrentPrompt("");
+    setCurrentModel("");
     if (!userId) {
-      setGeneratedUrl(null);
-      setCurrentPrompt("");
-      setCurrentModel("");
       return;
     }
 
     const latestResult = loadSessionLatestResult(userId);
     if (!latestResult) {
-      setGeneratedUrl(null);
-      setCurrentPrompt("");
-      setCurrentModel("");
       return;
     }
 
@@ -508,6 +505,7 @@ export function Studio() {
             onAdminCreateQueuedTask={handleAdminCreateQueuedTask}
           />
           <Canvas
+            userId={session?.user?.id ?? null}
             generating={generating}
             heroIndex={0}
             generatedUrl={generatedUrl}
