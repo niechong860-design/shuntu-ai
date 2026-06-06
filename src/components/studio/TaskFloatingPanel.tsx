@@ -8,7 +8,10 @@ export type FloatingTask = {
   title: string;
   status: TaskStatus;
   prompt?: string;
+  modelKey?: string;
   modelName?: string;
+  inputParams?: Record<string, unknown>;
+  errorMessage?: string | null;
   resultImageUrl?: string | null;
 };
 
@@ -27,6 +30,9 @@ export function TaskFloatingPanel({
   startingTaskIds = [],
   onCancelTask,
   cancelingTaskIds = [],
+  onRetryTask,
+  retryingTaskIds = [],
+  onEditTask,
   currentTaskCount,
 }: {
   tasks: FloatingTask[];
@@ -35,6 +41,9 @@ export function TaskFloatingPanel({
   startingTaskIds?: string[];
   onCancelTask?: (taskId: string) => void | Promise<void>;
   cancelingTaskIds?: string[];
+  onRetryTask?: (taskId: string) => void | Promise<void>;
+  retryingTaskIds?: string[];
+  onEditTask?: (taskId: string) => void;
   currentTaskCount?: number;
 }) {
   const [open, setOpen] = useState(false);
@@ -56,7 +65,7 @@ export function TaskFloatingPanel({
         <div className="mt-2 w-80 rounded-xl border border-border/70 bg-card/95 p-3 shadow-2xl backdrop-blur-2xl">
           <div className="mb-3 flex items-center justify-between">
             <div>
-              <div className="text-sm font-semibold text-foreground">管理员多任务内测</div>
+              <div className="text-sm font-semibold text-foreground">任务队列</div>
               <div className="mt-0.5 text-[11px] text-muted-foreground">显示当前队列和最近完成，最多 3 个任务</div>
             </div>
             <div className="flex items-center gap-2">
@@ -77,7 +86,7 @@ export function TaskFloatingPanel({
 
           {tasks.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border/70 bg-white/[0.02] px-3 py-4 text-center text-xs text-muted-foreground">
-              暂无多任务队列
+              暂无任务队列
             </div>
           ) : (
             <div className="space-y-2">
@@ -86,22 +95,56 @@ export function TaskFloatingPanel({
                 const Icon = meta.icon;
                 const starting = startingTaskIds.includes(task.id);
                 const canceling = cancelingTaskIds.includes(task.id);
+                const retrying = retryingTaskIds.includes(task.id);
                 return (
-                  <div key={task.id} className="flex items-center gap-2 rounded-lg border border-border/60 bg-white/[0.03] px-3 py-2">
-                    <Icon className={`h-3.5 w-3.5 ${meta.className} ${task.status === "generating" ? "animate-spin" : ""}`} />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-xs font-medium text-foreground">{task.title}</div>
-                      <div className={`text-[10px] ${meta.className}`}>{meta.label}</div>
+                  <div key={task.id} className="rounded-lg border border-border/60 bg-white/[0.03] px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <Icon className={`h-3.5 w-3.5 ${meta.className} ${task.status === "generating" ? "animate-spin" : ""}`} />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs font-medium text-foreground">{task.title}</div>
+                        <div className={`text-[10px] ${meta.className}`}>{meta.label}</div>
+                      </div>
+                      {task.status === "waiting" && onCancelTask && (
+                        <button
+                          type="button"
+                          disabled={starting || canceling}
+                          onClick={() => onCancelTask(task.id)}
+                          className="shrink-0 rounded-md border border-border/70 bg-white/[0.03] px-2 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:border-destructive/50 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {canceling ? "取消中..." : "取消"}
+                        </button>
+                      )}
                     </div>
-                    {task.status === "waiting" && onCancelTask && (
-                      <button
-                        type="button"
-                        disabled={starting || canceling}
-                        onClick={() => onCancelTask(task.id)}
-                        className="shrink-0 rounded-md border border-border/70 bg-white/[0.03] px-2 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:border-destructive/50 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {canceling ? "取消中..." : "取消"}
-                      </button>
+
+                    {task.status === "failed" && (
+                      <div className="mt-2 space-y-2">
+                        {task.errorMessage && (
+                          <div className="line-clamp-2 rounded-md bg-destructive/10 px-2 py-1 text-[10px] leading-relaxed text-destructive">
+                            {task.errorMessage}
+                          </div>
+                        )}
+                        <div className="flex flex-wrap gap-1.5">
+                          {onRetryTask && (
+                            <button
+                              type="button"
+                              disabled={retrying}
+                              onClick={() => onRetryTask(task.id)}
+                              className="rounded-md border border-primary/35 bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary transition-colors hover:border-primary/60 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {retrying ? "提交中..." : "重新生成"}
+                            </button>
+                          )}
+                          {onEditTask && (
+                            <button
+                              type="button"
+                              onClick={() => onEditTask(task.id)}
+                              className="rounded-md border border-border/70 bg-white/[0.03] px-2 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
+                            >
+                              编辑后重试
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     )}
                   </div>
                 );

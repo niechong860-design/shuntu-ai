@@ -58,6 +58,7 @@ const MODEL_BADGES: Record<string, { label: string; icon: typeof Crown; classNam
   nanobanana2: { label: "推荐", icon: Star, className: "bg-primary/15 text-primary border-primary/30" },
 };
 type ActiveGen = {
+  userId: string;
   taskId: string;
   modelKey: string;
   modelName: string;
@@ -66,12 +67,15 @@ type ActiveGen = {
   initialPos: number;
   renderBudget: number;
 };
-function loadActive(): ActiveGen | null {
+function loadActive(userId: string): ActiveGen | null {
   try {
     const raw = localStorage.getItem(ACTIVE_GEN_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as ActiveGen;
-    if (!parsed?.taskId || !parsed?.startTs) return null;
+    if (!parsed?.taskId || !parsed?.startTs || parsed.userId !== userId) {
+      clearActive();
+      return null;
+    }
     // 超过 10 分钟视为过期
     if (Date.now() - parsed.startTs > 10 * 60 * 1000) return null;
     return parsed;
@@ -92,6 +96,12 @@ type Props = {
  onGenerateDone: (imageUrl: string | null) => void;
   onProgress?: (p: GenProgress | null) => void;
   generating: boolean;
+  retryPrefill?: {
+    nonce: number;
+    prompt: string;
+    modelKey?: string;
+    inputParams?: Record<string, unknown>;
+  } | null;
   isAdmin?: boolean;
   adminPreparingNextTask?: boolean;
   adminCurrentBatchTaskCount?: number;
@@ -110,6 +120,7 @@ export function ControlPanel({
   onGenerateDone,
   onProgress,
   generating,
+  retryPrefill,
   isAdmin = false,
   adminPreparingNextTask = false,
   adminCurrentBatchTaskCount = 0,
@@ -140,6 +151,7 @@ export function ControlPanel({
   const [steps, setSteps] = useState([32]);
   const [isCreatingQueuedTask, setIsCreatingQueuedTask] = useState(false);
   const isPreparingNextTask = isAdmin && adminPreparingNextTask;
+  const isQueueMode = isAdmin && !!onAdminCreateQueuedTask;
 
   useEffect(() => {
     if (!session) return;
@@ -168,6 +180,24 @@ export function ControlPanel({
     }
     toast.success("已载入案例参数，可直接生成");
   }, []);
+
+  useEffect(() => {
+    if (!retryPrefill) return;
+    setPrompt(retryPrefill.prompt);
+    if (retryPrefill.modelKey) setModelKey(retryPrefill.modelKey);
+    const inputParams = retryPrefill.inputParams ?? {};
+    const aspectRatio = typeof inputParams.aspectRatio === "string" ? inputParams.aspectRatio : null;
+    const nextSize = typeof inputParams.size === "string" ? inputParams.size : null;
+    const referenceImages = Array.isArray(inputParams.referenceImages)
+      ? inputParams.referenceImages.filter((url): url is string => typeof url === "string")
+      : [];
+    if (aspectRatio && RATIOS.some((item) => item.id === aspectRatio)) setRatio(aspectRatio);
+    if (nextSize === "1K" || nextSize === "2K" || nextSize === "4K") setSize(nextSize);
+    setRefs(referenceImages);
+    setStyleId("");
+    setInspirationMode(false);
+    toast.success("已回填失败任务参数，可编辑后重试");
+  }, [retryPrefill]);
 
 
   const activeModel = models.find((m) => m.model_key === modelKey);
@@ -351,8 +381,9 @@ export function ControlPanel({
 
   // 刷新后自动恢复在途的生成任务
   useEffect(() => {
-    if (!session) return;
-    const active = loadActive();
+    const userId = session?.user?.id;
+    if (!userId) return;
+    const active = loadActive(userId);
     if (!active) return;
     console.log("[resume] restoring in-flight task", active.taskId);
     onGenerateStart({ prompt: active.prompt, modelName: active.modelName });
@@ -392,7 +423,7 @@ export function ControlPanel({
   };
 
   const handleGenerate = async () => {
-    if (isPreparingNextTask) {
+    const createQueuedTask = async () => {
       if (isCreatingQueuedTask) return;
       if (adminCurrentBatchTaskCount >= 3) {
         toast.error("本轮任务已满 3 个，请开始新一轮后再提交。");
@@ -443,8 +474,13 @@ export function ControlPanel({
       } finally {
         setIsCreatingQueuedTask(false);
       }
+    };
+
+    if (isAdmin && onAdminCreateQueuedTask) {
+      await createQueuedTask();
       return;
     }
+
     if (generating || !activeModel) return;
     if (!prompt || !prompt.trim()) {
       toast.error("请输入图片描述后再生成。");
@@ -498,7 +534,10 @@ export function ControlPanel({
 
       if (!r.taskId) throw new Error("未获取到任务ID");
       const modelName = activeModel.name ?? activeModel.model_key;
+      const userId = session?.user?.id;
+      if (!userId) throw new Error("请先登录后再生成");
       saveActive({
+        userId,
         taskId: r.taskId,
         modelKey: activeModel.model_key,
         modelName,
@@ -837,7 +876,11 @@ export function ControlPanel({
         )}
         <button
           onClick={handleGenerate}
-          disabled={(generating && !isPreparingNextTask) || !activeModel || (isPreparingNextTask && (adminCurrentBatchTaskCount >= 3 || isCreatingQueuedTask))}
+          disabled={
+            isQueueMode
+              ? !activeModel || adminCurrentBatchTaskCount >= 3 || isCreatingQueuedTask
+              : (generating && !isPreparingNextTask) || !activeModel
+          }
           className="group relative flex w-full items-center justify-between gap-2 overflow-hidden rounded-2xl bg-gradient-aurora px-5 py-3.5 text-sm font-bold text-primary-foreground shadow-glow transition-all duration-150 ease-out hover:brightness-110 active:scale-[0.97] disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100"
         >
           <div className="flex items-center gap-2">
@@ -854,7 +897,13 @@ export function ControlPanel({
                     ? "加入队列中..."
                     : adminCurrentBatchTaskCount >= 3
                     ? "任务已满 3/3"
-                    : "加入等待队列"
+                    : "加入任务队列"
+                  : isQueueMode && isCreatingQueuedTask
+                  ? "加入队列中..."
+                  : isQueueMode && adminCurrentBatchTaskCount >= 3
+                  ? "任务已满 3/3"
+                  : isQueueMode && adminCurrentBatchTaskCount > 0
+                  ? "加入任务队列"
                   : "立即生成"}
               </>
             )}

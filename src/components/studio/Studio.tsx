@@ -1,18 +1,17 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { ControlPanel, type GenProgress } from "./ControlPanel";
 import { Canvas } from "./Canvas";
 import { TopBar } from "./TopBar";
 import { TaskFloatingPanel, type FloatingTask } from "./TaskFloatingPanel";
 import { useAuth } from "@/hooks/use-auth";
-import { cancelGenerationTask, cancelMyQueuedGenerationTasks, checkIsAdmin, createGenerationTask, getMyGenerationTasks, pollGenerationTask, startGenerationTask } from "@/lib/admin.functions";
+import { cancelGenerationTask, cancelMyQueuedGenerationTasks, createGenerationTask, getMyGenerationTasks, pollGenerationTask, startGenerationTask } from "@/lib/admin.functions";
 import { toast } from "sonner";
 
 const AnnouncementCenter = lazy(() => import("./AnnouncementCenter").then((m) => ({ default: m.AnnouncementCenter })));
 const AuthModal = lazy(() => import("@/components/auth/AuthModal").then((m) => ({ default: m.AuthModal })));
 
 const latestResultStorageKey = (userId: string) => `shuntu:studio:last-result:${userId}`;
-const panelTasksStorageKey = (userId: string) => `shuntu:studio:panel-tasks:${userId}`;
 
 type StoredLatestResult = {
   url: string;
@@ -20,15 +19,12 @@ type StoredLatestResult = {
   modelName: string;
 };
 
-function readSessionJson<T>(key: string): T | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.sessionStorage.getItem(key);
-    return raw ? JSON.parse(raw) as T : null;
-  } catch {
-    return null;
-  }
-}
+type RetryPrefill = {
+  nonce: number;
+  prompt: string;
+  modelKey?: string;
+  inputParams?: Record<string, unknown>;
+};
 
 function writeSessionJson(key: string, value: unknown) {
   if (typeof window === "undefined") return;
@@ -39,47 +35,58 @@ function writeSessionJson(key: string, value: unknown) {
   }
 }
 
-function removeSessionItem(key: string) {
-  if (typeof window === "undefined") return;
-  try {
-    window.sessionStorage.removeItem(key);
-  } catch {
-    // Ignore storage cleanup failures.
-  }
-}
-
-function loadSessionLatestResult(userId: string): StoredLatestResult | null {
-  const result = readSessionJson<StoredLatestResult>(latestResultStorageKey(userId));
-  return result?.url ? result : null;
-}
-
 function saveSessionLatestResult(userId: string, result: StoredLatestResult) {
   if (!result.url) return;
   writeSessionJson(latestResultStorageKey(userId), result);
 }
 
-function loadSessionPanelTasks(userId: string): FloatingTask[] {
-  const tasks = readSessionJson<FloatingTask[]>(panelTasksStorageKey(userId));
-  if (!Array.isArray(tasks)) return [];
-  return tasks
-    .filter((task) => task?.id && task.status === "done" && !!task.resultImageUrl)
-    .slice(0, 3);
+function getActiveQueueTask(tasks: FloatingTask[]) {
+  return (
+    tasks.find((task) => task.status === "generating") ??
+    tasks.find((task) => task.status === "submitting") ??
+    tasks.find((task) => task.status === "waiting") ??
+    null
+  );
 }
 
-function saveSessionPanelTasks(userId: string, tasks: FloatingTask[]) {
-  const doneTasks = tasks
-    .filter((task) => task.status === "done" && !!task.resultImageUrl)
-    .slice(0, 3);
-  if (doneTasks.length === 0) {
-    removeSessionItem(panelTasksStorageKey(userId));
-    return;
+function getQueueProgress(task: FloatingTask): GenProgress {
+  if (task.status === "generating") {
+    return {
+      stage: "rendering",
+      attempt: 0,
+      elapsedSec: 0,
+      taskId: task.id,
+      message: "AI 正在生成图片，请稍候...",
+      initialPos: 18,
+      renderBudget: 12,
+    };
   }
-  writeSessionJson(panelTasksStorageKey(userId), doneTasks);
+
+  if (task.status === "submitting") {
+    return {
+      stage: "submitting",
+      attempt: 0,
+      elapsedSec: 0,
+      taskId: task.id,
+      message: "正在提交任务到生成队列...",
+      initialPos: 18,
+      renderBudget: 12,
+    };
+  }
+
+  return {
+    stage: "queued",
+    attempt: 0,
+    elapsedSec: 0,
+    taskId: task.id,
+    message: "任务已加入队列，等待开始生成...",
+    initialPos: 18,
+    renderBudget: 12,
+  };
 }
 
 export function Studio() {
   const { session, profile, loading } = useAuth();
-  const checkAdmin = useServerFn(checkIsAdmin);
   const fetchGenerationTasks = useServerFn(getMyGenerationTasks);
   const createTask = useServerFn(createGenerationTask);
   const cancelTask = useServerFn(cancelGenerationTask);
@@ -94,13 +101,14 @@ export function Studio() {
   const [forceAuth, setForceAuth] = useState(false);
   const [announcementsOpen, setAnnouncementsOpen] = useState(false);
   const [progress, setProgress] = useState<GenProgress | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [adminTasks, setAdminTasks] = useState<FloatingTask[]>([]);
-  const [adminTasksHydrated, setAdminTasksHydrated] = useState(false);
   const [adminPrimaryTaskInBatch, setAdminPrimaryTaskInBatch] = useState(false);
   const [adminPreparingNextTask, setAdminPreparingNextTask] = useState(false);
   const [startingTaskIds, setStartingTaskIds] = useState<string[]>([]);
   const [cancelingTaskIds, setCancelingTaskIds] = useState<string[]>([]);
+  const [retryingTaskIds, setRetryingTaskIds] = useState<string[]>([]);
+  const [retryPrefill, setRetryPrefill] = useState<RetryPrefill | null>(null);
+  const pollingTaskIdsRef = useRef<Set<string>>(new Set());
   const adminActiveTaskCount = adminTasks.filter((task) =>
     task.status === "waiting" || task.status === "submitting" || task.status === "generating"
   ).length;
@@ -109,10 +117,14 @@ export function Studio() {
     ? adminTasks.length + (adminPrimaryTaskInBatch ? 1 : 0)
     : 0;
   const canPrepareNextAdminTask =
-    isAdmin &&
+    !!session &&
     !adminPreparingNextTask &&
     effectiveCurrentBatchTaskCount < 3 &&
     (generating || adminActiveTaskCount > 0);
+  const activeQueueTask = getActiveQueueTask(adminTasks);
+  const hasVisibleResult = !!generatedUrl;
+  const shouldShowQueueLoadingOnCanvas = !!activeQueueTask && !hasVisibleResult;
+  const queueProgress = activeQueueTask ? getQueueProgress(activeQueueTask) : null;
 
   const trimPanelTasks = (tasks: FloatingTask[]) => {
     const queueTasks = tasks.filter((task) =>
@@ -140,55 +152,33 @@ export function Studio() {
   };
 
   useEffect(() => {
-    let cancelled = false;
-    setIsAdmin(false);
-    if (!session) return;
-    checkAdmin({})
-      .then((res) => {
-        if (!cancelled) setIsAdmin(!!res?.isAdmin);
-      })
-      .catch(() => {
-        if (!cancelled) setIsAdmin(false);
-      });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user?.id]);
-
-  useEffect(() => {
-    const userId = session?.user?.id;
     setGeneratedUrl(null);
     setCurrentPrompt("");
     setCurrentModel("");
-    if (!userId) {
-      return;
-    }
-
-    const latestResult = loadSessionLatestResult(userId);
-    if (!latestResult) {
-      return;
-    }
-
-    setGeneratedUrl(latestResult.url);
-    setCurrentPrompt(latestResult.prompt);
-    setCurrentModel(latestResult.modelName);
+    setProgress(null);
+    setAdminTasks([]);
+    setAdminPrimaryTaskInBatch(false);
+    setAdminPreparingNextTask(false);
+    setStartingTaskIds([]);
+    setCancelingTaskIds([]);
+    setRetryingTaskIds([]);
+    setRetryPrefill(null);
+    pollingTaskIdsRef.current.clear();
   }, [session?.user?.id]);
 
   useEffect(() => {
-    const userId = session?.user?.id;
-    if (!userId || !isAdmin || !adminTasksHydrated) return;
-    saveSessionPanelTasks(userId, adminTasks);
-  }, [session?.user?.id, isAdmin, adminTasksHydrated, adminTasks]);
-
-  useEffect(() => {
     let cancelled = false;
-    if (!session || !isAdmin) {
+    if (!session) {
       setAdminTasks([]);
-      setAdminTasksHydrated(false);
       setAdminPrimaryTaskInBatch(false);
+      setAdminPreparingNextTask(false);
+      setStartingTaskIds([]);
+      setCancelingTaskIds([]);
+      setRetryingTaskIds([]);
+      setRetryPrefill(null);
+      pollingTaskIdsRef.current.clear();
       return;
     }
-    setAdminTasksHydrated(false);
-
     fetchGenerationTasks({})
       .then((res) => {
         if (cancelled) return;
@@ -198,9 +188,11 @@ export function Studio() {
             prompt: string | null;
             modelId: string;
             status: string;
+            inputParams?: Record<string, unknown> | null;
             resultImageUrl?: string | null;
             deductionStatus?: string | null;
             deductionId?: string | null;
+            errorMessage?: string | null;
           }) => {
             const promptTitle = task.prompt?.trim().slice(0, 20);
             return {
@@ -208,30 +200,37 @@ export function Studio() {
               title: promptTitle || task.modelId || "生成任务",
               status: mapRecoveredTaskStatus(task.status, task.deductionStatus, task.deductionId),
               prompt: task.prompt ?? "",
+              modelKey: task.modelId,
               modelName: task.modelId,
+              inputParams: task.inputParams ?? {},
               resultImageUrl: task.resultImageUrl ?? null,
+              errorMessage: task.errorMessage ?? null,
             };
           })
           .slice(0, 3);
-        const sessionPanelTasks = loadSessionPanelTasks(session.user.id);
-        const trimmed = trimPanelTasks([...recovered, ...sessionPanelTasks]);
+        const trimmed = trimPanelTasks(recovered);
         setAdminTasks(trimmed);
-        setAdminTasksHydrated(true);
+        const activeTask = getActiveQueueTask(trimmed);
+        if (activeTask) {
+          setGeneratedUrl(null);
+          setCurrentPrompt(activeTask.prompt ?? activeTask.title ?? "");
+          setCurrentModel(activeTask.modelName ?? "");
+          setProgress(getQueueProgress(activeTask));
+        }
       })
       .catch((error) => {
         console.warn("[generation-tasks] restore failed", error);
         if (!cancelled) {
-          setAdminTasks(trimPanelTasks(loadSessionPanelTasks(session.user.id)));
-          setAdminTasksHydrated(true);
+          setAdminTasks([]);
         }
       });
 
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user?.id, isAdmin]);
+  }, [session?.user?.id]);
 
   useEffect(() => {
-    if (!session || !isAdmin) return;
+    if (!session) return;
     const runningTaskIds = adminTasks
       .filter((task) => task.status === "generating")
       .map((task) => task.id);
@@ -240,6 +239,8 @@ export function Studio() {
     let cancelled = false;
     const timer = window.setInterval(() => {
       for (const taskId of runningTaskIds) {
+        if (pollingTaskIdsRef.current.has(taskId)) continue;
+        pollingTaskIdsRef.current.add(taskId);
         pollTask({ data: { taskId } })
           .then((taskResult) => {
             if (cancelled) return;
@@ -264,20 +265,28 @@ export function Studio() {
                 const modelName = matchedTask?.modelName ?? "";
                 setCurrentPrompt(prompt);
                 setCurrentModel(modelName);
+                setProgress(null);
                 rememberLatestResult(task.resultImageUrl, prompt, modelName);
               }
               return;
             }
             if (task.status === "failed" || task.status === "succeeded") {
+              setProgress(null);
               setAdminTasks((tasks) =>
                 tasks.map((item) =>
-                  item.id === task.taskId ? { ...item, status: "failed" as const } : item,
+                  item.id === task.taskId
+                    ? { ...item, status: "failed" as const, errorMessage: task.errorMessage ?? "任务生成失败" }
+                    : item,
                 ),
               );
+              setProgress(null);
             }
           })
           .catch((error) => {
             console.warn("[generation-tasks] poll failed", error);
+          })
+          .finally(() => {
+            pollingTaskIdsRef.current.delete(taskId);
           });
       }
     }, 4000);
@@ -287,13 +296,13 @@ export function Studio() {
       window.clearInterval(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user?.id, isAdmin, adminTasks]);
+  }, [session?.user?.id, adminTasks]);
 
   const handleGenerateStart = (info: { prompt: string; modelName: string }) => {
-    if (isAdmin && !adminBatchHasContext) {
+    if (session && !adminBatchHasContext) {
       setAdminTasks([]);
     }
-    setAdminPrimaryTaskInBatch(isAdmin);
+    setAdminPrimaryTaskInBatch(!!session);
     setGenerating(true);
     setAdminPreparingNextTask(false);
     setCurrentPrompt(info.prompt);
@@ -333,7 +342,7 @@ export function Studio() {
     modelName: string;
     inputParams: Record<string, unknown>;
   }) => {
-    if (!isAdmin) return false;
+    if (!session) return false;
     if (effectiveCurrentBatchTaskCount >= 3) {
       throw new Error("本轮任务已满 3 个，请开始新一轮后再提交。");
     }
@@ -347,24 +356,32 @@ export function Studio() {
     });
 
     const title = task.prompt.trim().slice(0, 20) || input.modelName || task.modelId;
+    const queuedTask: FloatingTask = {
+      id: task.taskId,
+      title,
+      status: "waiting",
+      prompt: input.prompt,
+      modelKey: input.modelKey,
+      modelName: input.modelName,
+      inputParams: input.inputParams,
+    };
     setAdminTasks((tasks) =>
       trimPanelTasks([
         ...(!adminBatchHasContext ? [] : tasks),
-        {
-          id: task.taskId,
-          title,
-          status: "waiting" as const,
-          prompt: input.prompt,
-          modelName: input.modelName,
-        },
+        queuedTask,
       ]),
     );
+    if (!generatedUrl) {
+      setCurrentPrompt(input.prompt);
+      setCurrentModel(input.modelName);
+      setProgress(getQueueProgress(queuedTask));
+    }
     setAdminPreparingNextTask(false);
     return true;
   };
 
   const handleAdminClearTestTasks = async () => {
-    if (!isAdmin) return;
+    if (!session) return;
     try {
       await cancelQueuedTasks({});
       setAdminTasks((tasks) =>
@@ -373,15 +390,16 @@ export function Studio() {
         ),
       );
       setAdminPreparingNextTask(false);
-      toast.success("内测任务已清空");
+      toast.success("未完成任务已清除");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "清空测试任务失败";
+      const message = error instanceof Error ? error.message : "清除未完成任务失败";
+      setProgress(null);
       toast.error(message);
     }
   };
 
   const handleAdminCancelTask = async (taskId: string) => {
-    if (!isAdmin) return;
+    if (!session) return;
     if (cancelingTaskIds.includes(taskId)) return;
     setCancelingTaskIds((ids) => ids.includes(taskId) ? ids : [...ids, taskId]);
     try {
@@ -398,15 +416,87 @@ export function Studio() {
     }
   };
 
+  const handleRetryFailedTask = async (taskId: string) => {
+    if (!session) return;
+    if (retryingTaskIds.includes(taskId)) return;
+    if (adminActiveTaskCount >= 3) {
+      toast.error("任务已满 3/3");
+      return;
+    }
+
+    const failedTask = adminTasks.find((task) => task.id === taskId && task.status === "failed");
+    if (!failedTask?.prompt || !failedTask.modelKey) {
+      toast.error("失败任务参数不完整，请编辑后重试。");
+      return;
+    }
+
+    setRetryingTaskIds((ids) => ids.includes(taskId) ? ids : [...ids, taskId]);
+    try {
+      const task = await createTask({
+        data: {
+          modelKey: failedTask.modelKey,
+          prompt: failedTask.prompt,
+          inputParams: failedTask.inputParams ?? {},
+        },
+      });
+      const title = task.prompt.trim().slice(0, 20) || failedTask.modelName || task.modelId;
+      const queuedTask: FloatingTask = {
+        id: task.taskId,
+        title,
+        status: "waiting",
+        prompt: task.prompt,
+        modelKey: failedTask.modelKey,
+        modelName: failedTask.modelName ?? task.modelId,
+        inputParams: failedTask.inputParams ?? {},
+      };
+      setAdminTasks((tasks) => trimPanelTasks([...tasks, queuedTask]));
+      if (!generatedUrl) {
+        setCurrentPrompt(queuedTask.prompt ?? queuedTask.title ?? "");
+        setCurrentModel(queuedTask.modelName ?? "");
+        setProgress(getQueueProgress(queuedTask));
+      }
+      toast.success("已重新加入任务队列");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "任务创建失败，请稍后重试。";
+      toast.error(message);
+    } finally {
+      setRetryingTaskIds((ids) => ids.filter((id) => id !== taskId));
+    }
+  };
+
+  const handleEditFailedTask = (taskId: string) => {
+    const failedTask = adminTasks.find((task) => task.id === taskId && task.status === "failed");
+    if (!failedTask?.prompt) {
+      toast.error("失败任务参数不完整，无法回填。");
+      return;
+    }
+    setAdminPreparingNextTask(false);
+    setRetryPrefill({
+      nonce: Date.now(),
+      prompt: failedTask.prompt,
+      modelKey: failedTask.modelKey,
+      inputParams: failedTask.inputParams ?? {},
+    });
+  };
+
   const handleAdminStartTask = async (taskId: string) => {
-    if (!isAdmin) return;
+    if (!session) return;
     if (startingTaskIds.includes(taskId)) return;
+    const taskForCanvas = adminTasks.find((item) => item.id === taskId);
     setStartingTaskIds((ids) => ids.includes(taskId) ? ids : [...ids, taskId]);
     setAdminTasks((tasks) =>
       tasks.map((item) =>
         item.id === taskId && item.status === "waiting" ? { ...item, status: "submitting" as const } : item,
       ),
     );
+    if (taskForCanvas) {
+      const submittingTask: FloatingTask = { ...taskForCanvas, status: "submitting" };
+      if (!generatedUrl) {
+        setCurrentPrompt(submittingTask.prompt ?? submittingTask.title ?? "");
+        setCurrentModel(submittingTask.modelName ?? "");
+        setProgress(getQueueProgress(submittingTask));
+      }
+    }
     try {
       const task = await startTask({ data: { taskId } }) as {
         taskId: string;
@@ -430,7 +520,14 @@ export function Studio() {
               item.id === task.taskId ? { ...item, status: "done" as const, resultImageUrl: task.resultImageUrl ?? item.resultImageUrl ?? null } : item,
             )
           : tasks.map((item) =>
-              item.id === task.taskId ? { ...item, status: nextStatus as FloatingTask["status"], resultImageUrl: task.resultImageUrl ?? item.resultImageUrl ?? null } : item,
+              item.id === task.taskId
+                ? {
+                    ...item,
+                    status: nextStatus as FloatingTask["status"],
+                    resultImageUrl: task.resultImageUrl ?? item.resultImageUrl ?? null,
+                    errorMessage: nextStatus === "failed" ? task.errorMessage ?? "任务生成失败" : item.errorMessage,
+                  }
+                : item,
             )),
       );
       if (finalized) {
@@ -440,10 +537,12 @@ export function Studio() {
           const modelName = matchedTask?.modelName ?? "";
           setCurrentPrompt(prompt);
           setCurrentModel(modelName);
+          setProgress(null);
           rememberLatestResult(task.resultImageUrl, prompt, modelName);
         }
         toast.success("任务已完成");
       } else if (task.status === "failed" || task.status === "succeeded") {
+        setProgress(null);
         toast.error(task.errorMessage ?? "任务生成失败");
       } else {
         toast.success("任务已进入生成中");
@@ -452,9 +551,10 @@ export function Studio() {
       const message = error instanceof Error ? error.message : "任务启动失败";
       setAdminTasks((tasks) =>
         tasks.map((item) =>
-          item.id === taskId ? { ...item, status: "failed" as const } : item,
+          item.id === taskId ? { ...item, status: "failed" as const, errorMessage: message } : item,
         ),
       );
+      setProgress(null);
       toast.error(message);
     } finally {
       setStartingTaskIds((ids) => ids.filter((id) => id !== taskId));
@@ -462,7 +562,7 @@ export function Studio() {
   };
 
   useEffect(() => {
-    if (!session || !isAdmin) return;
+    if (!session) return;
     if (generating) return;
     const runningOrStartingIds = new Set(startingTaskIds);
     for (const task of adminTasks) {
@@ -477,7 +577,7 @@ export function Studio() {
 
     void handleAdminStartTask(taskToStart.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user?.id, isAdmin, adminTasks, startingTaskIds, generating]);
+  }, [session?.user?.id, adminTasks, startingTaskIds, generating]);
 
   const showAuth = !loading && (!session || forceAuth);
   const credits = profile?.credits ?? 0;
@@ -497,7 +597,8 @@ export function Studio() {
             onGenerateDone={handleGenerateDone}
             onProgress={setProgress}
             generating={generating}
-            isAdmin={isAdmin}
+            retryPrefill={retryPrefill}
+            isAdmin={!!session}
             adminPreparingNextTask={adminPreparingNextTask}
             adminCurrentBatchTaskCount={effectiveCurrentBatchTaskCount}
             canPrepareNextAdminTask={canPrepareNextAdminTask}
@@ -506,12 +607,12 @@ export function Studio() {
           />
           <Canvas
             userId={session?.user?.id ?? null}
-            generating={generating}
+            generating={generating || shouldShowQueueLoadingOnCanvas}
             heroIndex={0}
             generatedUrl={generatedUrl}
             currentPrompt={currentPrompt}
             currentModel={currentModel}
-            progress={progress}
+            progress={shouldShowQueueLoadingOnCanvas ? queueProgress : progress}
             historyOpen={historyOpen}
             onHistoryOpenChange={setHistoryOpen}
             onSelectHistory={(url, prompt, model) => {
@@ -521,7 +622,7 @@ export function Studio() {
             }}
           />
         </div>
-        {isAdmin && (
+        {session && (
           <TaskFloatingPanel
             tasks={adminTasks}
             maxTasks={3}
@@ -529,6 +630,9 @@ export function Studio() {
             startingTaskIds={startingTaskIds}
             onCancelTask={handleAdminCancelTask}
             cancelingTaskIds={cancelingTaskIds}
+            onRetryTask={handleRetryFailedTask}
+            retryingTaskIds={retryingTaskIds}
+            onEditTask={handleEditFailedTask}
             currentTaskCount={effectiveCurrentBatchTaskCount}
           />
         )}
