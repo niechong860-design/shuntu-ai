@@ -33,6 +33,51 @@ function saveSessionLatestResult(userId: string, result: StoredLatestResult) {
   writeSessionJson(latestResultStorageKey(userId), result);
 }
 
+function getActiveQueueTask(tasks: FloatingTask[]) {
+  return (
+    tasks.find((task) => task.status === "generating") ??
+    tasks.find((task) => task.status === "submitting") ??
+    tasks.find((task) => task.status === "waiting") ??
+    null
+  );
+}
+
+function getQueueProgress(task: FloatingTask): GenProgress {
+  if (task.status === "generating") {
+    return {
+      stage: "rendering",
+      attempt: 0,
+      elapsedSec: 0,
+      taskId: task.id,
+      message: "AI 正在生成图片，请稍候...",
+      initialPos: 18,
+      renderBudget: 12,
+    };
+  }
+
+  if (task.status === "submitting") {
+    return {
+      stage: "submitting",
+      attempt: 0,
+      elapsedSec: 0,
+      taskId: task.id,
+      message: "正在提交任务到生成队列...",
+      initialPos: 18,
+      renderBudget: 12,
+    };
+  }
+
+  return {
+    stage: "queued",
+    attempt: 0,
+    elapsedSec: 0,
+    taskId: task.id,
+    message: "任务已加入队列，等待开始生成...",
+    initialPos: 18,
+    renderBudget: 12,
+  };
+}
+
 export function Studio() {
   const { session, profile, loading } = useAuth();
   const fetchGenerationTasks = useServerFn(getMyGenerationTasks);
@@ -67,6 +112,9 @@ export function Studio() {
     !adminPreparingNextTask &&
     effectiveCurrentBatchTaskCount < 3 &&
     (generating || adminActiveTaskCount > 0);
+  const activeQueueTask = getActiveQueueTask(adminTasks);
+  const queueCanvasLoading = !!activeQueueTask;
+  const queueProgress = activeQueueTask ? getQueueProgress(activeQueueTask) : null;
 
   const trimPanelTasks = (tasks: FloatingTask[]) => {
     const queueTasks = tasks.filter((task) =>
@@ -97,6 +145,13 @@ export function Studio() {
     setGeneratedUrl(null);
     setCurrentPrompt("");
     setCurrentModel("");
+    setProgress(null);
+    setAdminTasks([]);
+    setAdminPrimaryTaskInBatch(false);
+    setAdminPreparingNextTask(false);
+    setStartingTaskIds([]);
+    setCancelingTaskIds([]);
+    pollingTaskIdsRef.current.clear();
   }, [session?.user?.id]);
 
   useEffect(() => {
@@ -136,6 +191,13 @@ export function Studio() {
           .slice(0, 3);
         const trimmed = trimPanelTasks(recovered);
         setAdminTasks(trimmed);
+        const activeTask = getActiveQueueTask(trimmed);
+        if (activeTask) {
+          setGeneratedUrl(null);
+          setCurrentPrompt(activeTask.prompt ?? activeTask.title ?? "");
+          setCurrentModel(activeTask.modelName ?? "");
+          setProgress(getQueueProgress(activeTask));
+        }
       })
       .catch((error) => {
         console.warn("[generation-tasks] restore failed", error);
@@ -184,16 +246,19 @@ export function Studio() {
                 const modelName = matchedTask?.modelName ?? "";
                 setCurrentPrompt(prompt);
                 setCurrentModel(modelName);
+                setProgress(null);
                 rememberLatestResult(task.resultImageUrl, prompt, modelName);
               }
               return;
             }
             if (task.status === "failed" || task.status === "succeeded") {
+              setProgress(null);
               setAdminTasks((tasks) =>
                 tasks.map((item) =>
                   item.id === task.taskId ? { ...item, status: "failed" as const } : item,
                 ),
               );
+              setProgress(null);
             }
           })
           .catch((error) => {
@@ -270,18 +335,23 @@ export function Studio() {
     });
 
     const title = task.prompt.trim().slice(0, 20) || input.modelName || task.modelId;
+    const queuedTask: FloatingTask = {
+      id: task.taskId,
+      title,
+      status: "waiting",
+      prompt: input.prompt,
+      modelName: input.modelName,
+    };
     setAdminTasks((tasks) =>
       trimPanelTasks([
         ...(!adminBatchHasContext ? [] : tasks),
-        {
-          id: task.taskId,
-          title,
-          status: "waiting" as const,
-          prompt: input.prompt,
-          modelName: input.modelName,
-        },
+        queuedTask,
       ]),
     );
+    setGeneratedUrl(null);
+    setCurrentPrompt(input.prompt);
+    setCurrentModel(input.modelName);
+    setProgress(getQueueProgress(queuedTask));
     setAdminPreparingNextTask(false);
     return true;
   };
@@ -299,6 +369,7 @@ export function Studio() {
       toast.success("未完成任务已清除");
     } catch (error) {
       const message = error instanceof Error ? error.message : "清除未完成任务失败";
+      setProgress(null);
       toast.error(message);
     }
   };
@@ -324,12 +395,20 @@ export function Studio() {
   const handleAdminStartTask = async (taskId: string) => {
     if (!session) return;
     if (startingTaskIds.includes(taskId)) return;
+    const taskForCanvas = adminTasks.find((item) => item.id === taskId);
     setStartingTaskIds((ids) => ids.includes(taskId) ? ids : [...ids, taskId]);
     setAdminTasks((tasks) =>
       tasks.map((item) =>
         item.id === taskId && item.status === "waiting" ? { ...item, status: "submitting" as const } : item,
       ),
     );
+    if (taskForCanvas) {
+      const submittingTask: FloatingTask = { ...taskForCanvas, status: "submitting" };
+      setGeneratedUrl(null);
+      setCurrentPrompt(submittingTask.prompt ?? submittingTask.title ?? "");
+      setCurrentModel(submittingTask.modelName ?? "");
+      setProgress(getQueueProgress(submittingTask));
+    }
     try {
       const task = await startTask({ data: { taskId } }) as {
         taskId: string;
@@ -363,10 +442,12 @@ export function Studio() {
           const modelName = matchedTask?.modelName ?? "";
           setCurrentPrompt(prompt);
           setCurrentModel(modelName);
+          setProgress(null);
           rememberLatestResult(task.resultImageUrl, prompt, modelName);
         }
         toast.success("任务已完成");
       } else if (task.status === "failed" || task.status === "succeeded") {
+        setProgress(null);
         toast.error(task.errorMessage ?? "任务生成失败");
       } else {
         toast.success("任务已进入生成中");
@@ -378,6 +459,7 @@ export function Studio() {
           item.id === taskId ? { ...item, status: "failed" as const } : item,
         ),
       );
+      setProgress(null);
       toast.error(message);
     } finally {
       setStartingTaskIds((ids) => ids.filter((id) => id !== taskId));
@@ -429,12 +511,12 @@ export function Studio() {
           />
           <Canvas
             userId={session?.user?.id ?? null}
-            generating={generating}
+            generating={generating || queueCanvasLoading}
             heroIndex={0}
             generatedUrl={generatedUrl}
             currentPrompt={currentPrompt}
             currentModel={currentModel}
-            progress={progress}
+            progress={queueCanvasLoading ? queueProgress : progress}
             historyOpen={historyOpen}
             onHistoryOpenChange={setHistoryOpen}
             onSelectHistory={(url, prompt, model) => {
