@@ -8,6 +8,7 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   adminListUsers, adminResetPassword, adminAdjustCredits,
   adminBanUser, adminDeleteUser,
+  adminGetUserCreditUsageLogs,
   adminListCoupons, adminGenerateCoupons, adminDeleteCoupon,
 } from "@/lib/admin.functions";
 import { toast } from "sonner";
@@ -23,6 +24,19 @@ import { AccessPasswordPanel } from "./AccessPasswordPanel";
 import { StyleTemplatesPanel } from "./StyleTemplatesPanel";
 
 type UserRow = { id: string; email: string | null; display_name: string | null; credits: number; created_at: string; total_spent: number; is_banned?: boolean };
+type CreditUsageLog = {
+  id: string;
+  user_id: string;
+  amount: number | string;
+  source: string;
+  model_key: string | null;
+  model_name: string | null;
+  generation_history_id: string | null;
+  generation_task_id: string | null;
+  idempotency_key: string;
+  created_at: string;
+  metadata?: unknown;
+};
 type Coupon = {
   id: string; code: string; amount: number; is_used: boolean;
   used_by_email: string | null; used_at: string | null; created_at: string;
@@ -85,6 +99,7 @@ export function AdminDashboard({ open, onOpenChange, isFounder = false }: { open
 
 function UsersPanel() {
   const list = useServerFn(adminListUsers);
+  const usageList = useServerFn(adminGetUserCreditUsageLogs);
   const resetPw = useServerFn(adminResetPassword);
   const adjust = useServerFn(adminAdjustCredits);
   const banFn = useServerFn(adminBanUser);
@@ -93,7 +108,12 @@ function UsersPanel() {
   const [loading, setLoading] = useState(false);
   const [pwOpen, setPwOpen] = useState<UserRow | null>(null);
   const [creditOpen, setCreditOpen] = useState<UserRow | null>(null);
+  const [usageOpen, setUsageOpen] = useState<UserRow | null>(null);
+  const [usageLogs, setUsageLogs] = useState<CreditUsageLog[]>([]);
+  const [usageTotal, setUsageTotal] = useState(0);
+  const [usageLoading, setUsageLoading] = useState(false);
   const [search, setSearch] = useState("");
+  const usagePageSize = 50;
 
   const load = async () => {
     setLoading(true);
@@ -101,6 +121,29 @@ function UsersPanel() {
     finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
+
+  const loadUsageLogs = async (user: UserRow, offset = 0, append = false) => {
+    setUsageLoading(true);
+    try {
+      const res = await usageList({ data: { userId: user.id, limit: usagePageSize, offset } }) as {
+        items: CreditUsageLog[];
+        total: number;
+      };
+      setUsageLogs((prev) => append ? [...prev, ...(res.items ?? [])] : (res.items ?? []));
+      setUsageTotal(Number(res.total ?? 0));
+    } catch (e: any) {
+      toast.error(e.message ?? "消费明细加载失败");
+    } finally {
+      setUsageLoading(false);
+    }
+  };
+
+  const openUsageLogs = (user: UserRow) => {
+    setUsageOpen(user);
+    setUsageLogs([]);
+    setUsageTotal(0);
+    void loadUsageLogs(user);
+  };
 
   const q = search.trim().toLowerCase();
   const filtered = q
@@ -157,6 +200,9 @@ function UsersPanel() {
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => setCreditOpen(u)}>
                       <Coins className="mr-1 h-3.5 w-3.5" />控制余额
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => openUsageLogs(u)}>
+                      消耗明细
                     </Button>
                     <Popover>
                       <PopoverTrigger asChild>
@@ -261,6 +307,91 @@ function UsersPanel() {
               } catch (e: any) { toast.error(e.message); }
             }}
           />
+        </DialogContent>
+      </Dialog>
+
+      {/* Credit usage details */}
+      <Dialog
+        open={!!usageOpen}
+        onOpenChange={(v) => {
+          if (!v) {
+            setUsageOpen(null);
+            setUsageLogs([]);
+            setUsageTotal(0);
+          }
+        }}
+      >
+        <DialogContent className="max-w-6xl border-border/70 bg-card/90 backdrop-blur-2xl">
+          <DialogHeader>
+            <DialogTitle>消耗明细 - {usageOpen?.email ?? usageOpen?.id}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>共 {usageTotal} 条记录</span>
+              {usageLoading && <span>加载中...</span>}
+            </div>
+            <div className="max-h-[55vh] overflow-auto rounded-lg border border-border/60">
+              <div className="min-w-[1180px]">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>时间</TableHead>
+                      <TableHead className="text-right">点数</TableHead>
+                      <TableHead>来源</TableHead>
+                      <TableHead>模型</TableHead>
+                      <TableHead>model_key</TableHead>
+                      <TableHead>history_id</TableHead>
+                      <TableHead>task_id</TableHead>
+                      <TableHead>幂等键</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {usageLogs.map((log) => (
+                      <TableRow key={log.id}>
+                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                          {new Date(log.created_at).toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right font-mono tabular-nums text-primary">
+                          {Number(log.amount ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{log.source}</TableCell>
+                        <TableCell className="max-w-[160px] truncate" title={log.model_name ?? ""}>
+                          {log.model_name ?? "—"}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{log.model_key ?? "—"}</TableCell>
+                        <TableCell className="max-w-[150px] truncate font-mono text-[11px]" title={log.generation_history_id ?? ""}>
+                          {log.generation_history_id ?? "—"}
+                        </TableCell>
+                        <TableCell className="max-w-[150px] truncate font-mono text-[11px]" title={log.generation_task_id ?? ""}>
+                          {log.generation_task_id ?? "—"}
+                        </TableCell>
+                        <TableCell className="max-w-[220px] truncate font-mono text-[11px]" title={log.idempotency_key}>
+                          {log.idempotency_key}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {!usageLoading && usageLogs.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={8} className="py-8 text-center text-xs text-muted-foreground">
+                          暂无消费记录
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!usageOpen || usageLoading || usageLogs.length >= usageTotal}
+                onClick={() => usageOpen && loadUsageLogs(usageOpen, usageLogs.length, true)}
+              >
+                {usageLoading ? "加载中..." : "加载更多"}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

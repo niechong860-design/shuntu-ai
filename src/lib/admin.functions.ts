@@ -87,6 +87,38 @@ export const adminListUsers = createServerFn({ method: "POST" })
     return merged;
   });
 
+export const adminGetUserCreditUsageLogs = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      userId: z.string().uuid(),
+      limit: z.number().int().min(1).max(100).optional(),
+      offset: z.number().int().min(0).optional(),
+    }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    await assertAdmin(context.userId);
+    const limit = Math.min(100, Math.max(1, Number(data.limit ?? 50)));
+    const offset = Math.max(0, Number(data.offset ?? 0));
+    const { data: rows, error, count } = await (supabaseAdmin as any)
+      .from("credit_usage_logs")
+      .select(
+        "id, user_id, amount, source, model_key, model_name, generation_history_id, generation_task_id, idempotency_key, created_at, metadata",
+        { count: "exact" },
+      )
+      .eq("user_id", data.userId)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1);
+    if (error) throw new Error(error.message);
+
+    return {
+      items: rows ?? [],
+      total: count ?? 0,
+      limit,
+      offset,
+    };
+  });
+
 export const adminBanUser = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
