@@ -144,6 +144,7 @@ export function ControlPanel({
   const [steps, setSteps] = useState([32]);
   const [isCreatingQueuedTask, setIsCreatingQueuedTask] = useState(false);
   const isPreparingNextTask = isAdmin && adminPreparingNextTask;
+  const isQueueMode = isAdmin && !!onAdminCreateQueuedTask;
 
   useEffect(() => {
     if (!session) return;
@@ -397,7 +398,7 @@ export function ControlPanel({
   };
 
   const handleGenerate = async () => {
-    if (isPreparingNextTask) {
+    const createQueuedTask = async () => {
       if (isCreatingQueuedTask) return;
       if (adminCurrentBatchTaskCount >= 3) {
         toast.error("本轮任务已满 3 个，请开始新一轮后再提交。");
@@ -448,8 +449,13 @@ export function ControlPanel({
       } finally {
         setIsCreatingQueuedTask(false);
       }
+    };
+
+    if (isAdmin && onAdminCreateQueuedTask) {
+      await createQueuedTask();
       return;
     }
+
     if (generating || !activeModel) return;
     if (!prompt || !prompt.trim()) {
       toast.error("请输入图片描述后再生成。");
@@ -845,7 +851,11 @@ export function ControlPanel({
         )}
         <button
           onClick={handleGenerate}
-          disabled={(generating && !isPreparingNextTask) || !activeModel || (isPreparingNextTask && (adminCurrentBatchTaskCount >= 3 || isCreatingQueuedTask))}
+          disabled={
+            isQueueMode
+              ? !activeModel || adminCurrentBatchTaskCount >= 3 || isCreatingQueuedTask
+              : (generating && !isPreparingNextTask) || !activeModel
+          }
           className="group relative flex w-full items-center justify-between gap-2 overflow-hidden rounded-2xl bg-gradient-aurora px-5 py-3.5 text-sm font-bold text-primary-foreground shadow-glow transition-all duration-150 ease-out hover:brightness-110 active:scale-[0.97] disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100"
         >
           <div className="flex items-center gap-2">
@@ -863,6 +873,12 @@ export function ControlPanel({
                     : adminCurrentBatchTaskCount >= 3
                     ? "任务已满 3/3"
                     : "加入任务队列"
+                  : isQueueMode && isCreatingQueuedTask
+                  ? "加入队列中..."
+                  : isQueueMode && adminCurrentBatchTaskCount >= 3
+                  ? "任务已满 3/3"
+                  : isQueueMode && adminCurrentBatchTaskCount > 0
+                  ? "加入任务队列"
                   : "立即生成"}
               </>
             )}
