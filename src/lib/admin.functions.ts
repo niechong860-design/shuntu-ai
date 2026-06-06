@@ -528,18 +528,6 @@ export const getMyGenerationTasks = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { userId } = context;
-    const { data: roles, error: roleError } = await supabaseAdmin
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", userId)
-      .in("role", ["admin", "founder"]);
-    if (roleError) throw new Error(roleError.message);
-
-    const isAdmin = !!(roles && roles.length > 0);
-    if (!isAdmin) {
-      return { items: [], isAdmin: false };
-    }
-
     const { data: activeRows, error: activeError } = await (supabaseAdmin as any)
       .from("generation_tasks")
       .select("id, request_id, user_id, status, model_id, prompt, created_at, updated_at, started_at, completed_at, result_image_url, error_code, error_message, deduction_status, deduction_id")
@@ -569,7 +557,7 @@ export const getMyGenerationTasks = createServerFn({ method: "POST" })
       deductionId: (r.deduction_id ?? null) as string | null,
     }));
 
-    return { items, isAdmin: true };
+    return { items, isAdmin: false };
   });
 
 export const createGenerationTask = createServerFn({ method: "POST" })
@@ -583,7 +571,6 @@ export const createGenerationTask = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const { userId } = context;
-    await assertAdmin(userId);
 
     const { count: activeCount, error: countError } = await (supabaseAdmin as any)
       .from("generation_tasks")
@@ -610,13 +597,25 @@ export const createGenerationTask = createServerFn({ method: "POST" })
     if ((model as any).is_enabled === false) throw new Error("模型不存在或已不可用。");
 
     const creditsRequired = Math.max(0, Number((model as any).cost ?? 0));
+    const { data: activeTasks, error: activeTasksError } = await (supabaseAdmin as any)
+      .from("generation_tasks")
+      .select("credits_required")
+      .eq("user_id", userId)
+      .eq("deduction_status", "not_charged")
+      .in("status", ["queued", "running"]);
+    if (activeTasksError) throw new Error(activeTasksError.message);
+    const reservedCredits = (activeTasks ?? []).reduce(
+      (sum: number, task: any) => sum + Number(task.credits_required ?? 0),
+      0,
+    );
     const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
       .select("credits")
       .eq("id", userId)
       .maybeSingle();
     if (profileError) throw new Error(profileError.message);
-    if (Number((profile as any)?.credits ?? 0) < creditsRequired) {
+    const availableCredits = Number((profile as any)?.credits ?? 0) - reservedCredits;
+    if (availableCredits < creditsRequired) {
       throw new Error("余额不足，无法创建多任务。");
     }
 
@@ -629,7 +628,7 @@ export const createGenerationTask = createServerFn({ method: "POST" })
         status: "queued",
         model_id: data.modelKey,
         prompt: data.prompt,
-        input_params: { ...(data.inputParams ?? {}), adminPreviewOnly: true },
+        input_params: { ...(data.inputParams ?? {}), queueVersion: "userQueue" },
         credits_required: creditsRequired,
         deduction_status: "not_charged",
       })
@@ -656,7 +655,6 @@ export const cancelMyQueuedGenerationTasks = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { userId } = context;
-    await assertAdmin(userId);
 
     const now = new Date().toISOString();
     const { data, error } = await (supabaseAdmin as any)
@@ -669,7 +667,6 @@ export const cancelMyQueuedGenerationTasks = createServerFn({ method: "POST" })
       .eq("user_id", userId)
       .eq("deduction_status", "not_charged")
       .in("status", ["queued", "running"])
-      .contains("input_params", { adminPreviewOnly: true })
       .select("id");
     if (error) throw new Error(error.message);
 
@@ -683,7 +680,6 @@ export const cancelGenerationTask = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const { userId } = context;
-    await assertAdmin(userId);
 
     const now = new Date().toISOString();
     const { data: task, error } = await (supabaseAdmin as any)
@@ -697,11 +693,10 @@ export const cancelGenerationTask = createServerFn({ method: "POST" })
       .eq("user_id", userId)
       .eq("status", "queued")
       .eq("deduction_status", "not_charged")
-      .contains("input_params", { adminPreviewOnly: true })
       .select("id, status")
       .maybeSingle();
     if (error) throw new Error(error.message);
-    if (!task) throw new Error("任务已开始、已完成、已取消，或不属于当前内测任务。");
+    if (!task) throw new Error("任务已开始、已完成、已取消，或不属于当前任务。");
 
     return {
       taskId: task.id as string,
@@ -717,12 +712,12 @@ type AdminPreviewFinalizeResult = {
   finalizeMessage: string | null;
 };
 
-async function finalizeAdminPreviewGenerationTaskOnce(
+async function finalizeUserGenerationTaskOnce(
   supabase: any,
   taskId: string,
   imageUrl: string,
 ): Promise<AdminPreviewFinalizeResult> {
-  const { data, error } = await supabase.rpc("finalize_generation_task_once", {
+  const { data, error } = await supabase.rpc("finalize_user_generation_task_once", {
     p_task_id: taskId,
     p_image_url: imageUrl,
   });
@@ -752,7 +747,17 @@ export const startGenerationTask = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const { userId, supabase } = context;
-    await assertAdmin(userId);
+
+    const { count: runningCount, error: runningCountError } = await (supabaseAdmin as any)
+      .from("generation_tasks")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("status", "running")
+      .eq("deduction_status", "not_charged");
+    if (runningCountError) throw new Error(runningCountError.message);
+    if ((runningCount ?? 0) > 0) {
+      throw new Error("已有任务正在生成，请等待当前任务完成。");
+    }
 
     const now = new Date().toISOString();
     const { data: task, error } = await (supabaseAdmin as any)
@@ -766,21 +771,42 @@ export const startGenerationTask = createServerFn({ method: "POST" })
       .eq("user_id", userId)
       .eq("status", "queued")
       .eq("deduction_status", "not_charged")
-      .contains("input_params", { adminPreviewOnly: true })
       .select("id, request_id, status, model_id, prompt, input_params, started_at")
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!task) {
-      throw new Error("任务已被处理、取消，或不属于当前内测任务。");
+      throw new Error("任务已被处理、取消，或不属于当前任务。");
     }
 
     try {
+      const { count: runningCountAfterClaim, error: runningAfterClaimError } = await (supabaseAdmin as any)
+        .from("generation_tasks")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("status", "running")
+        .eq("deduction_status", "not_charged");
+      if (runningAfterClaimError) throw new Error(runningAfterClaimError.message);
+      if ((runningCountAfterClaim ?? 0) > 1) {
+        await (supabaseAdmin as any)
+          .from("generation_tasks")
+          .update({
+            status: "queued",
+            started_at: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", task.id)
+          .eq("user_id", userId)
+          .eq("status", "running")
+          .eq("deduction_status", "not_charged");
+        throw new Error("已有任务正在生成，请等待当前任务完成。");
+      }
+
       const result = await submitAdminPreviewGenerationTask(task);
       const finishedAt = new Date().toISOString();
 
       if (result.status === "succeeded") {
         try {
-          const finalizeResult = await finalizeAdminPreviewGenerationTaskOnce(supabase, task.id as string, result.resultImageUrl);
+          const finalizeResult = await finalizeUserGenerationTaskOnce(supabase, task.id as string, result.resultImageUrl);
           const { error: payloadUpdateError } = await (supabaseAdmin as any)
             .from("generation_tasks")
             .update({
@@ -788,8 +814,7 @@ export const startGenerationTask = createServerFn({ method: "POST" })
               updated_at: finishedAt,
             })
             .eq("id", task.id)
-            .eq("user_id", userId)
-            .contains("input_params", { adminPreviewOnly: true });
+            .eq("user_id", userId);
           if (payloadUpdateError) {
             console.warn("[startGenerationTask] result_payload update failed after finalize", payloadUpdateError);
           }
@@ -817,8 +842,7 @@ export const startGenerationTask = createServerFn({ method: "POST" })
             .eq("id", task.id)
             .eq("user_id", userId)
             .eq("status", "running")
-            .eq("deduction_status", "not_charged")
-            .contains("input_params", { adminPreviewOnly: true });
+            .eq("deduction_status", "not_charged");
           return {
             taskId: task.id as string,
             status: "failed" as const,
@@ -840,8 +864,7 @@ export const startGenerationTask = createServerFn({ method: "POST" })
         .eq("id", task.id)
         .eq("user_id", userId)
         .eq("status", "running")
-        .eq("deduction_status", "not_charged")
-        .contains("input_params", { adminPreviewOnly: true });
+        .eq("deduction_status", "not_charged");
       if (updateError) throw new Error(updateError.message);
       return {
         taskId: task.id as string,
@@ -865,8 +888,7 @@ export const startGenerationTask = createServerFn({ method: "POST" })
         .eq("id", task.id)
         .eq("user_id", userId)
         .eq("status", "running")
-        .eq("deduction_status", "not_charged")
-        .contains("input_params", { adminPreviewOnly: true });
+        .eq("deduction_status", "not_charged");
       return {
         taskId: task.id as string,
         status: "failed" as const,
@@ -885,17 +907,15 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const { userId, supabase } = context;
-    await assertAdmin(userId);
 
     const { data: task, error } = await (supabaseAdmin as any)
       .from("generation_tasks")
       .select("id, status, result_payload, result_image_url, error_message, deduction_status, deduction_id")
       .eq("id", data.taskId)
       .eq("user_id", userId)
-      .contains("input_params", { adminPreviewOnly: true })
       .maybeSingle();
     if (error) throw new Error(error.message);
-    if (!task) throw new Error("任务不存在，或不属于当前内测任务。");
+    if (!task) throw new Error("任务不存在，或不属于当前任务。");
     if (task.status !== "running") {
       const finalized = task.status === "succeeded" && task.deduction_status === "charged" && !!task.deduction_id;
       return {
@@ -925,7 +945,7 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
     if (pollResult.status === "succeeded") {
       const resultPayload = { ...(task.result_payload ?? {}), ...pollResult.resultPayload, providerStatus: "succeeded" };
       try {
-        const finalizeResult = await finalizeAdminPreviewGenerationTaskOnce(supabase, task.id as string, pollResult.resultImageUrl);
+        const finalizeResult = await finalizeUserGenerationTaskOnce(supabase, task.id as string, pollResult.resultImageUrl);
         const { error: payloadUpdateError } = await (supabaseAdmin as any)
           .from("generation_tasks")
           .update({
@@ -933,8 +953,7 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
             updated_at: now,
           })
           .eq("id", task.id)
-          .eq("user_id", userId)
-          .contains("input_params", { adminPreviewOnly: true });
+          .eq("user_id", userId);
         if (payloadUpdateError) {
           console.warn("[pollGenerationTask] result_payload update failed after finalize", payloadUpdateError);
         }
@@ -960,8 +979,7 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
           .eq("id", task.id)
           .eq("user_id", userId)
           .eq("status", "running")
-          .eq("deduction_status", "not_charged")
-          .contains("input_params", { adminPreviewOnly: true });
+          .eq("deduction_status", "not_charged");
         return {
           taskId: task.id as string,
           status: "failed" as const,
@@ -986,8 +1004,7 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
         .eq("id", task.id)
         .eq("user_id", userId)
         .eq("status", "running")
-        .eq("deduction_status", "not_charged")
-        .contains("input_params", { adminPreviewOnly: true });
+        .eq("deduction_status", "not_charged");
       if (updateError) throw new Error(updateError.message);
       return {
         taskId: task.id as string,

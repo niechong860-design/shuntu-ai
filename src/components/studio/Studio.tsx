@@ -1,34 +1,23 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { ControlPanel, type GenProgress } from "./ControlPanel";
 import { Canvas } from "./Canvas";
 import { TopBar } from "./TopBar";
 import { TaskFloatingPanel, type FloatingTask } from "./TaskFloatingPanel";
 import { useAuth } from "@/hooks/use-auth";
-import { cancelGenerationTask, cancelMyQueuedGenerationTasks, checkIsAdmin, createGenerationTask, getMyGenerationTasks, pollGenerationTask, startGenerationTask } from "@/lib/admin.functions";
+import { cancelGenerationTask, cancelMyQueuedGenerationTasks, createGenerationTask, getMyGenerationTasks, pollGenerationTask, startGenerationTask } from "@/lib/admin.functions";
 import { toast } from "sonner";
 
 const AnnouncementCenter = lazy(() => import("./AnnouncementCenter").then((m) => ({ default: m.AnnouncementCenter })));
 const AuthModal = lazy(() => import("@/components/auth/AuthModal").then((m) => ({ default: m.AuthModal })));
 
 const latestResultStorageKey = (userId: string) => `shuntu:studio:last-result:${userId}`;
-const panelTasksStorageKey = (userId: string) => `shuntu:studio:panel-tasks:${userId}`;
 
 type StoredLatestResult = {
   url: string;
   prompt: string;
   modelName: string;
 };
-
-function readSessionJson<T>(key: string): T | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.sessionStorage.getItem(key);
-    return raw ? JSON.parse(raw) as T : null;
-  } catch {
-    return null;
-  }
-}
 
 function writeSessionJson(key: string, value: unknown) {
   if (typeof window === "undefined") return;
@@ -39,47 +28,13 @@ function writeSessionJson(key: string, value: unknown) {
   }
 }
 
-function removeSessionItem(key: string) {
-  if (typeof window === "undefined") return;
-  try {
-    window.sessionStorage.removeItem(key);
-  } catch {
-    // Ignore storage cleanup failures.
-  }
-}
-
-function loadSessionLatestResult(userId: string): StoredLatestResult | null {
-  const result = readSessionJson<StoredLatestResult>(latestResultStorageKey(userId));
-  return result?.url ? result : null;
-}
-
 function saveSessionLatestResult(userId: string, result: StoredLatestResult) {
   if (!result.url) return;
   writeSessionJson(latestResultStorageKey(userId), result);
 }
 
-function loadSessionPanelTasks(userId: string): FloatingTask[] {
-  const tasks = readSessionJson<FloatingTask[]>(panelTasksStorageKey(userId));
-  if (!Array.isArray(tasks)) return [];
-  return tasks
-    .filter((task) => task?.id && task.status === "done" && !!task.resultImageUrl)
-    .slice(0, 3);
-}
-
-function saveSessionPanelTasks(userId: string, tasks: FloatingTask[]) {
-  const doneTasks = tasks
-    .filter((task) => task.status === "done" && !!task.resultImageUrl)
-    .slice(0, 3);
-  if (doneTasks.length === 0) {
-    removeSessionItem(panelTasksStorageKey(userId));
-    return;
-  }
-  writeSessionJson(panelTasksStorageKey(userId), doneTasks);
-}
-
 export function Studio() {
   const { session, profile, loading } = useAuth();
-  const checkAdmin = useServerFn(checkIsAdmin);
   const fetchGenerationTasks = useServerFn(getMyGenerationTasks);
   const createTask = useServerFn(createGenerationTask);
   const cancelTask = useServerFn(cancelGenerationTask);
@@ -94,13 +49,12 @@ export function Studio() {
   const [forceAuth, setForceAuth] = useState(false);
   const [announcementsOpen, setAnnouncementsOpen] = useState(false);
   const [progress, setProgress] = useState<GenProgress | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [adminTasks, setAdminTasks] = useState<FloatingTask[]>([]);
-  const [adminTasksHydrated, setAdminTasksHydrated] = useState(false);
   const [adminPrimaryTaskInBatch, setAdminPrimaryTaskInBatch] = useState(false);
   const [adminPreparingNextTask, setAdminPreparingNextTask] = useState(false);
   const [startingTaskIds, setStartingTaskIds] = useState<string[]>([]);
   const [cancelingTaskIds, setCancelingTaskIds] = useState<string[]>([]);
+  const pollingTaskIdsRef = useRef<Set<string>>(new Set());
   const adminActiveTaskCount = adminTasks.filter((task) =>
     task.status === "waiting" || task.status === "submitting" || task.status === "generating"
   ).length;
@@ -109,7 +63,7 @@ export function Studio() {
     ? adminTasks.length + (adminPrimaryTaskInBatch ? 1 : 0)
     : 0;
   const canPrepareNextAdminTask =
-    isAdmin &&
+    !!session &&
     !adminPreparingNextTask &&
     effectiveCurrentBatchTaskCount < 3 &&
     (generating || adminActiveTaskCount > 0);
@@ -140,55 +94,22 @@ export function Studio() {
   };
 
   useEffect(() => {
-    let cancelled = false;
-    setIsAdmin(false);
-    if (!session) return;
-    checkAdmin({})
-      .then((res) => {
-        if (!cancelled) setIsAdmin(!!res?.isAdmin);
-      })
-      .catch(() => {
-        if (!cancelled) setIsAdmin(false);
-      });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user?.id]);
-
-  useEffect(() => {
-    const userId = session?.user?.id;
     setGeneratedUrl(null);
     setCurrentPrompt("");
     setCurrentModel("");
-    if (!userId) {
-      return;
-    }
-
-    const latestResult = loadSessionLatestResult(userId);
-    if (!latestResult) {
-      return;
-    }
-
-    setGeneratedUrl(latestResult.url);
-    setCurrentPrompt(latestResult.prompt);
-    setCurrentModel(latestResult.modelName);
   }, [session?.user?.id]);
 
   useEffect(() => {
-    const userId = session?.user?.id;
-    if (!userId || !isAdmin || !adminTasksHydrated) return;
-    saveSessionPanelTasks(userId, adminTasks);
-  }, [session?.user?.id, isAdmin, adminTasksHydrated, adminTasks]);
-
-  useEffect(() => {
     let cancelled = false;
-    if (!session || !isAdmin) {
+    if (!session) {
       setAdminTasks([]);
-      setAdminTasksHydrated(false);
       setAdminPrimaryTaskInBatch(false);
+      setAdminPreparingNextTask(false);
+      setStartingTaskIds([]);
+      setCancelingTaskIds([]);
+      pollingTaskIdsRef.current.clear();
       return;
     }
-    setAdminTasksHydrated(false);
-
     fetchGenerationTasks({})
       .then((res) => {
         if (cancelled) return;
@@ -213,25 +134,22 @@ export function Studio() {
             };
           })
           .slice(0, 3);
-        const sessionPanelTasks = loadSessionPanelTasks(session.user.id);
-        const trimmed = trimPanelTasks([...recovered, ...sessionPanelTasks]);
+        const trimmed = trimPanelTasks(recovered);
         setAdminTasks(trimmed);
-        setAdminTasksHydrated(true);
       })
       .catch((error) => {
         console.warn("[generation-tasks] restore failed", error);
         if (!cancelled) {
-          setAdminTasks(trimPanelTasks(loadSessionPanelTasks(session.user.id)));
-          setAdminTasksHydrated(true);
+          setAdminTasks([]);
         }
       });
 
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user?.id, isAdmin]);
+  }, [session?.user?.id]);
 
   useEffect(() => {
-    if (!session || !isAdmin) return;
+    if (!session) return;
     const runningTaskIds = adminTasks
       .filter((task) => task.status === "generating")
       .map((task) => task.id);
@@ -240,6 +158,8 @@ export function Studio() {
     let cancelled = false;
     const timer = window.setInterval(() => {
       for (const taskId of runningTaskIds) {
+        if (pollingTaskIdsRef.current.has(taskId)) continue;
+        pollingTaskIdsRef.current.add(taskId);
         pollTask({ data: { taskId } })
           .then((taskResult) => {
             if (cancelled) return;
@@ -278,6 +198,9 @@ export function Studio() {
           })
           .catch((error) => {
             console.warn("[generation-tasks] poll failed", error);
+          })
+          .finally(() => {
+            pollingTaskIdsRef.current.delete(taskId);
           });
       }
     }, 4000);
@@ -287,13 +210,13 @@ export function Studio() {
       window.clearInterval(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user?.id, isAdmin, adminTasks]);
+  }, [session?.user?.id, adminTasks]);
 
   const handleGenerateStart = (info: { prompt: string; modelName: string }) => {
-    if (isAdmin && !adminBatchHasContext) {
+    if (session && !adminBatchHasContext) {
       setAdminTasks([]);
     }
-    setAdminPrimaryTaskInBatch(isAdmin);
+    setAdminPrimaryTaskInBatch(!!session);
     setGenerating(true);
     setAdminPreparingNextTask(false);
     setCurrentPrompt(info.prompt);
@@ -333,7 +256,7 @@ export function Studio() {
     modelName: string;
     inputParams: Record<string, unknown>;
   }) => {
-    if (!isAdmin) return false;
+    if (!session) return false;
     if (effectiveCurrentBatchTaskCount >= 3) {
       throw new Error("本轮任务已满 3 个，请开始新一轮后再提交。");
     }
@@ -364,7 +287,7 @@ export function Studio() {
   };
 
   const handleAdminClearTestTasks = async () => {
-    if (!isAdmin) return;
+    if (!session) return;
     try {
       await cancelQueuedTasks({});
       setAdminTasks((tasks) =>
@@ -373,15 +296,15 @@ export function Studio() {
         ),
       );
       setAdminPreparingNextTask(false);
-      toast.success("内测任务已清空");
+      toast.success("未完成任务已清除");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "清空测试任务失败";
+      const message = error instanceof Error ? error.message : "清除未完成任务失败";
       toast.error(message);
     }
   };
 
   const handleAdminCancelTask = async (taskId: string) => {
-    if (!isAdmin) return;
+    if (!session) return;
     if (cancelingTaskIds.includes(taskId)) return;
     setCancelingTaskIds((ids) => ids.includes(taskId) ? ids : [...ids, taskId]);
     try {
@@ -399,7 +322,7 @@ export function Studio() {
   };
 
   const handleAdminStartTask = async (taskId: string) => {
-    if (!isAdmin) return;
+    if (!session) return;
     if (startingTaskIds.includes(taskId)) return;
     setStartingTaskIds((ids) => ids.includes(taskId) ? ids : [...ids, taskId]);
     setAdminTasks((tasks) =>
@@ -462,7 +385,7 @@ export function Studio() {
   };
 
   useEffect(() => {
-    if (!session || !isAdmin) return;
+    if (!session) return;
     if (generating) return;
     const runningOrStartingIds = new Set(startingTaskIds);
     for (const task of adminTasks) {
@@ -477,7 +400,7 @@ export function Studio() {
 
     void handleAdminStartTask(taskToStart.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user?.id, isAdmin, adminTasks, startingTaskIds, generating]);
+  }, [session?.user?.id, adminTasks, startingTaskIds, generating]);
 
   const showAuth = !loading && (!session || forceAuth);
   const credits = profile?.credits ?? 0;
@@ -497,7 +420,7 @@ export function Studio() {
             onGenerateDone={handleGenerateDone}
             onProgress={setProgress}
             generating={generating}
-            isAdmin={isAdmin}
+            isAdmin={!!session}
             adminPreparingNextTask={adminPreparingNextTask}
             adminCurrentBatchTaskCount={effectiveCurrentBatchTaskCount}
             canPrepareNextAdminTask={canPrepareNextAdminTask}
@@ -521,7 +444,7 @@ export function Studio() {
             }}
           />
         </div>
-        {isAdmin && (
+        {session && (
           <TaskFloatingPanel
             tasks={adminTasks}
             maxTasks={3}

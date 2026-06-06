@@ -58,6 +58,7 @@ const MODEL_BADGES: Record<string, { label: string; icon: typeof Crown; classNam
   nanobanana2: { label: "推荐", icon: Star, className: "bg-primary/15 text-primary border-primary/30" },
 };
 type ActiveGen = {
+  userId: string;
   taskId: string;
   modelKey: string;
   modelName: string;
@@ -66,12 +67,15 @@ type ActiveGen = {
   initialPos: number;
   renderBudget: number;
 };
-function loadActive(): ActiveGen | null {
+function loadActive(userId: string): ActiveGen | null {
   try {
     const raw = localStorage.getItem(ACTIVE_GEN_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as ActiveGen;
-    if (!parsed?.taskId || !parsed?.startTs) return null;
+    if (!parsed?.taskId || !parsed?.startTs || parsed.userId !== userId) {
+      clearActive();
+      return null;
+    }
     // 超过 10 分钟视为过期
     if (Date.now() - parsed.startTs > 10 * 60 * 1000) return null;
     return parsed;
@@ -351,8 +355,9 @@ export function ControlPanel({
 
   // 刷新后自动恢复在途的生成任务
   useEffect(() => {
-    if (!session) return;
-    const active = loadActive();
+    const userId = session?.user?.id;
+    if (!userId) return;
+    const active = loadActive(userId);
     if (!active) return;
     console.log("[resume] restoring in-flight task", active.taskId);
     onGenerateStart({ prompt: active.prompt, modelName: active.modelName });
@@ -498,7 +503,10 @@ export function ControlPanel({
 
       if (!r.taskId) throw new Error("未获取到任务ID");
       const modelName = activeModel.name ?? activeModel.model_key;
+      const userId = session?.user?.id;
+      if (!userId) throw new Error("请先登录后再生成");
       saveActive({
+        userId,
         taskId: r.taskId,
         modelKey: activeModel.model_key,
         modelName,
@@ -854,7 +862,7 @@ export function ControlPanel({
                     ? "加入队列中..."
                     : adminCurrentBatchTaskCount >= 3
                     ? "任务已满 3/3"
-                    : "加入等待队列"
+                    : "加入任务队列"
                   : "立即生成"}
               </>
             )}

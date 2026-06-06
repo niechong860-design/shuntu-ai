@@ -56,7 +56,7 @@ export function TaskFloatingPanel({
         <div className="mt-2 w-80 rounded-xl border border-border/70 bg-card/95 p-3 shadow-2xl backdrop-blur-2xl">
           <div className="mb-3 flex items-center justify-between">
             <div>
-              <div className="text-sm font-semibold text-foreground">管理员多任务内测</div>
+              <div className="text-sm font-semibold text-foreground">任务队列</div>
               <div className="mt-0.5 text-[11px] text-muted-foreground">显示当前队列和最近完成，最多 3 个任务</div>
             </div>
             <div className="flex items-center gap-2">
@@ -77,7 +77,7 @@ export function TaskFloatingPanel({
 
           {tasks.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border/70 bg-white/[0.02] px-3 py-4 text-center text-xs text-muted-foreground">
-              暂无多任务队列
+              暂无任务队列
             </div>
           ) : (
             <div className="space-y-2">
