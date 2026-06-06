@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createClient } from "@supabase/supabase-js";
 
-const TABLES = [
+const CORE_TABLES = [
   "credit_usage_logs",
   "profiles",
   "generation_tasks",
@@ -11,7 +11,25 @@ const TABLES = [
   "redeem_logs",
 ];
 
+const ALL_TABLES = [
+  ...CORE_TABLES,
+  "admin_settings",
+  "ads",
+  "announcements",
+  "case_comments",
+  "case_favorites",
+  "case_likes",
+  "global_config",
+  "inspiration_cases",
+  "models_config",
+  "style_templates",
+  "user_orders",
+  "user_roles",
+];
+
 const PAGE_SIZE = 1000;
+const useAllTables = process.argv.includes("--all");
+const tablesToBackup = useAllTables ? ALL_TABLES : CORE_TABLES;
 
 const supabaseUrl =
   process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -44,7 +62,11 @@ await mkdir(backupDir, { recursive: true });
 
 const results = [];
 
-for (const table of TABLES) {
+console.log(
+  `Backup mode: ${useAllTables ? "all public business tables" : "core tables"}`,
+);
+
+for (const table of tablesToBackup) {
   try {
     const rows = await readAllRows(table);
     await writeTableBackup(table, rows);
