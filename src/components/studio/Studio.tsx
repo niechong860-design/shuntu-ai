@@ -113,7 +113,8 @@ export function Studio() {
     effectiveCurrentBatchTaskCount < 3 &&
     (generating || adminActiveTaskCount > 0);
   const activeQueueTask = getActiveQueueTask(adminTasks);
-  const queueCanvasLoading = !!activeQueueTask;
+  const hasVisibleResult = !!generatedUrl;
+  const shouldShowQueueLoadingOnCanvas = !!activeQueueTask && !hasVisibleResult;
   const queueProgress = activeQueueTask ? getQueueProgress(activeQueueTask) : null;
 
   const trimPanelTasks = (tasks: FloatingTask[]) => {
@@ -348,10 +349,11 @@ export function Studio() {
         queuedTask,
       ]),
     );
-    setGeneratedUrl(null);
-    setCurrentPrompt(input.prompt);
-    setCurrentModel(input.modelName);
-    setProgress(getQueueProgress(queuedTask));
+    if (!generatedUrl) {
+      setCurrentPrompt(input.prompt);
+      setCurrentModel(input.modelName);
+      setProgress(getQueueProgress(queuedTask));
+    }
     setAdminPreparingNextTask(false);
     return true;
   };
@@ -404,10 +406,11 @@ export function Studio() {
     );
     if (taskForCanvas) {
       const submittingTask: FloatingTask = { ...taskForCanvas, status: "submitting" };
-      setGeneratedUrl(null);
-      setCurrentPrompt(submittingTask.prompt ?? submittingTask.title ?? "");
-      setCurrentModel(submittingTask.modelName ?? "");
-      setProgress(getQueueProgress(submittingTask));
+      if (!generatedUrl) {
+        setCurrentPrompt(submittingTask.prompt ?? submittingTask.title ?? "");
+        setCurrentModel(submittingTask.modelName ?? "");
+        setProgress(getQueueProgress(submittingTask));
+      }
     }
     try {
       const task = await startTask({ data: { taskId } }) as {
@@ -511,12 +514,12 @@ export function Studio() {
           />
           <Canvas
             userId={session?.user?.id ?? null}
-            generating={generating || queueCanvasLoading}
+            generating={generating || shouldShowQueueLoadingOnCanvas}
             heroIndex={0}
             generatedUrl={generatedUrl}
             currentPrompt={currentPrompt}
             currentModel={currentModel}
-            progress={queueCanvasLoading ? queueProgress : progress}
+            progress={shouldShowQueueLoadingOnCanvas ? queueProgress : progress}
             historyOpen={historyOpen}
             onHistoryOpenChange={setHistoryOpen}
             onSelectHistory={(url, prompt, model) => {
