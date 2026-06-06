@@ -530,7 +530,7 @@ export const getMyGenerationTasks = createServerFn({ method: "POST" })
     const { userId } = context;
     const { data: activeRows, error: activeError } = await (supabaseAdmin as any)
       .from("generation_tasks")
-      .select("id, request_id, user_id, status, model_id, prompt, created_at, updated_at, started_at, completed_at, result_image_url, error_code, error_message, deduction_status, deduction_id")
+      .select("id, request_id, user_id, status, model_id, prompt, input_params, created_at, updated_at, started_at, completed_at, result_image_url, error_code, error_message, deduction_status, deduction_id")
       .eq("user_id", userId)
       .in("status", ["queued", "running"])
       .order("created_at", { ascending: true })
@@ -546,6 +546,7 @@ export const getMyGenerationTasks = createServerFn({ method: "POST" })
       status: r.status as "queued" | "running" | "succeeded" | "failed",
       modelId: r.model_id as string,
       prompt: (r.prompt ?? null) as string | null,
+      inputParams: (r.input_params ?? {}) as Record<string, unknown>,
       createdAt: r.created_at as string,
       updatedAt: r.updated_at as string,
       startedAt: (r.started_at ?? null) as string | null,

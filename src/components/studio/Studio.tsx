@@ -19,6 +19,13 @@ type StoredLatestResult = {
   modelName: string;
 };
 
+type RetryPrefill = {
+  nonce: number;
+  prompt: string;
+  modelKey?: string;
+  inputParams?: Record<string, unknown>;
+};
+
 function writeSessionJson(key: string, value: unknown) {
   if (typeof window === "undefined") return;
   try {
@@ -99,6 +106,8 @@ export function Studio() {
   const [adminPreparingNextTask, setAdminPreparingNextTask] = useState(false);
   const [startingTaskIds, setStartingTaskIds] = useState<string[]>([]);
   const [cancelingTaskIds, setCancelingTaskIds] = useState<string[]>([]);
+  const [retryingTaskIds, setRetryingTaskIds] = useState<string[]>([]);
+  const [retryPrefill, setRetryPrefill] = useState<RetryPrefill | null>(null);
   const pollingTaskIdsRef = useRef<Set<string>>(new Set());
   const adminActiveTaskCount = adminTasks.filter((task) =>
     task.status === "waiting" || task.status === "submitting" || task.status === "generating"
@@ -152,6 +161,8 @@ export function Studio() {
     setAdminPreparingNextTask(false);
     setStartingTaskIds([]);
     setCancelingTaskIds([]);
+    setRetryingTaskIds([]);
+    setRetryPrefill(null);
     pollingTaskIdsRef.current.clear();
   }, [session?.user?.id]);
 
@@ -163,6 +174,8 @@ export function Studio() {
       setAdminPreparingNextTask(false);
       setStartingTaskIds([]);
       setCancelingTaskIds([]);
+      setRetryingTaskIds([]);
+      setRetryPrefill(null);
       pollingTaskIdsRef.current.clear();
       return;
     }
@@ -175,9 +188,11 @@ export function Studio() {
             prompt: string | null;
             modelId: string;
             status: string;
+            inputParams?: Record<string, unknown> | null;
             resultImageUrl?: string | null;
             deductionStatus?: string | null;
             deductionId?: string | null;
+            errorMessage?: string | null;
           }) => {
             const promptTitle = task.prompt?.trim().slice(0, 20);
             return {
@@ -185,8 +200,11 @@ export function Studio() {
               title: promptTitle || task.modelId || "生成任务",
               status: mapRecoveredTaskStatus(task.status, task.deductionStatus, task.deductionId),
               prompt: task.prompt ?? "",
+              modelKey: task.modelId,
               modelName: task.modelId,
+              inputParams: task.inputParams ?? {},
               resultImageUrl: task.resultImageUrl ?? null,
+              errorMessage: task.errorMessage ?? null,
             };
           })
           .slice(0, 3);
@@ -256,7 +274,9 @@ export function Studio() {
               setProgress(null);
               setAdminTasks((tasks) =>
                 tasks.map((item) =>
-                  item.id === task.taskId ? { ...item, status: "failed" as const } : item,
+                  item.id === task.taskId
+                    ? { ...item, status: "failed" as const, errorMessage: task.errorMessage ?? "任务生成失败" }
+                    : item,
                 ),
               );
               setProgress(null);
@@ -341,7 +361,9 @@ export function Studio() {
       title,
       status: "waiting",
       prompt: input.prompt,
+      modelKey: input.modelKey,
       modelName: input.modelName,
+      inputParams: input.inputParams,
     };
     setAdminTasks((tasks) =>
       trimPanelTasks([
@@ -394,6 +416,69 @@ export function Studio() {
     }
   };
 
+  const handleRetryFailedTask = async (taskId: string) => {
+    if (!session) return;
+    if (retryingTaskIds.includes(taskId)) return;
+    if (adminActiveTaskCount >= 3) {
+      toast.error("任务已满 3/3");
+      return;
+    }
+
+    const failedTask = adminTasks.find((task) => task.id === taskId && task.status === "failed");
+    if (!failedTask?.prompt || !failedTask.modelKey) {
+      toast.error("失败任务参数不完整，请编辑后重试。");
+      return;
+    }
+
+    setRetryingTaskIds((ids) => ids.includes(taskId) ? ids : [...ids, taskId]);
+    try {
+      const task = await createTask({
+        data: {
+          modelKey: failedTask.modelKey,
+          prompt: failedTask.prompt,
+          inputParams: failedTask.inputParams ?? {},
+        },
+      });
+      const title = task.prompt.trim().slice(0, 20) || failedTask.modelName || task.modelId;
+      const queuedTask: FloatingTask = {
+        id: task.taskId,
+        title,
+        status: "waiting",
+        prompt: task.prompt,
+        modelKey: failedTask.modelKey,
+        modelName: failedTask.modelName ?? task.modelId,
+        inputParams: failedTask.inputParams ?? {},
+      };
+      setAdminTasks((tasks) => trimPanelTasks([...tasks, queuedTask]));
+      if (!generatedUrl) {
+        setCurrentPrompt(queuedTask.prompt ?? queuedTask.title ?? "");
+        setCurrentModel(queuedTask.modelName ?? "");
+        setProgress(getQueueProgress(queuedTask));
+      }
+      toast.success("已重新加入任务队列");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "任务创建失败，请稍后重试。";
+      toast.error(message);
+    } finally {
+      setRetryingTaskIds((ids) => ids.filter((id) => id !== taskId));
+    }
+  };
+
+  const handleEditFailedTask = (taskId: string) => {
+    const failedTask = adminTasks.find((task) => task.id === taskId && task.status === "failed");
+    if (!failedTask?.prompt) {
+      toast.error("失败任务参数不完整，无法回填。");
+      return;
+    }
+    setAdminPreparingNextTask(false);
+    setRetryPrefill({
+      nonce: Date.now(),
+      prompt: failedTask.prompt,
+      modelKey: failedTask.modelKey,
+      inputParams: failedTask.inputParams ?? {},
+    });
+  };
+
   const handleAdminStartTask = async (taskId: string) => {
     if (!session) return;
     if (startingTaskIds.includes(taskId)) return;
@@ -435,7 +520,14 @@ export function Studio() {
               item.id === task.taskId ? { ...item, status: "done" as const, resultImageUrl: task.resultImageUrl ?? item.resultImageUrl ?? null } : item,
             )
           : tasks.map((item) =>
-              item.id === task.taskId ? { ...item, status: nextStatus as FloatingTask["status"], resultImageUrl: task.resultImageUrl ?? item.resultImageUrl ?? null } : item,
+              item.id === task.taskId
+                ? {
+                    ...item,
+                    status: nextStatus as FloatingTask["status"],
+                    resultImageUrl: task.resultImageUrl ?? item.resultImageUrl ?? null,
+                    errorMessage: nextStatus === "failed" ? task.errorMessage ?? "任务生成失败" : item.errorMessage,
+                  }
+                : item,
             )),
       );
       if (finalized) {
@@ -459,7 +551,7 @@ export function Studio() {
       const message = error instanceof Error ? error.message : "任务启动失败";
       setAdminTasks((tasks) =>
         tasks.map((item) =>
-          item.id === taskId ? { ...item, status: "failed" as const } : item,
+          item.id === taskId ? { ...item, status: "failed" as const, errorMessage: message } : item,
         ),
       );
       setProgress(null);
@@ -505,6 +597,7 @@ export function Studio() {
             onGenerateDone={handleGenerateDone}
             onProgress={setProgress}
             generating={generating}
+            retryPrefill={retryPrefill}
             isAdmin={!!session}
             adminPreparingNextTask={adminPreparingNextTask}
             adminCurrentBatchTaskCount={effectiveCurrentBatchTaskCount}
@@ -537,6 +630,9 @@ export function Studio() {
             startingTaskIds={startingTaskIds}
             onCancelTask={handleAdminCancelTask}
             cancelingTaskIds={cancelingTaskIds}
+            onRetryTask={handleRetryFailedTask}
+            retryingTaskIds={retryingTaskIds}
+            onEditTask={handleEditFailedTask}
             currentTaskCount={effectiveCurrentBatchTaskCount}
           />
         )}

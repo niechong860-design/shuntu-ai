@@ -96,6 +96,12 @@ type Props = {
  onGenerateDone: (imageUrl: string | null) => void;
   onProgress?: (p: GenProgress | null) => void;
   generating: boolean;
+  retryPrefill?: {
+    nonce: number;
+    prompt: string;
+    modelKey?: string;
+    inputParams?: Record<string, unknown>;
+  } | null;
   isAdmin?: boolean;
   adminPreparingNextTask?: boolean;
   adminCurrentBatchTaskCount?: number;
@@ -114,6 +120,7 @@ export function ControlPanel({
   onGenerateDone,
   onProgress,
   generating,
+  retryPrefill,
   isAdmin = false,
   adminPreparingNextTask = false,
   adminCurrentBatchTaskCount = 0,
@@ -173,6 +180,24 @@ export function ControlPanel({
     }
     toast.success("已载入案例参数，可直接生成");
   }, []);
+
+  useEffect(() => {
+    if (!retryPrefill) return;
+    setPrompt(retryPrefill.prompt);
+    if (retryPrefill.modelKey) setModelKey(retryPrefill.modelKey);
+    const inputParams = retryPrefill.inputParams ?? {};
+    const aspectRatio = typeof inputParams.aspectRatio === "string" ? inputParams.aspectRatio : null;
+    const nextSize = typeof inputParams.size === "string" ? inputParams.size : null;
+    const referenceImages = Array.isArray(inputParams.referenceImages)
+      ? inputParams.referenceImages.filter((url): url is string => typeof url === "string")
+      : [];
+    if (aspectRatio && RATIOS.some((item) => item.id === aspectRatio)) setRatio(aspectRatio);
+    if (nextSize === "1K" || nextSize === "2K" || nextSize === "4K") setSize(nextSize);
+    setRefs(referenceImages);
+    setStyleId("");
+    setInspirationMode(false);
+    toast.success("已回填失败任务参数，可编辑后重试");
+  }, [retryPrefill]);
 
 
   const activeModel = models.find((m) => m.model_key === modelKey);
