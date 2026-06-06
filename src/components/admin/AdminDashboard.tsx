@@ -131,7 +131,7 @@ function UsersPanel() {
               <TableHead>用户ID</TableHead>
               <TableHead>注册时间</TableHead>
               <TableHead className="text-right">算力余额</TableHead>
-              <TableHead className="text-right">近15天/保留历史消耗</TableHead>
+              <TableHead className="text-right">累计消耗</TableHead>
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
