@@ -36,13 +36,12 @@ export const adminListUsers = createServerFn({ method: "POST" })
       .select("id, email, display_name, credits, created_at")
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
-    const { data: usageLogs, error: usageError } = await (supabaseAdmin as any)
-      .from("credit_usage_logs")
-      .select("user_id, amount");
+    const { data: usageTotals, error: usageError } = await (supabaseAdmin as any)
+      .rpc("admin_credit_usage_totals");
     if (usageError) throw new Error(usageError.message);
     const sumMap = new Map<string, number>();
-    for (const r of (usageLogs ?? []) as Array<{ user_id: string; amount: number | string }>) {
-      sumMap.set(r.user_id, (sumMap.get(r.user_id) ?? 0) + Number(r.amount ?? 0));
+    for (const r of (usageTotals ?? []) as Array<{ user_id: string; total_spent: number | string }>) {
+      sumMap.set(r.user_id, Number(r.total_spent ?? 0));
     }
     const banMap = new Map<string, boolean>();
     const authUsers: Array<{ id: string; email: string | null; created_at: string }> = [];
