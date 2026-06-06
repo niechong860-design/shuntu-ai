@@ -233,10 +233,53 @@ export type Database = {
         }
         Relationships: []
       }
+      credit_usage_logs: {
+        Row: {
+          amount: number
+          created_at: string
+          generation_history_id: string | null
+          generation_task_id: string | null
+          id: string
+          idempotency_key: string
+          metadata: Json | null
+          model_key: string | null
+          model_name: string | null
+          source: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          generation_history_id?: string | null
+          generation_task_id?: string | null
+          id?: string
+          idempotency_key: string
+          metadata?: Json | null
+          model_key?: string | null
+          model_name?: string | null
+          source: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          generation_history_id?: string | null
+          generation_task_id?: string | null
+          id?: string
+          idempotency_key?: string
+          metadata?: Json | null
+          model_key?: string | null
+          model_name?: string | null
+          source?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       generation_history: {
         Row: {
           cost: number
           created_at: string
+          generation_task_id: string | null
           id: string
           image_url: string | null
           model: string
@@ -246,6 +289,7 @@ export type Database = {
         Insert: {
           cost?: number
           created_at?: string
+          generation_task_id?: string | null
           id?: string
           image_url?: string | null
           model: string
@@ -255,6 +299,7 @@ export type Database = {
         Update: {
           cost?: number
           created_at?: string
+          generation_task_id?: string | null
           id?: string
           image_url?: string | null
           model?: string
@@ -622,6 +667,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_credit_usage_totals: {
+        Args: never
+        Returns: {
+          total_spent: number
+          user_id: string
+        }[]
+      }
       complete_paid_order: {
         Args: { _out_trade_no: string; _trade_no: string }
         Returns: {
@@ -637,6 +689,32 @@ export type Database = {
           credits: number
           message: string
           success: boolean
+        }[]
+      }
+      finalize_generation_task_once: {
+        Args: { p_image_url: string; p_task_id: string }
+        Returns: {
+          cost: number
+          credits: number
+          deduction_status: string
+          history_id: string
+          message: string
+          status: string
+          success: boolean
+          task_id: string
+        }[]
+      }
+      finalize_user_generation_task_once: {
+        Args: { p_image_url: string; p_task_id: string }
+        Returns: {
+          cost: number
+          credits: number
+          deduction_status: string
+          history_id: string
+          message: string
+          status: string
+          success: boolean
+          task_id: string
         }[]
       }
       get_contact_info: {
