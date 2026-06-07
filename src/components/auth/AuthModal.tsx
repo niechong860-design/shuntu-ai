@@ -7,6 +7,38 @@ import { getContactInfo } from "@/lib/admin.functions";
 
 type Tab = "login" | "signup" | "forgot";
 
+const PASSWORD_TOO_SHORT_MSG = "密码长度不足，请至少设置 8 位密码";
+const PASSWORD_TOO_SIMPLE_MSG = "密码过于简单，请使用字母、数字或符号组合";
+const PASSWORD_MISMATCH_MSG = "两次输入的密码不一致";
+const INVALID_EMAIL_MSG = "请输入正确的邮箱地址";
+const EMAIL_REGISTERED_MSG = "该邮箱已注册，请直接登录";
+const SIGNUP_FAILED_MSG = "注册失败，请稍后重试";
+
+const COMMON_WEAK_PASSWORDS = new Set([
+  "12345678",
+  "11111111",
+  "00000000",
+  "abcdefgh",
+  "password",
+  "password123",
+  "qwerty123",
+  "qwertyuiop",
+  "abc123456",
+  "123456789",
+]);
+
+function isWeakSignupPassword(password: string) {
+  const normalized = password.trim().toLowerCase();
+  if (!normalized) return true;
+  if (COMMON_WEAK_PASSWORDS.has(normalized)) return true;
+  if (/^(.)\1+$/.test(normalized)) return true;
+
+  const hasLetter = /[a-z]/i.test(password);
+  const hasNumber = /\d/.test(password);
+  const hasSymbol = /[^a-zA-Z0-9]/.test(password);
+  return [hasLetter, hasNumber, hasSymbol].filter(Boolean).length < 2;
+}
+
 /** 把 Supabase 返回的英文错误翻成更明确的中文提示 */
 function translateAuthError(err: unknown, tab: Tab): string {
   const raw = err instanceof Error ? err.message : typeof err === "string" ? err : "";
@@ -16,6 +48,39 @@ function translateAuthError(err: unknown, tab: Tab): string {
   const status = errObj.status ?? 0;
   const m = (raw + " " + code).toLowerCase();
 
+  if (tab === "signup") {
+    if (
+      code === "user_already_exists" ||
+      code === "email_exists" ||
+      m.includes("user already registered") ||
+      m.includes("already registered") ||
+      m.includes("already exists")
+    ) {
+      return EMAIL_REGISTERED_MSG;
+    }
+    if (code === "email_address_invalid" || m.includes("invalid email")) {
+      return INVALID_EMAIL_MSG;
+    }
+    if (
+      code === "password_too_short" ||
+      m.includes("password should be at least") ||
+      m.includes("password is too short") ||
+      m.includes("password length") ||
+      (m.includes("password") && (m.includes("at least") || m.includes("minimum")))
+    ) {
+      return PASSWORD_TOO_SHORT_MSG;
+    }
+    if (
+      code === "weak_password" ||
+      m.includes("weak_password") ||
+      m.includes("pwned") ||
+      m.includes("compromised") ||
+      (m.includes("password") && (m.includes("weak") || m.includes("easy") || m.includes("simple") || m.includes("strength")))
+    ) {
+      return PASSWORD_TOO_SIMPLE_MSG;
+    }
+  }
+
   // 直接按 code 命中（新版 GoTrue 优先返回 code）
   if (code === "invalid_credentials" || code === "invalid_grant")
     return "邮箱或密码不正确，请重新输入";
@@ -24,8 +89,10 @@ function translateAuthError(err: unknown, tab: Tab): string {
   if (code === "user_banned") return "账号已被封禁，请联系客服";
   if (code === "user_already_exists" || code === "email_exists")
     return "该邮箱已注册，请直接登录";
-  if (code === "weak_password" || code === "password_too_short")
-    return "密码长度不足，请重新设置";
+  if (code === "password_too_short")
+    return PASSWORD_TOO_SHORT_MSG;
+  if (code === "weak_password")
+    return PASSWORD_TOO_SIMPLE_MSG;
   if (code === "over_request_rate_limit" || code === "over_email_send_rate_limit" || status === 429)
     return "操作太频繁，请稍后再试";
   if (code === "validation_failed" || code === "email_address_invalid")
@@ -61,10 +128,11 @@ function translateAuthError(err: unknown, tab: Tab): string {
   if (
     m.includes("password should be at least") ||
     m.includes("password is too short") ||
-    m.includes("password_too_short") ||
-    m.includes("weak_password")
+    m.includes("password_too_short")
   )
-    return "密码长度不足，请重新设置";
+    return PASSWORD_TOO_SHORT_MSG;
+  if (m.includes("weak_password"))
+    return PASSWORD_TOO_SIMPLE_MSG;
   if (m.includes("password") && m.includes("weak"))
     return "密码强度不足，请加入字母、数字或符号";
   if (m.includes("pwned") || m.includes("compromised"))
@@ -167,6 +235,28 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
     }
     // 前置校验（用大白话）
     const trimmedEmail = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      toast.error(INVALID_EMAIL_MSG);
+      return;
+    }
+    if (tab !== "forgot" && !password) {
+      toast.error("请输入密码");
+      return;
+    }
+    if (tab === "signup") {
+      if (password.length < 8) {
+        toast.error(PASSWORD_TOO_SHORT_MSG);
+        return;
+      }
+      if (password !== confirm) {
+        toast.error(PASSWORD_MISMATCH_MSG);
+        return;
+      }
+      if (isWeakSignupPassword(password)) {
+        toast.error(PASSWORD_TOO_SIMPLE_MSG);
+        return;
+      }
+    }
     if (!trimmedEmail) {
       toast.error("请先填一下邮箱");
       return;
@@ -296,7 +386,7 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
                 <input
                   type="password"
                   required
-                  minLength={6}
+                  minLength={tab === "signup" ? 8 : 1}
                   placeholder="密码"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -310,7 +400,7 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
                 <input
                   type="password"
                   required
-                  minLength={6}
+                  minLength={8}
                   placeholder="确认密码"
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
