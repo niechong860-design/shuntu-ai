@@ -233,6 +233,7 @@ export function Canvas({ userId, generating, generatedUrl, currentPrompt, curren
 
   const heroPrompt = currentPrompt ?? "";
   const heroModel = currentModel ?? "当前模型";
+  const isLightboxOpen = !!lightbox || heroLightbox;
 
   return (
     <main className="flex h-full min-h-0 flex-col overflow-hidden bg-background p-3">
@@ -272,6 +273,15 @@ export function Canvas({ userId, generating, generatedUrl, currentPrompt, curren
       <Sheet open={historyOpen} onOpenChange={onHistoryOpenChange}>
         <SheetContent
           side="right"
+          onPointerDownOutside={(event) => {
+            if (isLightboxOpen) event.preventDefault();
+          }}
+          onInteractOutside={(event) => {
+            if (isLightboxOpen) event.preventDefault();
+          }}
+          onEscapeKeyDown={(event) => {
+            if (isLightboxOpen) event.preventDefault();
+          }}
           className="w-[420px] border-l border-border bg-card/95 p-0 backdrop-blur-2xl sm:max-w-none"
         >
           <div className="border-b border-border/60 px-5 py-4">
@@ -675,7 +685,9 @@ function Lightbox({ src, prompt, model, filename, onClose }: { src: string; prom
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      event.preventDefault();
       event.stopPropagation();
+      event.stopImmediatePropagation();
       onClose();
     };
     window.addEventListener("keydown", handleKeyDown, true);
@@ -685,7 +697,16 @@ function Lightbox({ src, prompt, model, filename, onClose }: { src: string; prom
   if (typeof document === "undefined") return null;
 
   return createPortal(
-    <div onClick={onClose} className="fixed inset-0 z-[1000] flex items-center justify-center bg-background/80 p-6 backdrop-blur-xl animate-[fade-in_0.2s_ease-out]">
+    <div
+      data-lightbox-root
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
+      className="fixed inset-0 z-[1000] flex items-center justify-center bg-background/80 p-6 backdrop-blur-xl animate-[fade-in_0.2s_ease-out]"
+    >
       <div onClick={(e) => e.stopPropagation()} className="glass-elevated relative flex max-h-[90vh] w-full max-w-5xl gap-4 overflow-hidden rounded-2xl p-2">
         <div className="flex-1 overflow-hidden rounded-xl bg-black">
           <img src={src} alt={prompt} className="h-full w-full object-contain" />
@@ -694,7 +715,16 @@ function Lightbox({ src, prompt, model, filename, onClose }: { src: string; prom
           <div className="flex items-center justify-between">
             <span className="self-start rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-semibold tracking-wider text-primary">{model}</span>
             <button
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
               onClick={(e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 onClose();
               }}
