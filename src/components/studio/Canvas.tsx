@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Download, Copy, Maximize2, Sparkles, ArrowUpRight, X, Clock, ImageIcon, ListOrdered, Loader2, CheckCircle2 } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
@@ -671,8 +672,20 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
 }
 
 function Lightbox({ src, prompt, model, filename, onClose }: { src: string; prompt: string; model: string; filename: string; onClose: () => void }) {
-  return (
-    <div onClick={onClose} className="fixed inset-0 z-[60] flex items-center justify-center bg-background/80 p-6 backdrop-blur-xl animate-[fade-in_0.2s_ease-out]">
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [onClose]);
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div onClick={onClose} className="fixed inset-0 z-[1000] flex items-center justify-center bg-background/80 p-6 backdrop-blur-xl animate-[fade-in_0.2s_ease-out]">
       <div onClick={(e) => e.stopPropagation()} className="glass-elevated relative flex max-h-[90vh] w-full max-w-5xl gap-4 overflow-hidden rounded-2xl p-2">
         <div className="flex-1 overflow-hidden rounded-xl bg-black">
           <img src={src} alt={prompt} className="h-full w-full object-contain" />
@@ -680,7 +693,13 @@ function Lightbox({ src, prompt, model, filename, onClose }: { src: string; prom
         <div className="flex w-72 flex-col p-4">
           <div className="flex items-center justify-between">
             <span className="self-start rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-semibold tracking-wider text-primary">{model}</span>
-            <button onClick={onClose} className="rounded-md p-1.5 text-muted-foreground hover:bg-white/5 hover:text-foreground">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
+              className="pointer-events-auto relative z-[1001] rounded-md p-1.5 text-muted-foreground hover:bg-white/5 hover:text-foreground"
+            >
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -708,6 +727,7 @@ function Lightbox({ src, prompt, model, filename, onClose }: { src: string; prom
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
