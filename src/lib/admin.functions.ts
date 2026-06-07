@@ -25,6 +25,20 @@ async function assertFounder(userId: string) {
   if (!data) throw new Error("仅创始人可执行该操作");
 }
 
+function getBeijingDayRange(now = new Date()) {
+  const beijingOffsetMs = 8 * 60 * 60 * 1000;
+  const beijingNow = new Date(now.getTime() + beijingOffsetMs);
+  const year = beijingNow.getUTCFullYear();
+  const month = beijingNow.getUTCMonth();
+  const day = beijingNow.getUTCDate();
+  const startUtcMs = Date.UTC(year, month, day, 0, 0, 0, 0) - beijingOffsetMs;
+  const endUtcMs = startUtcMs + 24 * 60 * 60 * 1000;
+
+  return {
+    startUtc: new Date(startUtcMs).toISOString(),
+    endUtc: new Date(endUtcMs).toISOString(),
+  };
+}
 
 // --- Users ---
 export const adminListUsers = createServerFn({ method: "POST" })
@@ -1781,59 +1795,49 @@ export const adminGetAnalytics = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    const sod = startOfDay.toISOString();
+    const { startUtc, endUtc } = getBeijingDayRange();
 
     const [
       todayUsersQ,
       totalUsersQ,
       unusedCouponsQ,
-      todayHistoryQ,
-      allHistoryQ,
+      todayUsageQ,
+      allUsageQ,
       todayRegsQ,
     ] = await Promise.all([
-      supabaseAdmin.from("profiles").select("id", { count: "exact", head: true }).gte("created_at", sod),
+      supabaseAdmin.from("profiles").select("id", { count: "exact", head: true }).gte("created_at", startUtc).lt("created_at", endUtc),
       supabaseAdmin.from("profiles").select("id", { count: "exact", head: true }),
       supabaseAdmin.from("coupons").select("id", { count: "exact", head: true }).eq("is_used", false),
-      supabaseAdmin.from("generation_history").select("model, cost").gte("created_at", sod),
-      supabaseAdmin.from("generation_history").select("model, cost"),
-      supabaseAdmin.from("profiles").select("id, email, credits, created_at").gte("created_at", sod).order("created_at", { ascending: false }).limit(50),
+      (supabaseAdmin as any).from("credit_usage_logs").select("model_key, model_name, amount, created_at").gte("created_at", startUtc).lt("created_at", endUtc),
+      (supabaseAdmin as any).from("credit_usage_logs").select("model_key, model_name, amount, created_at"),
+      supabaseAdmin.from("profiles").select("id, email, credits, created_at").gte("created_at", startUtc).lt("created_at", endUtc).order("created_at", { ascending: false }).limit(50),
     ]);
 
-    const todayHistory = (todayHistoryQ.data ?? []) as Array<{ model: string; cost: number | string }>;
-    const allHistory = (allHistoryQ.data ?? []) as Array<{ model: string; cost: number | string }>;
-    const todayCostSum = todayHistory.reduce((s, r) => s + Number(r.cost ?? 0), 0);
+    const todayUsage = (todayUsageQ.data ?? []) as Array<{ model_key: string | null; model_name: string | null; amount: number | string }>;
+    const allUsage = (allUsageQ.data ?? []) as Array<{ model_key: string | null; model_name: string | null; amount: number | string }>;
+    const todayCostSum = todayUsage.reduce((s, r) => s + Number(r.amount ?? 0), 0);
 
-    const groupBy = (rows: Array<{ model: string; cost: number | string }>) => {
+    const groupBy = (rows: Array<{ model_key: string | null; model_name: string | null; amount: number | string }>) => {
       const map = new Map<string, { count: number; cost: number }>();
       for (const r of rows) {
-        const k = r.model || "未知";
+        const k = r.model_name || r.model_key || "未知";
         const cur = map.get(k) ?? { count: 0, cost: 0 };
         cur.count += 1;
-        cur.cost += Number(r.cost ?? 0);
+        cur.cost += Number(r.amount ?? 0);
         map.set(k, cur);
       }
       return map;
     };
-    const todayMap = groupBy(todayHistory);
-    const allMap = groupBy(allHistory);
+    const todayMap = groupBy(todayUsage);
+    const allMap = groupBy(allUsage);
 
     const modelKeys = new Set<string>([...todayMap.keys(), ...allMap.keys()]);
-    let models = Array.from(modelKeys).map((m) => ({
+    const models = Array.from(modelKeys).map((m) => ({
       model: m,
       todayCount: todayMap.get(m)?.count ?? 0,
       totalCount: allMap.get(m)?.count ?? 0,
       totalCost: allMap.get(m)?.cost ?? 0,
     }));
-
-    if (models.length === 0) {
-      models = [
-        { model: "Flux.1 Pro", todayCount: 48, totalCount: 1820, totalCost: 364 },
-        { model: "Midjourney V6", todayCount: 31, totalCount: 910, totalCost: 182 },
-        { model: "SDXL Turbo", todayCount: 22, totalCount: 305, totalCost: 61 },
-      ];
-    }
 
     return {
       metrics: {
@@ -1843,6 +1847,11 @@ export const adminGetAnalytics = createServerFn({ method: "POST" })
         unusedCoupons: unusedCouponsQ.count ?? 0,
       },
       models,
+      dayRange: {
+        timezone: "Asia/Shanghai",
+        startUtc,
+        endUtc,
+      },
       todayRegistrations: (todayRegsQ.data ?? []).map((r: any) => ({
         id: r.id,
         email: r.email,

@@ -8,7 +8,12 @@ import { toast } from "sonner";
 type Metrics = { todayUsers: number; todayCost: number; totalUsers: number; unusedCoupons: number };
 type ModelStat = { model: string; todayCount: number; totalCount: number; totalCost: number };
 type Reg = { id: string; email: string | null; credits: number; created_at: string };
-type Data = { metrics: Metrics; models: ModelStat[]; todayRegistrations: Reg[] };
+type Data = {
+  metrics: Metrics;
+  models: ModelStat[];
+  todayRegistrations: Reg[];
+  dayRange?: { timezone: string; startUtc: string; endUtc: string };
+};
 
 export function AnalyticsPanel() {
   const fn = useServerFn(adminGetAnalytics);
@@ -25,14 +30,14 @@ export function AnalyticsPanel() {
 
   const m = data?.metrics;
   const totalModelCount = (data?.models ?? []).reduce((s, r) => s + r.totalCount, 0) || 1;
-  const COST_PER_IMAGE_CNY = 0.05; // 上游中转 API 每张图实际成本（￥）
-  const todayImageCount = (data?.models ?? []).reduce((s, r) => s + r.todayCount, 0);
-  const todayCostCNY = todayImageCount * COST_PER_IMAGE_CNY;
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-muted-foreground">运营总览</h3>
+        <div>
+          <h3 className="text-sm font-medium text-muted-foreground">运营总览</h3>
+          <p className="mt-1 text-[11px] text-muted-foreground">今日统计按北京时间 00:00 刷新</p>
+        </div>
         <Button variant="outline" size="sm" onClick={load} disabled={loading}>
           <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />刷新
         </Button>
@@ -42,7 +47,7 @@ export function AnalyticsPanel() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <MetricCard icon={<Users className="h-4 w-4" />} label="今日注册用户" value={m?.todayUsers ?? 0} trend />
         <MetricCard icon={<Zap className="h-4 w-4" />} label="今日总消耗算力" value={(m?.todayCost ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} trend />
-        <MetricCard icon={<Wallet className="h-4 w-4" />} label="今日总消耗金额 (￥)" value={`￥${todayCostCNY.toFixed(2)}`} trend />
+        <MetricCard icon={<Wallet className="h-4 w-4" />} label="今日上游成本" value="未记录" />
         <MetricCard icon={<Sparkles className="h-4 w-4" />} label="历史注册总用户" value={m?.totalUsers ?? 0} />
         <MetricCard icon={<Ticket className="h-4 w-4" />} label="剩余有效卡密" value={m?.unusedCoupons ?? 0} />
       </div>
@@ -91,7 +96,7 @@ export function AnalyticsPanel() {
         <div className="max-h-[260px] space-y-1.5 overflow-auto pr-1 font-mono text-[11px]">
           {(data?.todayRegistrations ?? []).map((r) => (
             <div key={r.id} className="flex items-center gap-2 rounded-md border border-border/40 bg-white/[0.02] px-2.5 py-1.5">
-              <span className="text-muted-foreground">{new Date(r.created_at).toLocaleTimeString("zh-CN", { hour12: false })}</span>
+              <span className="text-muted-foreground">{new Date(r.created_at).toLocaleTimeString("zh-CN", { hour12: false, timeZone: "Asia/Shanghai" })}</span>
               <span className="text-foreground">-</span>
               <span className="text-foreground">{r.email ?? "未知邮箱"}</span>
               <span className="text-muted-foreground">注册成功，自动赠送</span>
