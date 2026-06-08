@@ -102,6 +102,7 @@ type Props = {
     modelKey?: string;
     inputParams?: Record<string, unknown>;
   } | null;
+  referenceResetToken?: number;
   isAdmin?: boolean;
   adminPreparingNextTask?: boolean;
   adminCurrentBatchTaskCount?: number;
@@ -121,6 +122,7 @@ export function ControlPanel({
   onProgress,
   generating,
   retryPrefill,
+  referenceResetToken = 0,
   isAdmin = false,
   adminPreparingNextTask = false,
   adminCurrentBatchTaskCount = 0,
@@ -198,6 +200,11 @@ export function ControlPanel({
     setInspirationMode(false);
     toast.success("已回填失败任务参数，可编辑后重试");
   }, [retryPrefill]);
+
+  useEffect(() => {
+    if (referenceResetToken <= 0) return;
+    setRefs([]);
+  }, [referenceResetToken]);
 
 
   const activeModel = models.find((m) => m.model_key === modelKey);

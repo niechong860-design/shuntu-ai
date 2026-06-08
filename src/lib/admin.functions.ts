@@ -925,7 +925,7 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
 
     const { data: task, error } = await (supabaseAdmin as any)
       .from("generation_tasks")
-      .select("id, status, result_payload, result_image_url, error_message, deduction_status, deduction_id")
+      .select("id, status, model_id, result_payload, result_image_url, error_message, deduction_status, deduction_id")
       .eq("id", data.taskId)
       .eq("user_id", userId)
       .maybeSingle();
@@ -955,7 +955,7 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
       };
     }
 
-    const pollResult = await pollAdminPreviewProviderTask(String(providerTaskId));
+    const pollResult = await pollAdminPreviewProviderTask(String(providerTaskId), (task.model_id ?? null) as string | null);
     const now = new Date().toISOString();
     if (pollResult.status === "succeeded") {
       const resultPayload = { ...(task.result_payload ?? {}), ...pollResult.resultPayload, providerStatus: "succeeded" };
@@ -1188,7 +1188,7 @@ function buildAdminPreviewUpstreamBody(params: {
   return body;
 }
 
-async function pollAdminPreviewProviderTask(providerTaskId: string): Promise<
+async function pollAdminPreviewProviderTask(providerTaskId: string, modelKey?: string | null): Promise<
   | { status: "running"; resultImageUrl: null; errorMessage: null; resultPayload: Record<string, any> }
   | { status: "succeeded"; resultImageUrl: string; errorMessage: null; resultPayload: Record<string, any> }
   | { status: "failed"; resultImageUrl: null; errorMessage: string; resultPayload: Record<string, any> }
@@ -1218,9 +1218,25 @@ async function pollAdminPreviewProviderTask(providerTaskId: string): Promise<
     return { status: "running", resultImageUrl: null, errorMessage: null, resultPayload: { ...resultPayload, httpStatus: res.status } };
   }
   if (code >= 400) {
+    console.error("[generation-task] upstream detail code", {
+      stage: "detail",
+      modelKey,
+      providerTaskId,
+      upstreamCode: code,
+      code: json?.code ?? null,
+      message: rawMsg,
+    });
     return { status: "failed", resultImageUrl: null, errorMessage: friendlyUpstreamError(code), resultPayload };
   }
   if (taskStatus === 3) {
+    console.error("[generation-task] upstream detail failed", {
+      stage: "detail",
+      modelKey,
+      providerTaskId,
+      upstreamCode: Number.isFinite(code) ? code : null,
+      code: json?.code ?? null,
+      message: rawMsg,
+    });
     return { status: "failed", resultImageUrl: null, errorMessage: rawMsg || "任务被拒绝", resultPayload };
   }
   if (taskStatus === 2) {
