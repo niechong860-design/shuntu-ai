@@ -144,7 +144,13 @@ export function Studio() {
     saveSessionLatestResult(userId, { url, prompt, modelName });
   };
 
-  const prepareCanvasForNewTask = (task?: Pick<FloatingTask, "id" | "title" | "status" | "prompt" | "modelName">) => {
+  const prepareCanvasForNewTask = (
+    task?: Pick<FloatingTask, "id" | "title" | "status" | "prompt" | "modelName">,
+    options: { clearCurrentResult?: boolean } = {},
+  ) => {
+    const shouldClearDisplay = options.clearCurrentResult ?? generatedUrlSource !== "result";
+    if (!shouldClearDisplay) return;
+
     setGeneratedUrl(null);
     setGeneratedUrlSource(null);
     if (!task) {
@@ -354,7 +360,7 @@ export function Studio() {
 
   const handleAdminPrepareNextTask = () => {
     if (!canPrepareNextAdminTask) return;
-    prepareCanvasForNewTask(activeQueueTask ?? undefined);
+    prepareCanvasForNewTask(activeQueueTask ?? undefined, { clearCurrentResult: false });
     setAdminPreparingNextTask(true);
   };
 
@@ -393,7 +399,9 @@ export function Studio() {
         queuedTask,
       ]),
     );
-    prepareCanvasForNewTask(queuedTask);
+    prepareCanvasForNewTask(queuedTask, {
+      clearCurrentResult: generatedUrlSource !== "result" || adminActiveTaskCount === 0,
+    });
     setAdminPreparingNextTask(false);
     return true;
   };
@@ -468,7 +476,9 @@ export function Studio() {
         inputParams: failedTask.inputParams ?? {},
       };
       setAdminTasks((tasks) => trimPanelTasks([...tasks, queuedTask]));
-      prepareCanvasForNewTask(queuedTask);
+      prepareCanvasForNewTask(queuedTask, {
+        clearCurrentResult: generatedUrlSource !== "result" || adminActiveTaskCount === 0,
+      });
       toast.success("已重新加入任务队列");
     } catch (error) {
       const message = error instanceof Error ? error.message : "任务创建失败，请稍后重试。";
@@ -505,7 +515,7 @@ export function Studio() {
     );
     if (taskForCanvas) {
       const submittingTask: FloatingTask = { ...taskForCanvas, status: "submitting" };
-      prepareCanvasForNewTask(submittingTask);
+      prepareCanvasForNewTask(submittingTask, { clearCurrentResult: false });
     }
     try {
       const task = await startTask({ data: { taskId } }) as {
