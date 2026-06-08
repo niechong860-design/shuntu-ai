@@ -144,6 +144,18 @@ export function Studio() {
     saveSessionLatestResult(userId, { url, prompt, modelName });
   };
 
+  const prepareCanvasForNewTask = (task?: Pick<FloatingTask, "id" | "title" | "status" | "prompt" | "modelName">) => {
+    setGeneratedUrl(null);
+    setGeneratedUrlSource(null);
+    if (!task) {
+      setProgress(null);
+      return;
+    }
+    setCurrentPrompt(task.prompt ?? task.title ?? "");
+    setCurrentModel(task.modelName ?? "");
+    setProgress(getQueueProgress(task as FloatingTask));
+  };
+
   const mapRecoveredTaskStatus = (status: string, deductionStatus?: string | null, deductionId?: string | null): FloatingTask["status"] => {
     if (status === "queued") return "waiting";
     if (status === "running") return "generating";
@@ -312,8 +324,7 @@ export function Studio() {
     setAdminPrimaryTaskInBatch(!!session);
     setGenerating(true);
     setAdminPreparingNextTask(false);
-    setGeneratedUrl(null);
-    setGeneratedUrlSource(null);
+    prepareCanvasForNewTask();
     setCurrentPrompt(info.prompt);
     setCurrentModel(info.modelName);
   };
@@ -343,6 +354,7 @@ export function Studio() {
 
   const handleAdminPrepareNextTask = () => {
     if (!canPrepareNextAdminTask) return;
+    prepareCanvasForNewTask(activeQueueTask ?? undefined);
     setAdminPreparingNextTask(true);
   };
 
@@ -381,15 +393,7 @@ export function Studio() {
         queuedTask,
       ]),
     );
-    if (!hasVisibleResult) {
-      if (generatedUrlSource === "history") {
-        setGeneratedUrl(null);
-        setGeneratedUrlSource(null);
-      }
-      setCurrentPrompt(input.prompt);
-      setCurrentModel(input.modelName);
-      setProgress(getQueueProgress(queuedTask));
-    }
+    prepareCanvasForNewTask(queuedTask);
     setAdminPreparingNextTask(false);
     return true;
   };
@@ -464,15 +468,7 @@ export function Studio() {
         inputParams: failedTask.inputParams ?? {},
       };
       setAdminTasks((tasks) => trimPanelTasks([...tasks, queuedTask]));
-      if (!hasVisibleResult) {
-        if (generatedUrlSource === "history") {
-          setGeneratedUrl(null);
-          setGeneratedUrlSource(null);
-        }
-        setCurrentPrompt(queuedTask.prompt ?? queuedTask.title ?? "");
-        setCurrentModel(queuedTask.modelName ?? "");
-        setProgress(getQueueProgress(queuedTask));
-      }
+      prepareCanvasForNewTask(queuedTask);
       toast.success("已重新加入任务队列");
     } catch (error) {
       const message = error instanceof Error ? error.message : "任务创建失败，请稍后重试。";
@@ -509,15 +505,7 @@ export function Studio() {
     );
     if (taskForCanvas) {
       const submittingTask: FloatingTask = { ...taskForCanvas, status: "submitting" };
-      if (!hasVisibleResult) {
-        if (generatedUrlSource === "history") {
-          setGeneratedUrl(null);
-          setGeneratedUrlSource(null);
-        }
-        setCurrentPrompt(submittingTask.prompt ?? submittingTask.title ?? "");
-        setCurrentModel(submittingTask.modelName ?? "");
-        setProgress(getQueueProgress(submittingTask));
-      }
+      prepareCanvasForNewTask(submittingTask);
     }
     try {
       const task = await startTask({ data: { taskId } }) as {
