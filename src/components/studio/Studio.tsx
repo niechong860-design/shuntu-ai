@@ -95,6 +95,7 @@ export function Studio() {
   const pollTask = useServerFn(pollGenerationTask);
   const [generating, setGenerating] = useState(false);
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
+  const [generatedUrlSource, setGeneratedUrlSource] = useState<"result" | "history" | null>(null);
   const [currentPrompt, setCurrentPrompt] = useState<string>("");
   const [currentModel, setCurrentModel] = useState<string>("");
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -108,6 +109,7 @@ export function Studio() {
   const [cancelingTaskIds, setCancelingTaskIds] = useState<string[]>([]);
   const [retryingTaskIds, setRetryingTaskIds] = useState<string[]>([]);
   const [retryPrefill, setRetryPrefill] = useState<RetryPrefill | null>(null);
+  const [referenceResetToken, setReferenceResetToken] = useState(0);
   const pollingTaskIdsRef = useRef<Set<string>>(new Set());
   const adminActiveTaskCount = adminTasks.filter((task) =>
     task.status === "waiting" || task.status === "submitting" || task.status === "generating"
@@ -122,7 +124,7 @@ export function Studio() {
     effectiveCurrentBatchTaskCount < 3 &&
     (generating || adminActiveTaskCount > 0);
   const activeQueueTask = getActiveQueueTask(adminTasks);
-  const hasVisibleResult = !!generatedUrl;
+  const hasVisibleResult = !!generatedUrl && generatedUrlSource === "result";
   const shouldShowQueueLoadingOnCanvas = !!activeQueueTask && !hasVisibleResult;
   const queueProgress = activeQueueTask ? getQueueProgress(activeQueueTask) : null;
 
@@ -153,6 +155,7 @@ export function Studio() {
 
   useEffect(() => {
     setGeneratedUrl(null);
+    setGeneratedUrlSource(null);
     setCurrentPrompt("");
     setCurrentModel("");
     setProgress(null);
@@ -163,6 +166,7 @@ export function Studio() {
     setCancelingTaskIds([]);
     setRetryingTaskIds([]);
     setRetryPrefill(null);
+    setReferenceResetToken(0);
     pollingTaskIdsRef.current.clear();
   }, [session?.user?.id]);
 
@@ -176,6 +180,7 @@ export function Studio() {
       setCancelingTaskIds([]);
       setRetryingTaskIds([]);
       setRetryPrefill(null);
+      setReferenceResetToken(0);
       pollingTaskIdsRef.current.clear();
       return;
     }
@@ -213,6 +218,7 @@ export function Studio() {
         const activeTask = getActiveQueueTask(trimmed);
         if (activeTask) {
           setGeneratedUrl(null);
+          setGeneratedUrlSource(null);
           setCurrentPrompt(activeTask.prompt ?? activeTask.title ?? "");
           setCurrentModel(activeTask.modelName ?? "");
           setProgress(getQueueProgress(activeTask));
@@ -261,6 +267,7 @@ export function Studio() {
               );
               if (task.resultImageUrl) {
                 setGeneratedUrl(task.resultImageUrl);
+                setGeneratedUrlSource("result");
                 const prompt = matchedTask?.prompt ?? matchedTask?.title ?? "";
                 const modelName = matchedTask?.modelName ?? "";
                 setCurrentPrompt(prompt);
@@ -305,6 +312,8 @@ export function Studio() {
     setAdminPrimaryTaskInBatch(!!session);
     setGenerating(true);
     setAdminPreparingNextTask(false);
+    setGeneratedUrl(null);
+    setGeneratedUrlSource(null);
     setCurrentPrompt(info.prompt);
     setCurrentModel(info.modelName);
   };
@@ -327,6 +336,7 @@ export function Studio() {
     setProgress(null);
     if (url) {
       setGeneratedUrl(url);
+      setGeneratedUrlSource("result");
       rememberLatestResult(url, currentPrompt, currentModel);
     }
   };
@@ -371,7 +381,11 @@ export function Studio() {
         queuedTask,
       ]),
     );
-    if (!generatedUrl) {
+    if (!hasVisibleResult) {
+      if (generatedUrlSource === "history") {
+        setGeneratedUrl(null);
+        setGeneratedUrlSource(null);
+      }
       setCurrentPrompt(input.prompt);
       setCurrentModel(input.modelName);
       setProgress(getQueueProgress(queuedTask));
@@ -450,7 +464,11 @@ export function Studio() {
         inputParams: failedTask.inputParams ?? {},
       };
       setAdminTasks((tasks) => trimPanelTasks([...tasks, queuedTask]));
-      if (!generatedUrl) {
+      if (!hasVisibleResult) {
+        if (generatedUrlSource === "history") {
+          setGeneratedUrl(null);
+          setGeneratedUrlSource(null);
+        }
         setCurrentPrompt(queuedTask.prompt ?? queuedTask.title ?? "");
         setCurrentModel(queuedTask.modelName ?? "");
         setProgress(getQueueProgress(queuedTask));
@@ -491,7 +509,11 @@ export function Studio() {
     );
     if (taskForCanvas) {
       const submittingTask: FloatingTask = { ...taskForCanvas, status: "submitting" };
-      if (!generatedUrl) {
+      if (!hasVisibleResult) {
+        if (generatedUrlSource === "history") {
+          setGeneratedUrl(null);
+          setGeneratedUrlSource(null);
+        }
         setCurrentPrompt(submittingTask.prompt ?? submittingTask.title ?? "");
         setCurrentModel(submittingTask.modelName ?? "");
         setProgress(getQueueProgress(submittingTask));
@@ -533,6 +555,7 @@ export function Studio() {
       if (finalized) {
         if (task.resultImageUrl) {
           setGeneratedUrl(task.resultImageUrl);
+          setGeneratedUrlSource("result");
           const prompt = matchedTask?.prompt ?? matchedTask?.title ?? "";
           const modelName = matchedTask?.modelName ?? "";
           setCurrentPrompt(prompt);
@@ -598,6 +621,7 @@ export function Studio() {
             onProgress={setProgress}
             generating={generating}
             retryPrefill={retryPrefill}
+            referenceResetToken={referenceResetToken}
             isAdmin={!!session}
             adminPreparingNextTask={adminPreparingNextTask}
             adminCurrentBatchTaskCount={effectiveCurrentBatchTaskCount}
@@ -617,8 +641,10 @@ export function Studio() {
             onHistoryOpenChange={setHistoryOpen}
             onSelectHistory={(url, prompt, model) => {
               setGeneratedUrl(url);
+              setGeneratedUrlSource("history");
               setCurrentPrompt(prompt);
               setCurrentModel(model);
+              setReferenceResetToken((token) => token + 1);
             }}
           />
         </div>
