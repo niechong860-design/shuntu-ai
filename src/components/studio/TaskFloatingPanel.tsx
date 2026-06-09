@@ -23,6 +23,36 @@ const STATUS_META: Record<TaskStatus, { label: string; icon: typeof Clock3; clas
   failed: { label: "失败", icon: XCircle, className: "text-destructive" },
 };
 
+
+function formatTaskErrorMessage(message?: string | null): string {
+  const raw = (message ?? "").trim();
+  if (!raw) return "生成失败，上游服务异常，请稍后重试";
+
+  const lower = raw.toLowerCase();
+
+  if (lower.includes("generate image failed")) {
+    return "生成失败，上游服务异常，请稍后重试";
+  }
+
+  if (lower.includes("upstream request failed") || lower.includes("fetch failed") || lower.includes("networkerror")) {
+    return "生成失败，服务请求异常，请稍后重试";
+  }
+
+  if (lower.includes("content policy") || lower.includes("policy") || lower.includes("rejected")) {
+    return "此内容可能违反内容政策，请修改提示词后重试";
+  }
+
+  if (lower.includes("ref_url") || lower.includes("reference image") || lower.includes("reference")) {
+    return "参考图读取失败，请检查图片链接或重新上传参考图";
+  }
+
+  if (lower.includes("without charged deduction") || lower.includes("finalize task failed")) {
+    return "生成结果结算异常，已保护余额，请联系客服处理";
+  }
+
+  return raw;
+}
+
 export function TaskFloatingPanel({
   tasks,
   maxTasks = 3,
@@ -120,7 +150,7 @@ export function TaskFloatingPanel({
                       <div className="mt-2 space-y-2">
                         {task.errorMessage && (
                           <div className="line-clamp-2 rounded-md bg-destructive/10 px-2 py-1 text-[10px] leading-relaxed text-destructive">
-                            {task.errorMessage}
+                            {formatTaskErrorMessage(task.errorMessage)}
                           </div>
                         )}
                         <div className="flex flex-wrap gap-1.5">
