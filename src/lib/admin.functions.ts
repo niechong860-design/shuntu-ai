@@ -3,6 +3,9 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { checkPromptSafety, SAFETY_SERVER_BLOCK_MESSAGE } from "@/lib/promptSafety";
+import { pollFoxApiTask, submitFoxApiImageEdit } from "@/lib/foxapi-backup";
+
+const FOXAPI_BACKUP_MODEL_KEY = "gpt-image-2-backup";
 
 async function assertAdmin(userId: string) {
   const { data, error } = await supabaseAdmin
@@ -1053,19 +1056,39 @@ async function submitAdminPreviewGenerationTask(task: any): Promise<
   if (modelError) throw new Error(modelError.message);
   if (!model) throw new Error("模型不存在或已不可用。");
   if ((model as any).is_enabled === false) throw new Error("模型不存在或已不可用。");
-  if (!(model as any).api_url) throw new Error("该模型尚未配置 API 接口地址。");
+  if (!(model as any).api_url && (model as any).model_key !== FOXAPI_BACKUP_MODEL_KEY) throw new Error("该模型尚未配置 API 接口地址。");
 
-  const targetKey = normalizeUpstreamApiKey((model as any).api_key) || normalizeUpstreamApiKey(global_api_key);
+  const targetKey = (model as any).model_key === FOXAPI_BACKUP_MODEL_KEY
+    ? ""
+    : normalizeUpstreamApiKey((model as any).api_key) || normalizeUpstreamApiKey(global_api_key);
   const pureApiKey = String(targetKey).replace(/Bearer\s+/i, "").trim();
-  if (!pureApiKey) throw new Error("该模型或全局接口设置尚未配置 API Key。");
+  if (!pureApiKey && (model as any).model_key !== FOXAPI_BACKUP_MODEL_KEY) throw new Error("该模型或全局接口设置尚未配置 API Key。");
 
-  const submitUrl = resolveUrl(base_url, (model as any).api_url);
+  const submitUrl = (model as any).model_key === FOXAPI_BACKUP_MODEL_KEY ? "" : resolveUrl(base_url, (model as any).api_url);
   const prompt = String(task.prompt ?? "").trim();
   if (!prompt) throw new Error("任务提示词为空。");
 
   const aspectRatio = String(inputParams.aspectRatio ?? "1:1");
   const sizeValue = String(inputParams.size ?? "1K");
   const referenceImages = Array.isArray(inputParams.referenceImages) ? inputParams.referenceImages : [];
+  if ((model as any).model_key === FOXAPI_BACKUP_MODEL_KEY) {
+    const httpRefs = referenceImages.filter((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u));
+    if (httpRefs.length === 0) throw new Error("Backup model requires a reference image.");
+    const result = await submitFoxApiImageEdit({ prompt, imageUrl: httpRefs[0] });
+    if (!result.ok) throw new Error(result.message);
+    return {
+      status: "running",
+      resultImageUrl: null,
+      resultPayload: {
+        providerTaskId: result.taskId,
+        providerStatus: "submitted",
+        provider: "foxapi",
+        requestFormat: "async_id",
+        requestId: task.request_id,
+      },
+    };
+  }
+
   const requestFormat = (model as any).request_format || "async_id";
   const body = buildAdminPreviewUpstreamBody({
     model,
@@ -1193,6 +1216,23 @@ async function pollAdminPreviewProviderTask(providerTaskId: string, modelKey?: s
   | { status: "succeeded"; resultImageUrl: string; errorMessage: null; resultPayload: Record<string, any> }
   | { status: "failed"; resultImageUrl: null; errorMessage: string; resultPayload: Record<string, any> }
 > {
+  if (modelKey === FOXAPI_BACKUP_MODEL_KEY) {
+    const result = await pollFoxApiTask(providerTaskId);
+    const resultPayload = {
+      providerTaskId,
+      provider: "foxapi",
+      providerStatus: result.providerStatus ?? result.status,
+      message: result.message,
+    };
+    if (result.status === "succeeded") {
+      return { status: "succeeded", resultImageUrl: result.imageUrl, errorMessage: null, resultPayload };
+    }
+    if (result.status === "failed") {
+      return { status: "failed", resultImageUrl: null, errorMessage: result.message, resultPayload };
+    }
+    return { status: "running", resultImageUrl: null, errorMessage: null, resultPayload };
+  }
+
   const { global_api_key } = await loadGlobalConfig();
   const pureApiKey = normalizeUpstreamApiKey(global_api_key);
   if (!pureApiKey) throw new Error("尚未配置全局 API Key，请联系管理员");
@@ -1506,7 +1546,7 @@ export const generateImage = createServerFn({ method: "POST" })
     if (mErr) throw new Error(mErr.message);
     if (!model) throw new Error("模型不存在");
     if (model.is_enabled === false) throw new Error("该模型已被管理员停用");
-    if (!model.api_url) throw new Error("该模型尚未配置 API 接口地址，请联系管理员");
+    if (!model.api_url && model.model_key !== FOXAPI_BACKUP_MODEL_KEY) throw new Error("该模型尚未配置 API 接口地址，请联系管理员");
 
     const { data: prof, error: pErr } = await supabase
       .from("profiles").select("credits").eq("id", userId).maybeSingle();
@@ -1530,10 +1570,11 @@ export const generateImage = createServerFn({ method: "POST" })
     const finalPrompt = data.prompt.trim();
 
 
-
-    const targetKey = normalizeUpstreamApiKey((model as any).api_key) || normalizeUpstreamApiKey(global_api_key);
+    const targetKey = model.model_key === FOXAPI_BACKUP_MODEL_KEY
+      ? ""
+      : normalizeUpstreamApiKey((model as any).api_key) || normalizeUpstreamApiKey(global_api_key);
     const pureApiKey = String(targetKey).replace(/Bearer\s+/i, "").trim();
-    if (!pureApiKey) {
+    if (!pureApiKey && model.model_key !== FOXAPI_BACKUP_MODEL_KEY) {
       throw new Error("该模型或全局接口设置尚未配置 API Key，请联系管理员");
     }
 
@@ -1541,7 +1582,7 @@ export const generateImage = createServerFn({ method: "POST" })
       "Content-Type": "application/json",
       "Authorization": pureApiKey,
     };
-    const submitUrl = resolveUrl(base_url, model.api_url);
+    const submitUrl = model.model_key === FOXAPI_BACKUP_MODEL_KEY ? "" : resolveUrl(base_url, model.api_url || "");
 
     const size = VALID_SIZES.has(data.aspectRatio) ? data.aspectRatio : "auto";
     // 后端硬性限制：仅文生图模型不允许带参考图
@@ -1552,6 +1593,20 @@ export const generateImage = createServerFn({ method: "POST" })
       : (data.referenceImages ?? []).filter((u) => /^https?:\/\//i.test(u));
     const promptKey = (model as any).prompt_key || "prompt";
     const requestFormat = (model as any).request_format || "async_id";
+
+    if (model.model_key === FOXAPI_BACKUP_MODEL_KEY) {
+      if (httpRefs.length === 0) return failGeneration("Backup model requires a reference image.");
+      const result = await submitFoxApiImageEdit({ prompt: finalPrompt, imageUrl: httpRefs[0] });
+      if (!result.ok) return failGeneration(result.message);
+      return {
+        success: true,
+        imageUrl: null,
+        taskId: result.taskId,
+        cost: 0,
+        credits: currentCredits,
+        modelName: model.name,
+      };
+    }
 
     // 占位符：{{aspect}} / {{prompt}} 替换为字符串；{{urls}} 替换为整个参考图数组（用 __URLS__ 标记）
     const URLS_TOKEN = "__LOVABLE_URLS_ARRAY__";
@@ -1717,6 +1772,46 @@ export const checkImageStatus = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase } = context;
+    if (data.modelKey === FOXAPI_BACKUP_MODEL_KEY) {
+      const result = await pollFoxApiTask(data.taskId);
+      if (result.status === "running") {
+        return { status: "pending" as const, reason: null as null, imageUrl: null as string | null, message: result.message, code: null as number | null, taskStatus: result.providerStatus, rawMsg: result.message, debug: null as null };
+      }
+      if (result.status === "failed") {
+        const message = result.message === "FoxAPI returned base64 result, not supported yet"
+          ? "Backup model returned an unsupported result format. Please switch to another model."
+          : result.message;
+        return { status: "failed" as const, reason: "upstream" as const, imageUrl: null as string | null, message, code: null as number | null, taskStatus: result.providerStatus, rawMsg: result.message, debug: null as null };
+      }
+      const url = result.imageUrl;
+      // 上游成功返回图片后再扣费记账，避免失败也扣点
+      if (data.modelKey && data.prompt) {
+        try {
+          const { data: rpcRes, error: rpcErr } = await supabase.rpc("consume_credits_for_generation", {
+            _model_key: data.modelKey,
+            _prompt: data.prompt,
+          });
+          if (rpcErr) {
+            console.error("[foxapi-backup]", { modelKey: data.modelKey, stage: "deduction_rpc_error", taskId: data.taskId, providerStatus: result.providerStatus, elapsedMs: result.elapsedMs });
+          } else {
+            const row: any = Array.isArray(rpcRes) ? rpcRes?.[0] : rpcRes;
+            if (!row?.success) {
+              console.error("[foxapi-backup]", { modelKey: data.modelKey, stage: "deduction_not_charged", taskId: data.taskId, providerStatus: result.providerStatus, elapsedMs: result.elapsedMs });
+            }
+          }
+        } catch {
+          console.error("[foxapi-backup]", { modelKey: data.modelKey, stage: "deduction_exception", taskId: data.taskId, providerStatus: result.providerStatus, elapsedMs: result.elapsedMs });
+        }
+      }
+      if (data.modelName) {
+        await supabase.rpc("set_latest_history_image", {
+          _model: data.modelName,
+          _image_url: url,
+        });
+      }
+      return { status: "success" as const, reason: null as null, imageUrl: url, message: null as string | null, code: null as number | null, taskStatus: result.providerStatus, rawMsg: null as string | null, debug: null as null };
+    }
+
     const { global_api_key } = await loadGlobalConfig();
     const pureApiKey = normalizeUpstreamApiKey(global_api_key);
     if (!pureApiKey) throw new Error("尚未配置全局 API Key，请联系管理员");
@@ -2342,6 +2437,30 @@ export const adminTestModel = createServerFn({ method: "POST" })
       .maybeSingle();
     if (mErr) throw new Error(mErr.message);
     if (!model) throw new Error("模型不存在");
+    if ((model as any).model_key === FOXAPI_BACKUP_MODEL_KEY) {
+      const extraParams = ((model as any).extra_params ?? {}) as Record<string, unknown>;
+      const testImageUrl = [extraParams.testImageUrl, extraParams.test_image_url, extraParams.referenceImageUrl, extraParams.reference_image_url]
+        .find((value): value is string => typeof value === "string" && /^https?:\/\//i.test(value));
+      if (!testImageUrl) {
+        return { ok: false, stage: "config", message: "Backup model test requires extra_params.testImageUrl.", elapsedMs: Date.now() - startedAt, imageUrl: null as string | null };
+      }
+      const submit = await submitFoxApiImageEdit({ prompt: (data.prompt && data.prompt.trim()) || "a high quality product photo edit", imageUrl: testImageUrl });
+      if (!submit.ok) {
+        return { ok: false, stage: "submit", message: submit.message, elapsedMs: Date.now() - startedAt, imageUrl: null as string | null };
+      }
+      const deadline = Date.now() + 300_000;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2500));
+        const poll = await pollFoxApiTask(submit.taskId);
+        if (poll.status === "succeeded") {
+          return { ok: true, stage: "result", message: "Test succeeded", elapsedMs: Date.now() - startedAt, imageUrl: poll.imageUrl };
+        }
+        if (poll.status === "failed") {
+          return { ok: false, stage: "result", message: poll.message, elapsedMs: Date.now() - startedAt, imageUrl: null as string | null };
+        }
+      }
+      return { ok: false, stage: "timeout", message: `Task submitted (taskId=${submit.taskId}), but did not complete within 300 seconds`, elapsedMs: Date.now() - startedAt, imageUrl: null as string | null };
+    }
     if (!model.api_url) {
       return { ok: false, stage: "config", message: "未配置 API 接口地址", elapsedMs: Date.now() - startedAt, imageUrl: null as string | null };
     }
