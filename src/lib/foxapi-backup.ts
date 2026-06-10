@@ -1,3 +1,5 @@
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
+
 export type FoxApiConfig = {
   baseUrl: string;
   apiKey: string;
@@ -12,6 +14,18 @@ export type FoxApiPollResult =
   | { status: "succeeded"; taskId: string; providerStatus: string | null; imageUrl: string; message: null; elapsedMs: number }
   | { status: "failed"; taskId: string; providerStatus: string | null; imageUrl: null; message: string; elapsedMs: number };
 
+type SupportedImageMimeType = "image/png" | "image/jpeg" | "image/webp";
+
+type FoxApiBase64Image = {
+  base64: string;
+  mimeType: SupportedImageMimeType;
+};
+
+const FOXAPI_RESULT_BUCKET = "case-images";
+const FOXAPI_RESULT_PREFIX = "foxapi-results";
+const MAX_FOXAPI_IMAGE_BYTES = 15 * 1024 * 1024;
+const SUPPORTED_IMAGE_MIME_TYPES = new Set<SupportedImageMimeType>(["image/png", "image/jpeg", "image/webp"]);
+
 export function loadFoxApiConfig(): FoxApiConfig {
   const baseUrl = (process.env.FOXAPI_BASE_URL || "https://foxapi.chat").replace(/\/+$/, "");
   const apiKey = String(process.env.FOXAPI_API_KEY ?? "").replace(/^Bearer\s+/i, "").trim();
@@ -19,12 +33,16 @@ export function loadFoxApiConfig(): FoxApiConfig {
   return { baseUrl, apiKey };
 }
 
-function safeLog(stage: string, data: { taskId?: string | null; status?: string | null; elapsedMs?: number | null } = {}) {
+function safeLog(
+  stage: string,
+  data: { taskId?: string | null; status?: string | null; elapsedMs?: number | null; uploadPath?: string | null } = {},
+) {
   console.log("[foxapi-backup]", {
     stage,
     taskId: data.taskId ?? null,
     status: data.status ?? null,
     elapsedMs: data.elapsedMs ?? null,
+    uploadPath: data.uploadPath ?? null,
   });
 }
 
@@ -111,34 +129,102 @@ function extractImageUrl(payload: any): string | null {
   return null;
 }
 
-function hasBase64Result(payload: any): boolean {
-  try {
-    const seen = new Set<any>();
-    const stack: any[] = [payload];
-    while (stack.length) {
-      const value = stack.pop();
-      if (!value || seen.has(value)) continue;
+function normalizeImageMimeType(value: unknown): SupportedImageMimeType | null {
+  if (typeof value !== "string") return null;
+  const mimeType = value.trim().toLowerCase();
+  return SUPPORTED_IMAGE_MIME_TYPES.has(mimeType as SupportedImageMimeType) ? (mimeType as SupportedImageMimeType) : null;
+}
 
-      if (typeof value === "string") {
-        if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(value)) return true;
-        if (/^[A-Za-z0-9+/=]{200,}$/.test(value)) return true;
-        continue;
-      }
+function parseBase64Image(value: unknown, mimeHint?: unknown): FoxApiBase64Image | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
 
-      if (typeof value === "object") {
-        seen.add(value);
-        for (const key of Object.keys(value)) {
-          if (/^(b64_json|base64|image_base64)$/i.test(key) && typeof value[key] === "string" && value[key]) {
-            return true;
-          }
-          stack.push(value[key]);
-        }
-      }
-    }
-  } catch {
-    return false;
+  const dataUrlMatch = trimmed.match(/^data:([^;,]+);base64,(.+)$/is);
+  if (dataUrlMatch) {
+    const mimeType = normalizeImageMimeType(dataUrlMatch[1]);
+    if (!mimeType) return null;
+    return { base64: dataUrlMatch[2].replace(/\s/g, ""), mimeType };
   }
-  return false;
+
+  return {
+    base64: trimmed.replace(/\s/g, ""),
+    mimeType: normalizeImageMimeType(mimeHint) ?? "image/png",
+  };
+}
+
+function extractBase64Image(payload: any): FoxApiBase64Image | null {
+  const candidates = [
+    { value: payload?.data?.[0]?.b64_json, mimeType: payload?.data?.[0]?.mime_type ?? payload?.data?.[0]?.mimeType },
+    { value: payload?.result?.data?.[0]?.b64_json, mimeType: payload?.result?.data?.[0]?.mime_type ?? payload?.result?.data?.[0]?.mimeType },
+    { value: payload?.result?.b64_json, mimeType: payload?.result?.mime_type ?? payload?.result?.mimeType },
+    { value: payload?.result?.base64, mimeType: payload?.result?.mime_type ?? payload?.result?.mimeType },
+    { value: payload?.data?.base64, mimeType: payload?.data?.mime_type ?? payload?.data?.mimeType },
+    { value: payload?.image_base64, mimeType: payload?.mime_type ?? payload?.mimeType },
+  ];
+
+  for (const candidate of candidates) {
+    const image = parseBase64Image(candidate.value, candidate.mimeType);
+    if (image) return image;
+  }
+
+  return null;
+}
+
+function getImageExtension(mimeType: SupportedImageMimeType): "png" | "jpg" | "webp" {
+  if (mimeType === "image/jpeg") return "jpg";
+  if (mimeType === "image/webp") return "webp";
+  return "png";
+}
+
+function getUploadPath(taskId: string, mimeType: SupportedImageMimeType): string {
+  const safeTaskId = taskId.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return `${FOXAPI_RESULT_PREFIX}/${safeTaskId}.${getImageExtension(mimeType)}`;
+}
+
+function decodeBase64Image(image: FoxApiBase64Image): { arrayBuffer: ArrayBuffer; mimeType: SupportedImageMimeType } | { error: string } {
+  const normalizedBase64 = image.base64.replace(/\s/g, "");
+  const estimatedBytes = Math.floor((normalizedBase64.length * 3) / 4) - (normalizedBase64.endsWith("==") ? 2 : normalizedBase64.endsWith("=") ? 1 : 0);
+  if (estimatedBytes > MAX_FOXAPI_IMAGE_BYTES) return { error: "FoxAPI image result is too large." };
+
+  try {
+    const binary = atob(normalizedBase64);
+    if (binary.length > MAX_FOXAPI_IMAGE_BYTES) return { error: "FoxAPI image result is too large." };
+    const arrayBuffer = new ArrayBuffer(binary.length);
+    const bytes = new Uint8Array(arrayBuffer);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return { arrayBuffer, mimeType: image.mimeType };
+  } catch {
+    return { error: "FoxAPI result upload failed." };
+  }
+}
+
+async function uploadBase64ImageResult(
+  taskId: string,
+  image: FoxApiBase64Image,
+): Promise<{ ok: true; imageUrl: string; uploadPath: string } | { ok: false; message: string; uploadPath: string | null }> {
+  const decoded = decodeBase64Image(image);
+  if ("error" in decoded) return { ok: false, message: decoded.error, uploadPath: null };
+
+  const uploadPath = getUploadPath(taskId, decoded.mimeType);
+  const file = new Blob([decoded.arrayBuffer], { type: decoded.mimeType });
+  const { error } = await supabaseAdmin.storage.from(FOXAPI_RESULT_BUCKET).upload(uploadPath, file, {
+    contentType: decoded.mimeType,
+    upsert: true,
+  });
+
+  if (error) {
+    return { ok: false, message: "FoxAPI result upload failed.", uploadPath };
+  }
+
+  const { data } = supabaseAdmin.storage.from(FOXAPI_RESULT_BUCKET).getPublicUrl(uploadPath);
+  if (!data.publicUrl) {
+    return { ok: false, message: "FoxAPI result upload failed.", uploadPath };
+  }
+
+  return { ok: true, imageUrl: data.publicUrl, uploadPath };
 }
 
 export async function submitFoxApiImageEdit(input: {
@@ -254,14 +340,26 @@ export async function pollFoxApiTask(taskId: string): Promise<FoxApiPollResult> 
   if (providerStatus === "completed") {
     const imageUrl = extractImageUrl(payload);
     if (imageUrl) return { status: "succeeded", taskId, providerStatus, imageUrl, message: null, elapsedMs };
-    if (hasBase64Result(payload)) {
+    const base64Image = extractBase64Image(payload);
+    if (base64Image) {
+      const upload = await uploadBase64ImageResult(taskId, base64Image);
+      const uploadElapsedMs = Date.now() - startedAt;
+      safeLog(upload.ok ? "poll:upload_ok" : "poll:upload_error", {
+        taskId,
+        status: upload.ok ? "succeeded" : "failed",
+        elapsedMs: uploadElapsedMs,
+        uploadPath: upload.uploadPath,
+      });
+      if (upload.ok) {
+        return { status: "succeeded", taskId, providerStatus, imageUrl: upload.imageUrl, message: null, elapsedMs: uploadElapsedMs };
+      }
       return {
         status: "failed",
         taskId,
         providerStatus,
         imageUrl: null,
-        message: "FoxAPI returned base64 result, not supported yet",
-        elapsedMs,
+        message: upload.message,
+        elapsedMs: uploadElapsedMs,
       };
     }
     return { status: "running", taskId, providerStatus, imageUrl: null, message: "FoxAPI result URL is not ready", elapsedMs };
