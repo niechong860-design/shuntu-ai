@@ -338,16 +338,19 @@ export async function submitFoxApiImageGenerationTask(input: {
 
   safeLog("generation_task:start", { elapsedMs: 0 });
 
-  const form = new FormData();
-  form.append("model", "gpt-image-2");
-  form.append("prompt", input.prompt);
-
   let response: Response;
   try {
     response = await fetch(`${config.baseUrl}/async/images/generations`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${config.apiKey}` },
-      body: form,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-image-2",
+        prompt: input.prompt,
+        size: "1024x1024",
+      }),
     });
   } catch {
     const elapsedMs = Date.now() - startedAt;
