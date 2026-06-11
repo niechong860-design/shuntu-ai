@@ -33,6 +33,7 @@ type CreditUsageLog = {
   model_name: string | null;
   generation_history_id: string | null;
   generation_task_id: string | null;
+  image_url?: string | null;
   idempotency_key: string;
   created_at: string;
   metadata?: unknown;
@@ -342,6 +343,7 @@ function UsersPanel() {
                       <TableHead>model_key</TableHead>
                       <TableHead>history_id</TableHead>
                       <TableHead>task_id</TableHead>
+                      <TableHead>image_url</TableHead>
                       <TableHead>幂等键</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -365,6 +367,32 @@ function UsersPanel() {
                         <TableCell className="max-w-[150px] truncate font-mono text-[11px]" title={log.generation_task_id ?? ""}>
                           {log.generation_task_id ?? "—"}
                         </TableCell>
+                        <TableCell className="max-w-[280px]">
+                          {log.image_url ? (
+                            <div className="flex min-w-0 items-center gap-1.5">
+                              <span className="min-w-0 flex-1 truncate font-mono text-[11px]" title={log.image_url}>
+                                {log.image_url}
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 shrink-0 px-2"
+                                onClick={async () => {
+                                  try {
+                                    await navigator.clipboard.writeText(log.image_url ?? "");
+                                    toast.success("链接已复制");
+                                  } catch {
+                                    toast.error("复制失败");
+                                  }
+                                }}
+                              >
+                                <Copy className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
                         <TableCell className="max-w-[220px] truncate font-mono text-[11px]" title={log.idempotency_key}>
                           {log.idempotency_key}
                         </TableCell>
@@ -372,7 +400,7 @@ function UsersPanel() {
                     ))}
                     {!usageLoading && usageLogs.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={8} className="py-8 text-center text-xs text-muted-foreground">
+                        <TableCell colSpan={9} className="py-8 text-center text-xs text-muted-foreground">
                           暂无消费记录
                         </TableCell>
                       </TableRow>
