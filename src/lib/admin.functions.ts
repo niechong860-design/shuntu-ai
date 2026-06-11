@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { checkPromptSafety, SAFETY_SERVER_BLOCK_MESSAGE } from "@/lib/promptSafety";
-import { pollFoxApiTask, submitFoxApiImageEdit } from "@/lib/foxapi-backup";
+import { pollFoxApiTask, submitFoxApiImageEdit, submitFoxApiImageGenerationTask } from "@/lib/foxapi-backup";
 
 const FOXAPI_BACKUP_MODEL_KEY = "gpt-image-2-backup";
 
@@ -1073,8 +1073,9 @@ async function submitAdminPreviewGenerationTask(task: any): Promise<
   const referenceImages = Array.isArray(inputParams.referenceImages) ? inputParams.referenceImages : [];
   if ((model as any).model_key === FOXAPI_BACKUP_MODEL_KEY) {
     const httpRefs = referenceImages.filter((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u));
-    if (httpRefs.length === 0) throw new Error("Backup model requires a reference image.");
-    const result = await submitFoxApiImageEdit({ prompt, imageUrl: httpRefs[0] });
+    const result = httpRefs.length === 0
+      ? await submitFoxApiImageGenerationTask({ prompt })
+      : await submitFoxApiImageEdit({ prompt, imageUrl: httpRefs[0] });
     if (!result.ok) throw new Error(result.message);
     return {
       status: "running",
@@ -1595,8 +1596,9 @@ export const generateImage = createServerFn({ method: "POST" })
     const requestFormat = (model as any).request_format || "async_id";
 
     if (model.model_key === FOXAPI_BACKUP_MODEL_KEY) {
-      if (httpRefs.length === 0) return failGeneration("Backup model requires a reference image.");
-      const result = await submitFoxApiImageEdit({ prompt: finalPrompt, imageUrl: httpRefs[0] });
+      const result = httpRefs.length === 0
+        ? await submitFoxApiImageGenerationTask({ prompt: finalPrompt })
+        : await submitFoxApiImageEdit({ prompt: finalPrompt, imageUrl: httpRefs[0] });
       if (!result.ok) return failGeneration(result.message);
       return {
         success: true,

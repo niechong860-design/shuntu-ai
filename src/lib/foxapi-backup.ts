@@ -35,7 +35,7 @@ export function loadFoxApiConfig(): FoxApiConfig {
 
 function safeLog(
   stage: string,
-  data: { taskId?: string | null; status?: string | null; elapsedMs?: number | null; uploadPath?: string | null } = {},
+  data: { taskId?: string | null; status?: string | null; elapsedMs?: number | null; uploadPath?: string | null; bodySnippet?: string | null } = {},
 ) {
   console.log("[foxapi-backup]", {
     stage,
@@ -43,6 +43,7 @@ function safeLog(
     status: data.status ?? null,
     elapsedMs: data.elapsedMs ?? null,
     uploadPath: data.uploadPath ?? null,
+    bodySnippet: data.bodySnippet ?? null,
   });
 }
 
@@ -106,10 +107,16 @@ function extractImageUrl(payload: any): string | null {
     payload?.data?.imageUrl,
     payload?.data?.output_url,
     payload?.data?.result_url,
+    payload?.data?.[0]?.url,
+    payload?.data?.[0]?.image_url,
+    payload?.data?.[0]?.imageUrl,
     payload?.result?.url,
     payload?.result?.image_url,
     payload?.result?.imageUrl,
     payload?.result?.output_url,
+    payload?.result?.data?.[0]?.url,
+    payload?.result?.data?.[0]?.image_url,
+    payload?.result?.data?.[0]?.imageUrl,
     payload?.images?.[0]?.url,
     payload?.images?.[0],
     payload?.data?.images?.[0]?.url,
@@ -227,6 +234,30 @@ async function uploadBase64ImageResult(
   return { ok: true, imageUrl: data.publicUrl, uploadPath };
 }
 
+async function resolveImagePayload(
+  taskId: string,
+  payload: any,
+  startedAt: number,
+): Promise<{ ok: true; imageUrl: string; elapsedMs: number } | { ok: false; message: string; elapsedMs: number }> {
+  const imageUrl = extractImageUrl(payload);
+  if (imageUrl) return { ok: true, imageUrl, elapsedMs: Date.now() - startedAt };
+
+  const base64Image = extractBase64Image(payload);
+  if (!base64Image) return { ok: false, message: "FoxAPI result URL is not ready", elapsedMs: Date.now() - startedAt };
+
+  const upload = await uploadBase64ImageResult(taskId, base64Image);
+  const elapsedMs = Date.now() - startedAt;
+  safeLog(upload.ok ? "result:upload_ok" : "result:upload_error", {
+    taskId,
+    status: upload.ok ? "succeeded" : "failed",
+    elapsedMs,
+    uploadPath: upload.uploadPath,
+  });
+
+  if (!upload.ok) return { ok: false, message: upload.message, elapsedMs };
+  return { ok: true, imageUrl: upload.imageUrl, elapsedMs };
+}
+
 export async function submitFoxApiImageEdit(input: {
   prompt: string;
   imageUrl: string;
@@ -294,6 +325,59 @@ export async function submitFoxApiImageEdit(input: {
   return { ok: true, taskId, elapsedMs };
 }
 
+export async function submitFoxApiImageGenerationTask(input: {
+  prompt: string;
+}): Promise<FoxApiSubmitResult> {
+  const startedAt = Date.now();
+  let config: FoxApiConfig;
+  try {
+    config = loadFoxApiConfig();
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "FoxAPI config error", elapsedMs: Date.now() - startedAt };
+  }
+
+  safeLog("generation_task:start", { elapsedMs: 0 });
+
+  let response: Response;
+  try {
+    response = await fetch(`${config.baseUrl}/async/images/generations`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-image-2",
+        prompt: input.prompt,
+        size: "1024x1024",
+      }),
+    });
+  } catch {
+    const elapsedMs = Date.now() - startedAt;
+    safeLog("generation_task:network_error", { elapsedMs });
+    return { ok: false, message: "FoxAPI generation task request failed", elapsedMs };
+  }
+
+  const text = await response.text();
+  const payload = parseJson(text);
+  const elapsedMs = Date.now() - startedAt;
+
+  if (!response.ok) {
+    const bodySnippet = text.slice(0, 300);
+    console.log(`[foxapi-backup] generation_task:http_error status=${response.status} elapsedMs=${elapsedMs} body=${bodySnippet}`);
+    return { ok: false, message: `FoxAPI generation task HTTP ${response.status}: ${bodySnippet}`, elapsedMs };
+  }
+
+  const taskId = extractTaskId(payload);
+  if (!taskId) {
+    safeLog("generation_task:no_task_id", { elapsedMs });
+    return { ok: false, message: "FoxAPI did not return a task id", elapsedMs };
+  }
+
+  safeLog("generation_task:ok", { taskId, elapsedMs });
+  return { ok: true, taskId, elapsedMs };
+}
+
 export async function pollFoxApiTask(taskId: string): Promise<FoxApiPollResult> {
   const startedAt = Date.now();
   let config: FoxApiConfig;
@@ -338,28 +422,18 @@ export async function pollFoxApiTask(taskId: string): Promise<FoxApiPollResult> 
   }
 
   if (providerStatus === "completed") {
-    const imageUrl = extractImageUrl(payload);
-    if (imageUrl) return { status: "succeeded", taskId, providerStatus, imageUrl, message: null, elapsedMs };
-    const base64Image = extractBase64Image(payload);
-    if (base64Image) {
-      const upload = await uploadBase64ImageResult(taskId, base64Image);
-      const uploadElapsedMs = Date.now() - startedAt;
-      safeLog(upload.ok ? "poll:upload_ok" : "poll:upload_error", {
-        taskId,
-        status: upload.ok ? "succeeded" : "failed",
-        elapsedMs: uploadElapsedMs,
-        uploadPath: upload.uploadPath,
-      });
-      if (upload.ok) {
-        return { status: "succeeded", taskId, providerStatus, imageUrl: upload.imageUrl, message: null, elapsedMs: uploadElapsedMs };
-      }
+    const resolved = await resolveImagePayload(taskId, payload, startedAt);
+    if (resolved.ok) {
+      return { status: "succeeded", taskId, providerStatus, imageUrl: resolved.imageUrl, message: null, elapsedMs: resolved.elapsedMs };
+    }
+    if (resolved.message !== "FoxAPI result URL is not ready") {
       return {
         status: "failed",
         taskId,
         providerStatus,
         imageUrl: null,
-        message: upload.message,
-        elapsedMs: uploadElapsedMs,
+        message: resolved.message,
+        elapsedMs: resolved.elapsedMs,
       };
     }
     return { status: "running", taskId, providerStatus, imageUrl: null, message: "FoxAPI result URL is not ready", elapsedMs };
