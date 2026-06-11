@@ -35,7 +35,7 @@ export function loadFoxApiConfig(): FoxApiConfig {
 
 function safeLog(
   stage: string,
-  data: { taskId?: string | null; status?: string | null; elapsedMs?: number | null; uploadPath?: string | null } = {},
+  data: { taskId?: string | null; status?: string | null; elapsedMs?: number | null; uploadPath?: string | null; bodySnippet?: string | null } = {},
 ) {
   console.log("[foxapi-backup]", {
     stage,
@@ -43,6 +43,7 @@ function safeLog(
     status: data.status ?? null,
     elapsedMs: data.elapsedMs ?? null,
     uploadPath: data.uploadPath ?? null,
+    bodySnippet: data.bodySnippet ?? null,
   });
 }
 
@@ -361,8 +362,9 @@ export async function submitFoxApiImageGenerationTask(input: {
   const elapsedMs = Date.now() - startedAt;
 
   if (!response.ok) {
-    safeLog("generation_task:http_error", { status: String(response.status), elapsedMs });
-    return { ok: false, message: `FoxAPI generation task HTTP ${response.status}`, elapsedMs };
+    const bodySnippet = text.slice(0, 300);
+    safeLog("generation_task:http_error", { status: String(response.status), elapsedMs, bodySnippet });
+    return { ok: false, message: `FoxAPI generation task HTTP ${response.status}: ${bodySnippet}`, elapsedMs };
   }
 
   const taskId = extractTaskId(payload);
