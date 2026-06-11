@@ -341,8 +341,6 @@ export async function submitFoxApiImageGenerationTask(input: {
   const form = new FormData();
   form.append("model", "gpt-image-2");
   form.append("prompt", input.prompt);
-  form.append("size", "1024x1024");
-  form.append("n", "1");
 
   let response: Response;
   try {
@@ -363,7 +361,7 @@ export async function submitFoxApiImageGenerationTask(input: {
 
   if (!response.ok) {
     const bodySnippet = text.slice(0, 300);
-    safeLog("generation_task:http_error", { status: String(response.status), elapsedMs, bodySnippet });
+    console.log(`[foxapi-backup] generation_task:http_error status=${response.status} elapsedMs=${elapsedMs} body=${bodySnippet}`);
     return { ok: false, message: `FoxAPI generation task HTTP ${response.status}: ${bodySnippet}`, elapsedMs };
   }
 
