@@ -128,8 +128,48 @@ export const adminGetUserCreditUsageLogs = createServerFn({ method: "POST" })
       .range(offset, offset + limit - 1);
     if (error) throw new Error(error.message);
 
+    const historyIds = Array.from(new Set((rows ?? [])
+      .map((row: any) => row.generation_history_id)
+      .filter((value: unknown): value is string => typeof value === "string" && value.length > 0)));
+    const taskIds = Array.from(new Set((rows ?? [])
+      .map((row: any) => row.generation_task_id)
+      .filter((value: unknown): value is string => typeof value === "string" && value.length > 0)));
+    const historyImageById = new Map<string, string | null>();
+    const historyImageByTaskId = new Map<string, string | null>();
+
+    if (historyIds.length > 0) {
+      const { data: historyRows, error: historyError } = await (supabaseAdmin as any)
+        .from("generation_history")
+        .select("id, image_url")
+        .eq("user_id", data.userId)
+        .in("id", historyIds);
+      if (historyError) throw new Error(historyError.message);
+      for (const history of historyRows ?? []) {
+        historyImageById.set(history.id, history.image_url ?? null);
+      }
+    }
+
+    if (taskIds.length > 0) {
+      const { data: taskHistoryRows, error: taskHistoryError } = await (supabaseAdmin as any)
+        .from("generation_history")
+        .select("generation_task_id, image_url")
+        .eq("user_id", data.userId)
+        .in("generation_task_id", taskIds);
+      if (taskHistoryError) throw new Error(taskHistoryError.message);
+      for (const history of taskHistoryRows ?? []) {
+        if (history.generation_task_id && !historyImageByTaskId.has(history.generation_task_id)) {
+          historyImageByTaskId.set(history.generation_task_id, history.image_url ?? null);
+        }
+      }
+    }
+
+    const items = (rows ?? []).map((row: any) => ({
+      ...row,
+      image_url: historyImageById.get(row.generation_history_id) ?? historyImageByTaskId.get(row.generation_task_id) ?? null,
+    }));
+
     return {
-      items: rows ?? [],
+      items,
       total: count ?? 0,
       limit,
       offset,
@@ -503,20 +543,29 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
 
     // 管理员需要显示作者信息
-    let authorMap = new Map<string, { name: string | null; email: string | null }>();
+    let authorEmailMap = new Map<string, string | null>();
     if (isAdmin && rows && rows.length > 0) {
       const uids = Array.from(new Set(rows.map((r: any) => r.user_id)));
       const { data: profs } = await supabaseAdmin
         .from("profiles")
-        .select("id, display_name, email")
+        .select("id, email")
         .in("id", uids);
-      authorMap = new Map(
-        (profs ?? []).map((p: any) => [p.id, { name: p.display_name ?? null, email: p.email ?? null }]),
-      );
+      const profileEmailMap = new Map((profs ?? []).map((p: any) => [p.id, p.email ?? null]));
+      authorEmailMap = new Map(uids.map((uid) => [uid, profileEmailMap.get(uid) ?? null]));
+      await Promise.all(uids.map(async (uid) => {
+        try {
+          const { data: authData, error: authError } = await supabaseAdmin.auth.admin.getUserById(uid);
+          if (!authError && authData.user?.email) {
+            authorEmailMap.set(uid, authData.user.email);
+          }
+        } catch {
+          // Keep profiles.email fallback.
+        }
+      }));
     }
 
     const items = (rows ?? []).map((r: any) => {
-      const author = authorMap.get(r.user_id);
+      const authorEmail = authorEmailMap.get(r.user_id) ?? null;
       return {
         id: r.id as string,
         userId: r.user_id as string,
@@ -530,8 +579,8 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
         thumbnailUrl: buildHistoryThumbUrl(r.image_url),
         status: "done" as const,
         cost: Number(r.cost ?? 0),
-        authorName: author?.name ?? null,
-        authorEmail: author?.email ?? null,
+        authorName: null,
+        authorEmail,
         // backward-compat:
         image_url: r.image_url as string,
         created_at: r.created_at as string,

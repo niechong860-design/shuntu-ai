@@ -13,6 +13,7 @@ const HISTORY_RESET_CACHE_MS = 60_000;
 
 type HistoryItem = {
   id: string;
+  userId?: string | null;
   model: string;
   prompt: string | null;
   finalPrompt: string | null;
@@ -340,10 +341,10 @@ export function Canvas({ userId, generating, generatedUrl, currentPrompt, curren
                           />
                         </button>
                         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/0 opacity-0 transition-opacity group-hover:opacity-100" />
-                        {isAdmin && (item.authorName || item.authorEmail) && (
+                        {isAdmin && (
                           <div className="pointer-events-none absolute inset-x-0 top-0 bg-gradient-to-b from-black/70 to-transparent px-2 py-1">
-                            <span className="line-clamp-1 text-[9px] font-medium text-white/90" title={item.authorEmail ?? ""}>
-                              👤 {item.authorName || item.authorEmail}
+                            <span className="line-clamp-1 text-[9px] font-medium text-white/90" title={item.authorEmail ?? item.userId ?? ""}>
+                              {item.authorEmail || item.userId?.slice(0, 8) || "-"}
                             </span>
                           </div>
                         )}
