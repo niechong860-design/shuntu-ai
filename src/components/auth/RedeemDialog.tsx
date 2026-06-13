@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useServerFn } from "@tanstack/react-start";
-import { redeemCoupon } from "@/lib/admin.functions";
+import { listVisibleRechargePackages, redeemCoupon } from "@/lib/admin.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { Gift, Sparkles, Check, Zap, Crown } from "lucide-react";
@@ -11,69 +11,134 @@ import { cn } from "@/lib/utils";
 
 type Plan = {
   id: string;
-  name: string;
-  price: number;
-  desc: string;
+  title: string;
+  price: string;
+  subtitle: string;
+  credits: number;
   features: string[];
-  url: string;
-  highlight?: boolean;
+  purchaseUrl: string;
+  highlighted?: boolean;
+  isPopular?: boolean;
+  badgeText?: string;
+  buttonText: string;
   icon?: React.ReactNode;
 };
 
 const PLANS: Plan[] = [
   {
     id: "trial",
-    name: "试用套餐",
-    price: 9.9,
-    desc: "适合偶尔体验的尝鲜用户",
+    title: "试用套餐",
+    price: "9.9",
+    subtitle: "适合偶尔体验的尝鲜用户",
+    credits: 1000,
     features: ["1,000 积分", "基础图像模型", "标准排队速度"],
-    url: "https://www.kufaka.com/item/dhmljk",
+    purchaseUrl: "https://www.kufaka.com/item/dhmljk",
+    buttonText: "立即购买",
   },
   {
     id: "starter",
-    name: "入门套餐",
-    price: 29.9,
-    desc: "轻量级创作者的首选",
+    title: "入门套餐",
+    price: "29.9",
+    subtitle: "轻量级创作者的首选",
+    credits: 3000,
     features: ["3,000 积分", "所有基础模型", "标准排队速度"],
-    url: "https://www.kufaka.com/item/661nyd",
+    purchaseUrl: "https://www.kufaka.com/item/661nyd",
+    buttonText: "立即购买",
   },
   {
     id: "core",
-    name: "主力套餐",
-    price: 69.9,
-    desc: "性价比之王，适合日常创作",
+    title: "主力套餐",
+    price: "69.9",
+    subtitle: "性价比之王，适合日常创作",
+    credits: 7000,
     features: ["7,000 积分", "解锁高级模型 (Wan2.6/Pro)", "优先生成队列"],
-    highlight: true,
+    highlighted: true,
+    isPopular: true,
+    badgeText: "最受欢迎",
     icon: <Zap className="h-4 w-4" />,
-    url: "https://www.kufaka.com/item/2tig9e",
+    purchaseUrl: "https://www.kufaka.com/item/2tig9e",
+    buttonText: "立即购买",
   },
   {
     id: "pro",
-    name: "专业套餐",
-    price: 129,
-    desc: "为高频重度使用者打造",
+    title: "专业套餐",
+    price: "129",
+    subtitle: "为高频重度使用者打造",
+    credits: 13000,
     features: ["13,000 积分", "全模型无限制访问", "极速极享队列", "专属客服支持"],
-    url: "https://www.kufaka.com/item/fk4jmd",
+    purchaseUrl: "https://www.kufaka.com/item/fk4jmd",
+    buttonText: "立即购买",
   },
   {
     id: "premium",
-    name: "高端套餐",
-    price: 199,
-    desc: "工作室与商业变现必备",
+    title: "高端套餐",
+    price: "199",
+    subtitle: "工作室与商业变现必备",
+    credits: 20000,
     features: ["20,000 积分", "最高优先级算力", "支持 API 批量调用", "客服24小时在线服务"],
     icon: <Crown className="h-4 w-4" />,
-    url: "https://www.kufaka.com/item/9a7qf1",
+    purchaseUrl: "https://www.kufaka.com/item/9a7qf1",
+    buttonText: "立即购买",
   },
 ];
+
+type RechargePackageRow = {
+  id: string;
+  title: string;
+  subtitle?: string;
+  price: string;
+  credits: number;
+  features: string[];
+  badgeText?: string;
+  isPopular?: boolean;
+  highlighted?: boolean;
+  buttonText?: string;
+  purchaseUrl?: string;
+};
+
+function toPlan(row: RechargePackageRow): Plan {
+  return {
+    id: row.id,
+    title: row.title,
+    subtitle: row.subtitle ?? "",
+    price: row.price,
+    credits: Number(row.credits ?? 0),
+    features: Array.isArray(row.features) ? row.features : [],
+    badgeText: row.badgeText ?? "",
+    isPopular: Boolean(row.isPopular),
+    highlighted: Boolean(row.highlighted),
+    buttonText: row.buttonText || "立即购买",
+    purchaseUrl: row.purchaseUrl ?? "",
+  };
+}
 
 export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+  const [plans, setPlans] = useState<Plan[]>(PLANS);
   const fn = useServerFn(redeemCoupon);
+  const listPackages = useServerFn(listVisibleRechargePackages);
   const { refreshProfile } = useAuth();
 
   useEffect(() => { if (!open) setCode(""); }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    listPackages({})
+      .then((rows: any) => {
+        const next = Array.isArray(rows) ? rows.map(toPlan).filter((plan) => plan.title.trim()) : [];
+        if (!cancelled) setPlans(next.length > 0 ? next : PLANS);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPlans(PLANS);
+          toast.info("套餐配置读取失败，已使用默认套餐");
+        }
+      });
+    return () => { cancelled = true; };
+  }, [open, listPackages]);
 
   // 5s cooldown countdown to throttle repeated clicks
   useEffect(() => {
@@ -82,11 +147,11 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     return () => clearTimeout(t);
   }, [cooldown]);
 
-  const handlePurchase = (_planId: string, _amount: number, url?: string) => {
-    if (url) {
+  const handlePurchase = (_planId: string, url?: string) => {
+    if (url && /^https?:\/\//i.test(url)) {
       window.open(url, "_blank", "noopener,noreferrer");
     } else {
-      toast.info("支付链接暂未配置，请联系客服。");
+      toast.info("暂未配置购买链接");
     }
   };
 
@@ -123,7 +188,7 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
         {/* 价格套餐卡片区 */}
         <div className="grid grid-cols-1 gap-4 pt-2 sm:grid-cols-2 lg:grid-cols-5">
-          {PLANS.map((p) => (
+          {plans.map((p) => (
             <PlanCard key={p.id} plan={p} onBuy={handlePurchase} />
           ))}
         </div>
@@ -177,8 +242,8 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   );
 }
 
-function PlanCard({ plan, onBuy }: { plan: Plan; onBuy: (id: string, amount: number, url?: string) => void }) {
-  const { highlight } = plan;
+function PlanCard({ plan, onBuy }: { plan: Plan; onBuy: (id: string, url?: string) => void }) {
+  const highlight = plan.highlighted || plan.isPopular;
   return (
     <div
       className={cn(
@@ -212,17 +277,17 @@ function PlanCard({ plan, onBuy }: { plan: Plan; onBuy: (id: string, amount: num
       )}
 
       {/* 角标：右上角 */}
-      {highlight && (
+      {(plan.isPopular || plan.badgeText) && (
         <div className="absolute -top-2.5 -right-2 z-10 rounded-full bg-gradient-to-r from-emerald-400 to-cyan-500 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-[0_4px_14px_rgba(16,185,129,0.45)]">
-          最受欢迎
+          {plan.badgeText || "最受欢迎"}
         </div>
       )}
 
       <div className="relative flex items-center gap-2">
         {plan.icon && <span className={highlight ? "text-emerald-400" : "text-zinc-400"}>{plan.icon}</span>}
-        <h3 className={cn("text-base font-semibold", highlight ? "text-white" : "text-zinc-100")}>{plan.name}</h3>
+        <h3 className={cn("text-base font-semibold", highlight ? "text-white" : "text-zinc-100")}>{plan.title}</h3>
       </div>
-      <p className="relative mt-1 text-xs text-zinc-400">{plan.desc}</p>
+      <p className="relative mt-1 text-xs text-zinc-400">{plan.subtitle}</p>
 
       <div className="relative mt-4 flex items-baseline gap-1">
         <span className={cn("text-sm", highlight ? "text-zinc-300" : "text-zinc-500")}>¥</span>
@@ -246,7 +311,7 @@ function PlanCard({ plan, onBuy }: { plan: Plan; onBuy: (id: string, amount: num
       </ul>
 
       <Button
-        onClick={() => onBuy(plan.id, plan.price, plan.url)}
+        onClick={() => onBuy(plan.id, plan.purchaseUrl)}
         className={cn(
           "relative mt-5 w-full font-semibold",
           highlight
@@ -254,7 +319,7 @@ function PlanCard({ plan, onBuy }: { plan: Plan; onBuy: (id: string, amount: num
             : "border border-zinc-700 bg-zinc-800/60 text-zinc-100 shadow-none hover:border-emerald-500/60 hover:bg-zinc-800",
         )}
       >
-        立即购买
+        {plan.purchaseUrl ? plan.buttonText : "暂未配置购买链接"}
       </Button>
     </div>
   );

@@ -12,7 +12,7 @@ import {
   adminListCoupons, adminGenerateCoupons, adminDeleteCoupon,
 } from "@/lib/admin.functions";
 import { toast } from "sonner";
-import { Shield, KeyRound, Coins, Copy, Plus, RefreshCw, Users, Ticket, LayoutDashboard, Trash2, Sparkles, Megaphone, Crown, Lock, Palette, Ban, CircleCheck, Bell } from "lucide-react";
+import { Shield, KeyRound, Coins, Copy, Plus, RefreshCw, Users, Ticket, LayoutDashboard, Trash2, Sparkles, Megaphone, Crown, Lock, Palette, Ban, CircleCheck, Bell, ShoppingBag } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { AnalyticsPanel } from "./AnalyticsPanel";
 import { ModelsPanel } from "./ModelsPanel";
@@ -22,6 +22,7 @@ import { AdminsPanel } from "./AdminsPanel";
 import { AccessGate } from "./AccessGate";
 import { AccessPasswordPanel } from "./AccessPasswordPanel";
 import { StyleTemplatesPanel } from "./StyleTemplatesPanel";
+import { RechargePackagesPanel } from "./RechargePackagesPanel";
 
 type UserRow = { id: string; email: string | null; display_name: string | null; credits: number; created_at: string; total_spent: number; is_banned?: boolean };
 type CreditUsageLog = {
@@ -72,6 +73,7 @@ export function AdminDashboard({ open, onOpenChange, isFounder = false }: { open
             <TabsTrigger value="analytics" className="gap-1.5"><LayoutDashboard className="h-3.5 w-3.5" />数据仪表盘</TabsTrigger>
             <TabsTrigger value="users" className="gap-1.5"><Users className="h-3.5 w-3.5" />用户管理</TabsTrigger>
             <TabsTrigger value="coupons" className="gap-1.5"><Ticket className="h-3.5 w-3.5" />卡密管理</TabsTrigger>
+            <TabsTrigger value="recharge" className="gap-1.5"><ShoppingBag className="h-3.5 w-3.5" />充值套餐配置</TabsTrigger>
             <TabsTrigger value="models" className="gap-1.5"><Sparkles className="h-3.5 w-3.5" />模型点数价格控制</TabsTrigger>
             <TabsTrigger value="ads" className="gap-1.5"><Megaphone className="h-3.5 w-3.5" />广告管理</TabsTrigger>
             <TabsTrigger value="announcements" className="gap-1.5"><Bell className="h-3.5 w-3.5" />通知公告</TabsTrigger>
@@ -86,6 +88,7 @@ export function AdminDashboard({ open, onOpenChange, isFounder = false }: { open
           <TabsContent value="analytics" className="mt-4 max-h-[70vh] overflow-auto pr-1"><AnalyticsPanel /></TabsContent>
           <TabsContent value="users" className="mt-4"><UsersPanel /></TabsContent>
           <TabsContent value="coupons" className="mt-4"><CouponsPanel /></TabsContent>
+          <TabsContent value="recharge" className="mt-4"><RechargePackagesPanel /></TabsContent>
           <TabsContent value="models" className="mt-4"><ModelsPanel /></TabsContent>
           <TabsContent value="ads" className="mt-4"><AdsPanel /></TabsContent>
           <TabsContent value="announcements" className="mt-4"><AnnouncementsPanel /></TabsContent>

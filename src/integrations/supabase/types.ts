@@ -542,6 +542,60 @@ export type Database = {
         }
         Relationships: []
       }
+      recharge_packages: {
+        Row: {
+          badge_text: string | null
+          button_text: string
+          created_at: string
+          credits: number
+          features: Json
+          highlighted: boolean
+          id: string
+          is_popular: boolean
+          is_visible: boolean
+          price: string
+          purchase_url: string | null
+          sort_order: number
+          subtitle: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          badge_text?: string | null
+          button_text?: string
+          created_at?: string
+          credits?: number
+          features?: Json
+          highlighted?: boolean
+          id?: string
+          is_popular?: boolean
+          is_visible?: boolean
+          price: string
+          purchase_url?: string | null
+          sort_order?: number
+          subtitle?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          badge_text?: string | null
+          button_text?: string
+          created_at?: string
+          credits?: number
+          features?: Json
+          highlighted?: boolean
+          id?: string
+          is_popular?: boolean
+          is_visible?: boolean
+          price?: string
+          purchase_url?: string | null
+          sort_order?: number
+          subtitle?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       redeem_logs: {
         Row: {
           amount: number

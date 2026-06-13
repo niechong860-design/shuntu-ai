@@ -2023,6 +2023,142 @@ export const adminGetAnalytics = createServerFn({ method: "POST" })
     };
   });
 
+// --- Recharge packages ---
+function normalizeRechargeFeatures(features: unknown): string[] {
+  if (!Array.isArray(features)) return [];
+  return features
+    .map((item) => String(item ?? "").trim())
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
+function assertHttpPurchaseUrl(purchaseUrl: string | null | undefined) {
+  const trimmed = String(purchaseUrl ?? "").trim();
+  if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+    throw new Error("购买链接必须以 http:// 或 https:// 开头");
+  }
+  return trimmed;
+}
+
+function mapRechargePackage(row: any) {
+  return {
+    id: row.id as string,
+    title: row.title as string,
+    subtitle: (row.subtitle ?? "") as string,
+    price: row.price as string,
+    credits: Number(row.credits ?? 0),
+    features: normalizeRechargeFeatures(row.features),
+    badgeText: (row.badge_text ?? "") as string,
+    isPopular: Boolean(row.is_popular),
+    highlighted: Boolean(row.highlighted),
+    isVisible: Boolean(row.is_visible),
+    sortOrder: Number(row.sort_order ?? 0),
+    buttonText: (row.button_text ?? "立即购买") as string,
+    purchaseUrl: (row.purchase_url ?? "") as string,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+}
+
+const rechargePackageInput = z.object({
+  id: z.string().uuid().optional(),
+  title: z.string().min(1).max(120),
+  subtitle: z.string().max(300).nullable().optional(),
+  price: z.string().min(1).max(40),
+  credits: z.number().int().min(0).max(100000000),
+  features: z.array(z.string().max(300)).max(20).optional().default([]),
+  badgeText: z.string().max(80).nullable().optional(),
+  isPopular: z.boolean().optional().default(false),
+  highlighted: z.boolean().optional().default(false),
+  isVisible: z.boolean().optional().default(true),
+  sortOrder: z.number().int().min(-999999).max(999999).optional().default(0),
+  buttonText: z.string().min(1).max(40).optional().default("立即购买"),
+  purchaseUrl: z.string().max(1000).nullable().optional(),
+});
+
+export const listVisibleRechargePackages = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const { data, error } = await (supabaseAdmin as any)
+      .from("recharge_packages")
+      .select("id, title, subtitle, price, credits, features, badge_text, is_popular, highlighted, is_visible, sort_order, button_text, purchase_url, created_at, updated_at")
+      .eq("is_visible", true)
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(mapRechargePackage);
+  });
+
+export const listAdminRechargePackages = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context.userId);
+    const { data, error } = await (supabaseAdmin as any)
+      .from("recharge_packages")
+      .select("*")
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(mapRechargePackage);
+  });
+
+export const upsertAdminRechargePackage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => rechargePackageInput.parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const title = data.title.trim();
+    const price = data.price.trim();
+    if (!title) throw new Error("套餐名称不能为空");
+    if (!price) throw new Error("价格不能为空");
+
+    const features = normalizeRechargeFeatures(data.features);
+    const purchaseUrl = assertHttpPurchaseUrl(data.purchaseUrl);
+    const payload = {
+      title,
+      subtitle: data.subtitle?.trim() || null,
+      price,
+      credits: data.credits,
+      features,
+      badge_text: data.badgeText?.trim() || null,
+      is_popular: data.isPopular,
+      highlighted: data.highlighted,
+      is_visible: data.isVisible,
+      sort_order: data.sortOrder,
+      button_text: data.buttonText.trim() || "立即购买",
+      purchase_url: purchaseUrl,
+    };
+
+    if (data.id) {
+      const { error } = await (supabaseAdmin as any)
+        .from("recharge_packages")
+        .update(payload)
+        .eq("id", data.id);
+      if (error) throw new Error(error.message);
+      return { ok: true, id: data.id };
+    }
+
+    const { data: inserted, error } = await (supabaseAdmin as any)
+      .from("recharge_packages")
+      .insert(payload)
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    return { ok: true, id: inserted?.id };
+  });
+
+export const hideAdminRechargePackage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const { error } = await (supabaseAdmin as any)
+      .from("recharge_packages")
+      .update({ is_visible: false })
+      .eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 // --- Ads ---
 export const listActiveAds = createServerFn({ method: "GET" })
   .handler(async () => {
