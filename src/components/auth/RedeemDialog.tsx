@@ -178,7 +178,7 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl max-h-[92vh] overflow-y-auto border-border/70 bg-card/90 backdrop-blur-2xl">
+      <DialogContent className="w-[calc(100vw-1rem)] max-w-6xl max-h-[calc(100dvh-1rem)] overflow-y-auto border-border/70 bg-card/90 p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] backdrop-blur-2xl md:max-h-[92vh] md:p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg">
             <Gift className="h-5 w-5 text-primary" /> 充值中心
@@ -187,30 +187,30 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         </DialogHeader>
 
         {/* 价格套餐卡片区 */}
-        <div className="grid grid-cols-1 gap-4 pt-2 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-1 gap-3 pt-2 sm:grid-cols-2 md:gap-4 lg:grid-cols-5">
           {plans.map((p) => (
             <PlanCard key={p.id} plan={p} onBuy={handlePurchase} />
           ))}
         </div>
 
         {/* 兑换码区 */}
-        <div className="mt-8 w-full rounded-2xl border border-emerald-500/30 bg-gray-900/50 p-5 shadow-[0_0_15px_rgba(16,185,129,0.15)] backdrop-blur-sm">
+        <div className="mt-6 w-full rounded-2xl border border-emerald-500/30 bg-gray-900/50 p-4 shadow-[0_0_15px_rgba(16,185,129,0.15)] backdrop-blur-sm md:mt-8 md:p-5">
           <div className="mb-3 flex items-center gap-2">
             <span className="text-base font-bold text-emerald-400">⚡ 极速兑换，秒速到账</span>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <Input
               value={code}
               onChange={(e) => setCode(e.target.value.toUpperCase())}
               placeholder="请输入您在发卡网购买的卡密..."
-              className="h-11 flex-1 border-emerald-500/20 bg-black/40 font-mono tracking-wider text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-emerald-500/40"
+              className="h-11 min-w-0 flex-1 border-emerald-500/20 bg-black/40 font-mono tracking-wider text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-emerald-500/40"
               onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
               disabled={loading || cooldown > 0}
             />
             <Button
               onClick={submit}
               disabled={loading || cooldown > 0 || !code.trim()}
-              className="h-11 min-w-[110px] bg-emerald-500 font-semibold text-white shadow-[0_0_18px_rgba(16,185,129,0.45)] hover:bg-emerald-400"
+              className="h-11 w-full bg-emerald-500 font-semibold text-white shadow-[0_0_18px_rgba(16,185,129,0.45)] hover:bg-emerald-400 sm:w-auto sm:min-w-[110px]"
             >
               {loading ? (
                 <span className="flex items-center gap-1.5">
@@ -247,10 +247,10 @@ function PlanCard({ plan, onBuy }: { plan: Plan; onBuy: (id: string, url?: strin
   return (
     <div
       className={cn(
-        "group relative flex flex-col rounded-2xl p-5 transition-all duration-300",
+        "group relative flex flex-col rounded-2xl p-4 transition-all duration-300 md:p-5",
         "hover:-translate-y-1",
         highlight
-          ? "scale-[1.03] bg-zinc-900 shadow-[0_0_28px_rgba(16,185,129,0.28)] lg:scale-[1.06]"
+          ? "bg-zinc-900 shadow-[0_0_28px_rgba(16,185,129,0.28)] md:scale-[1.03] lg:scale-[1.06]"
           : "border border-zinc-800 bg-zinc-900/50 hover:border-zinc-600 hover:shadow-lg hover:shadow-black/30",
       )}
     >
@@ -278,7 +278,7 @@ function PlanCard({ plan, onBuy }: { plan: Plan; onBuy: (id: string, url?: strin
 
       {/* 角标：右上角 */}
       {(plan.isPopular || plan.badgeText) && (
-        <div className="absolute -top-2.5 -right-2 z-10 rounded-full bg-gradient-to-r from-emerald-400 to-cyan-500 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-[0_4px_14px_rgba(16,185,129,0.45)]">
+        <div className="absolute -top-2.5 right-2 z-10 rounded-full bg-gradient-to-r from-emerald-400 to-cyan-500 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-[0_4px_14px_rgba(16,185,129,0.45)] md:-right-2">
           {plan.badgeText || "最受欢迎"}
         </div>
       )}
@@ -294,7 +294,7 @@ function PlanCard({ plan, onBuy }: { plan: Plan; onBuy: (id: string, url?: strin
         <span
           className={cn(
             "font-bold tabular-nums leading-none",
-            highlight ? "text-5xl text-white drop-shadow-[0_2px_8px_rgba(16,185,129,0.35)]" : "text-4xl text-zinc-100",
+            highlight ? "text-4xl text-white drop-shadow-[0_2px_8px_rgba(16,185,129,0.35)] md:text-5xl" : "text-4xl text-zinc-100",
           )}
         >
           {plan.price}

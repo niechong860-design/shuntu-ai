@@ -237,9 +237,9 @@ export function Canvas({ userId, generating, generatedUrl, currentPrompt, curren
   const isLightboxOpen = !!lightbox || heroLightbox;
 
   return (
-    <main className="flex h-full min-h-0 flex-col overflow-hidden bg-background p-3">
+    <main className="flex min-h-[70dvh] flex-col overflow-visible bg-background p-3 lg:h-full lg:min-h-0 lg:overflow-hidden">
       {/* Main canvas — pure, full height */}
-      <div className="group relative flex-1 min-h-0 overflow-hidden rounded-2xl border border-border bg-card">
+      <div className="group relative min-h-[62dvh] overflow-hidden rounded-2xl border border-border bg-card lg:flex-1 lg:min-h-0">
         {generating ? (
           <QueueProgress progress={progress ?? null} />
         ) : generatedUrl ? (

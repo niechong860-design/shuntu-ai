@@ -604,15 +604,15 @@ export function Studio() {
   const credits = profile?.credits ?? 0;
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
-      <div className={showAuth ? "pointer-events-none select-none blur-sm" : ""}>
+    <div className="min-h-[100dvh] w-screen overflow-y-auto bg-background text-foreground lg:flex lg:h-screen lg:flex-col lg:overflow-hidden">
+      <div className={`${showAuth ? "pointer-events-none select-none blur-sm" : ""} min-h-[100dvh] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col`}>
         <TopBar
           credits={credits}
           onOpenHistory={() => setHistoryOpen(true)}
           onOpenAnnouncements={() => setAnnouncementsOpen(true)}
           onSwitchAccount={() => setForceAuth(true)}
         />
-        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2" style={{ height: "calc(100vh - 56px)" }}>
+        <div className="grid grid-cols-1 pb-[calc(env(safe-area-inset-bottom)+10rem)] lg:min-h-0 lg:flex-1 lg:grid-cols-2 lg:overflow-hidden lg:pb-0">
           <ControlPanel
             onGenerateStart={handleGenerateStart}
             onGenerateDone={handleGenerateDone}

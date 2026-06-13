@@ -142,11 +142,11 @@ export function AnnouncementCenter({ open, onOpenChange, autoOpenLatest = false 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={`max-w-5xl w-[92vw] overflow-hidden border-border/60 bg-card/90 p-0 backdrop-blur-2xl ${style.glow}`}
+        className={`w-[calc(100vw-1rem)] max-w-5xl max-h-[calc(100dvh-1rem)] overflow-hidden border-border/60 bg-card/90 p-0 backdrop-blur-2xl ${style.glow}`}
       >
-        <div className="grid grid-cols-1 md:grid-cols-[300px_1fr]">
+        <div className="grid max-h-[calc(100dvh-1rem)] min-h-0 grid-cols-1 md:grid-cols-[300px_1fr]">
           {/* Sidebar list */}
-          <aside className="border-r border-border/60 bg-black/30">
+          <aside className="min-h-0 border-b border-border/60 bg-black/30 md:border-b-0 md:border-r">
             <div className="flex items-center gap-2 px-4 py-3.5">
               <Bell className="h-3.5 w-3.5 text-primary" />
               <span className="text-xs font-semibold tracking-wide">通知中心</span>
@@ -154,7 +154,7 @@ export function AnnouncementCenter({ open, onOpenChange, autoOpenLatest = false 
                 {items.length}
               </span>
             </div>
-            <div className="max-h-[60vh] space-y-0.5 overflow-auto px-2 pb-3">
+            <div className="max-h-[26dvh] space-y-0.5 overflow-auto px-2 pb-3 md:max-h-[60vh]">
               {items.length === 0 && (
                 <div className="px-3 py-8 text-center text-[11px] text-muted-foreground">暂无通知</div>
               )}
@@ -197,13 +197,13 @@ export function AnnouncementCenter({ open, onOpenChange, autoOpenLatest = false 
           </aside>
 
           {/* Body */}
-          <div className="relative">
+          <div className="relative min-h-0">
             {/* Top glow */}
             <div
               className={`pointer-events-none absolute inset-x-0 top-0 h-48 bg-gradient-to-b ${style.gradient}`}
             />
 
-            <div className="relative max-h-[82vh] overflow-auto p-8 md:p-10">
+            <div className="relative max-h-[calc(74dvh-1rem)] overflow-auto px-4 py-5 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:max-h-[82vh] md:p-10">
               {!active ? (
                 <div className="flex h-96 items-center justify-center text-xs text-muted-foreground">
                   暂无通知
@@ -228,14 +228,14 @@ export function AnnouncementCenter({ open, onOpenChange, autoOpenLatest = false 
                     </span>
                   </div>
 
-                  <h2 className="text-3xl font-semibold leading-tight tracking-tight">{active.title}</h2>
+                  <h2 className="text-2xl font-semibold leading-tight tracking-tight md:text-3xl">{active.title}</h2>
 
                   {active.image_url && (
                     <div className={`overflow-hidden rounded-2xl border border-border/60 ring-1 ${style.ring}`}>
                       <img
                         src={thumbUrl(active.image_url, { quality: 75 })}
                         alt={active.title}
-                        className="max-h-[55vh] w-full object-contain bg-black/40"
+                        className="max-h-[45dvh] w-full object-contain bg-black/40 md:max-h-[55vh]"
                         loading="lazy"
                         decoding="async"
                       />
