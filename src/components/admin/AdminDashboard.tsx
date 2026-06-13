@@ -69,22 +69,24 @@ export function AdminDashboard({ open, onOpenChange, isFounder = false }: { open
           </DialogTitle>
         </DialogHeader>
         <Tabs defaultValue="analytics" className="px-6 pb-6 pt-4">
-          <TabsList className="bg-white/[0.04]">
-            <TabsTrigger value="analytics" className="gap-1.5"><LayoutDashboard className="h-3.5 w-3.5" />数据仪表盘</TabsTrigger>
-            <TabsTrigger value="users" className="gap-1.5"><Users className="h-3.5 w-3.5" />用户管理</TabsTrigger>
-            <TabsTrigger value="coupons" className="gap-1.5"><Ticket className="h-3.5 w-3.5" />卡密管理</TabsTrigger>
-            <TabsTrigger value="recharge" className="gap-1.5"><ShoppingBag className="h-3.5 w-3.5" />充值套餐配置</TabsTrigger>
-            <TabsTrigger value="models" className="gap-1.5"><Sparkles className="h-3.5 w-3.5" />模型点数价格控制</TabsTrigger>
-            <TabsTrigger value="ads" className="gap-1.5"><Megaphone className="h-3.5 w-3.5" />广告管理</TabsTrigger>
-            <TabsTrigger value="announcements" className="gap-1.5"><Bell className="h-3.5 w-3.5" />通知公告</TabsTrigger>
-            <TabsTrigger value="styles" className="gap-1.5"><Palette className="h-3.5 w-3.5" />客服 &amp; 系统提示词</TabsTrigger>
+          <div className="max-w-full overflow-x-auto pb-1">
+          <TabsList className="inline-flex w-max min-w-max bg-white/[0.04]">
+            <TabsTrigger value="analytics" className="shrink-0 gap-1.5"><LayoutDashboard className="h-3.5 w-3.5" />数据仪表盘</TabsTrigger>
+            <TabsTrigger value="users" className="shrink-0 gap-1.5"><Users className="h-3.5 w-3.5" />用户管理</TabsTrigger>
+            <TabsTrigger value="coupons" className="shrink-0 gap-1.5"><Ticket className="h-3.5 w-3.5" />卡密管理</TabsTrigger>
+            <TabsTrigger value="recharge" className="shrink-0 gap-1.5"><ShoppingBag className="h-3.5 w-3.5" />充值套餐配置</TabsTrigger>
+            <TabsTrigger value="models" className="shrink-0 gap-1.5"><Sparkles className="h-3.5 w-3.5" />模型点数价格控制</TabsTrigger>
+            <TabsTrigger value="ads" className="shrink-0 gap-1.5"><Megaphone className="h-3.5 w-3.5" />广告管理</TabsTrigger>
+            <TabsTrigger value="announcements" className="shrink-0 gap-1.5"><Bell className="h-3.5 w-3.5" />通知公告</TabsTrigger>
+            <TabsTrigger value="styles" className="shrink-0 gap-1.5"><Palette className="h-3.5 w-3.5" />客服 &amp; 系统提示词</TabsTrigger>
             {isFounder && (
-              <TabsTrigger value="admins" className="gap-1.5"><Crown className="h-3.5 w-3.5" />管理员管理</TabsTrigger>
+              <TabsTrigger value="admins" className="shrink-0 gap-1.5"><Crown className="h-3.5 w-3.5" />管理员管理</TabsTrigger>
             )}
             {isFounder && (
-              <TabsTrigger value="access" className="gap-1.5"><Lock className="h-3.5 w-3.5" />访问密码</TabsTrigger>
+              <TabsTrigger value="access" className="shrink-0 gap-1.5"><Lock className="h-3.5 w-3.5" />访问密码</TabsTrigger>
             )}
           </TabsList>
+          </div>
           <TabsContent value="analytics" className="mt-4 max-h-[70vh] overflow-auto pr-1"><AnalyticsPanel /></TabsContent>
           <TabsContent value="users" className="mt-4"><UsersPanel /></TabsContent>
           <TabsContent value="coupons" className="mt-4"><CouponsPanel /></TabsContent>

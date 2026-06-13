@@ -86,6 +86,15 @@ function parseLines(value: string) {
     .filter(Boolean);
 }
 
+function isRechargePackagesTableMissing(error: unknown) {
+  const message = String((error as { message?: unknown })?.message ?? error ?? "").toLowerCase();
+  return (
+    message.includes("public.recharge_packages") ||
+    message.includes("recharge_packages") && message.includes("schema cache") ||
+    message.includes("could not find the table")
+  );
+}
+
 export function RechargePackagesPanel() {
   const listFn = useServerFn(listAdminRechargePackages);
   const saveFn = useServerFn(upsertAdminRechargePackage);
@@ -94,13 +103,20 @@ export function RechargePackagesPanel() {
   const [editing, setEditing] = useState<EditState | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [schemaMissing, setSchemaMissing] = useState(false);
 
   const load = async () => {
     setLoading(true);
     try {
       setPackages(((await listFn({})) ?? []) as RechargePackage[]);
+      setSchemaMissing(false);
     } catch (e: any) {
-      toast.error(e.message ?? "充值套餐加载失败");
+      if (isRechargePackagesTableMissing(e)) {
+        setSchemaMissing(true);
+        setPackages([]);
+      } else {
+        toast.error(e.message ?? "充值套餐加载失败");
+      }
     } finally {
       setLoading(false);
     }
@@ -174,11 +190,22 @@ export function RechargePackagesPanel() {
           <Button variant="outline" size="sm" onClick={load} disabled={loading}>
             <RefreshCw className="mr-1.5 h-3.5 w-3.5" />刷新
           </Button>
-          <Button size="sm" className="bg-gradient-aurora text-primary-foreground" onClick={() => setEditing(emptyPackage())}>
+          <Button
+            size="sm"
+            className="bg-gradient-aurora text-primary-foreground"
+            disabled={schemaMissing}
+            onClick={() => setEditing(emptyPackage())}
+          >
             <Plus className="mr-1.5 h-3.5 w-3.5" />新增套餐
           </Button>
         </div>
       </div>
+
+      {schemaMissing && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          充值套餐表尚未创建，请先应用数据库迁移后再配置套餐。
+        </div>
+      )}
 
       <div className="max-h-[60vh] overflow-auto rounded-lg border border-border/60">
         <Table>
