@@ -2159,6 +2159,19 @@ export const hideAdminRechargePackage = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const deleteAdminRechargePackage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const { error } = await (supabaseAdmin as any)
+      .from("recharge_packages")
+      .delete()
+      .eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 // --- Ads ---
 export const listActiveAds = createServerFn({ method: "GET" })
   .handler(async () => {

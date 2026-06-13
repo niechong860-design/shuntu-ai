@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import {
+  deleteAdminRechargePackage,
   hideAdminRechargePackage,
   listAdminRechargePackages,
   upsertAdminRechargePackage,
@@ -11,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { EyeOff, Pencil, Plus, RefreshCw, Save, ShoppingBag } from "lucide-react";
+import { EyeOff, Pencil, Plus, RefreshCw, Save, ShoppingBag, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 type RechargePackage = {
@@ -99,6 +100,7 @@ export function RechargePackagesPanel() {
   const listFn = useServerFn(listAdminRechargePackages);
   const saveFn = useServerFn(upsertAdminRechargePackage);
   const hideFn = useServerFn(hideAdminRechargePackage);
+  const deleteFn = useServerFn(deleteAdminRechargePackage);
   const [packages, setPackages] = useState<RechargePackage[]>([]);
   const [editing, setEditing] = useState<EditState | null>(null);
   const [loading, setLoading] = useState(false);
@@ -180,6 +182,17 @@ export function RechargePackagesPanel() {
     }
   };
 
+  const remove = async (pkg: RechargePackage) => {
+    if (!confirm(`确认永久删除套餐“${pkg.title}”吗？此操作只删除套餐展示配置，不影响卡密和用户积分。`)) return;
+    try {
+      await deleteFn({ data: { id: pkg.id } });
+      toast.success("套餐已删除");
+      load();
+    } catch (e: any) {
+      toast.error(e.message ?? "删除失败");
+    }
+  };
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
@@ -258,6 +271,14 @@ export function RechargePackagesPanel() {
                     onClick={() => hide(pkg)}
                   >
                     <EyeOff className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => remove(pkg)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </TableCell>
               </TableRow>
