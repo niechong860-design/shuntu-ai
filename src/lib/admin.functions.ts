@@ -267,7 +267,38 @@ export const adminListCoupons = createServerFn({ method: "POST" })
       .order("created_at", { ascending: false })
       .limit(500);
     if (error) throw new Error(error.message);
-    return data;
+    const rows = data ?? [];
+    const presentEmail = (value: unknown) =>
+      typeof value === "string" && value.trim().length > 0 ? value : null;
+    const missingEmailUserIds = Array.from(new Set(
+      rows
+        .filter((coupon: any) => coupon.is_used && coupon.used_by && !presentEmail(coupon.used_by_email))
+        .map((coupon: any) => coupon.used_by as string),
+    ));
+
+    if (missingEmailUserIds.length === 0) return rows;
+
+    const emailByUserId = new Map<string, string | null>();
+    const { data: profiles, error: profilesError } = await supabaseAdmin
+      .from("profiles")
+      .select("id, email")
+      .in("id", missingEmailUserIds);
+    if (profilesError) throw new Error(profilesError.message);
+
+    for (const profile of profiles ?? []) {
+      emailByUserId.set(profile.id, presentEmail(profile.email));
+    }
+
+    const stillMissingUserIds = missingEmailUserIds.filter((userId) => !emailByUserId.get(userId));
+    await Promise.all(stillMissingUserIds.map(async (userId) => {
+      const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId);
+      emailByUserId.set(userId, authUser.user?.email ?? null);
+    }));
+
+    return rows.map((coupon: any) => ({
+      ...coupon,
+      used_by_email: presentEmail(coupon.used_by_email) ?? emailByUserId.get(coupon.used_by) ?? null,
+    }));
   });
 
 export const adminDeleteCoupon = createServerFn({ method: "POST" })
