@@ -528,6 +528,32 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
     const maxDays = 15;
     const cutoff = new Date(Date.now() - maxDays * 24 * 60 * 60 * 1000).toISOString();
 
+    // 自动清理：超过 15 天 或 超过 maxKeep 张，删除最旧的
+    try {
+      await supabaseAdmin
+        .from("generation_history")
+        .delete()
+        .eq("user_id", userId)
+        .lt("created_at", cutoff);
+
+      const { data: keepIds } = await supabaseAdmin
+        .from("generation_history")
+        .select("id")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .range(0, maxKeep - 1);
+      const keepSet = (keepIds ?? []).map((r: any) => r.id);
+      if (keepSet.length >= maxKeep) {
+        await supabaseAdmin
+          .from("generation_history")
+          .delete()
+          .eq("user_id", userId)
+          .not("id", "in", `(${keepSet.map((id: string) => `"${id}"`).join(",")})`);
+      }
+    } catch (e) {
+      console.warn("[history] prune failed", e);
+    }
+
     // 管理员可以查看所有用户的历史（用于核查违规）；普通用户只能看自己的
     if (offset >= maxKeep) {
       return { items: [], total: maxKeep, limit, offset, maxKeep, maxDays, isAdmin };
@@ -535,40 +561,17 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
     const endIdx = Math.min(offset + limit, maxKeep) - 1;
     let query = supabaseAdmin
       .from("generation_history")
-      .select("id, user_id, model, prompt, image_url, generation_task_id, created_at, cost", { count: "exact" })
+      .select("id, user_id, model, prompt, image_url, created_at, cost", { count: "exact" })
+      .not("image_url", "is", null)
       .order("created_at", { ascending: false })
       .range(offset, endIdx);
     if (!isAdmin) {
       query = query
         .eq("user_id", userId)
-        .gte("created_at", cutoff)
-        .not("generation_task_id", "is", null);
-    } else {
-      query = query.not("image_url", "is", null);
+        .gte("created_at", cutoff);
     }
     const { data: rows, error, count } = await query;
     if (error) throw new Error(error.message);
-
-    const taskIds = Array.from(new Set((rows ?? [])
-      .map((r: any) => r.generation_task_id)
-      .filter((value: unknown): value is string => typeof value === "string" && value.length > 0)));
-    const taskImageMap = new Map<string, string | null>();
-    const trustedTaskIds = new Set<string>();
-    if (taskIds.length > 0) {
-      let taskQuery = (supabaseAdmin as any)
-        .from("generation_tasks")
-        .select("id, user_id, status, deduction_status, result_image_url")
-        .in("id", taskIds);
-      if (!isAdmin) taskQuery = taskQuery.eq("user_id", userId);
-      const { data: taskRows, error: taskError } = await taskQuery;
-      if (taskError) throw new Error(taskError.message);
-      for (const task of taskRows ?? []) {
-        if (task.status === "succeeded" && task.deduction_status === "charged") {
-          trustedTaskIds.add(task.id);
-          taskImageMap.set(task.id, task.result_image_url ?? null);
-        }
-      }
-    }
 
     // 管理员需要显示作者信息
     let authorEmailMap = new Map<string, string | null>();
@@ -592,32 +595,27 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
       }));
     }
 
-    const items = (rows ?? []).flatMap((r: any) => {
-      const taskImageUrl = r.generation_task_id ? taskImageMap.get(r.generation_task_id) ?? null : null;
-      const imageUrl = taskImageUrl || r.image_url;
-      if (!imageUrl) return [];
-      if (!isAdmin && (!r.generation_task_id || !trustedTaskIds.has(r.generation_task_id))) return [];
+    const items = (rows ?? []).map((r: any) => {
       const authorEmail = authorEmailMap.get(r.user_id) ?? null;
-      return [{
+      return {
         id: r.id as string,
         userId: r.user_id as string,
-        generationTaskId: (r.generation_task_id ?? null) as string | null,
         model: r.model as string,
         prompt: (r.prompt ?? null) as string | null,
         finalPrompt: (r.prompt ?? null) as string | null,
         styleName: null as string | null,
         aspectRatio: null as string | null,
         createdAt: r.created_at as string,
-        originalImageUrl: imageUrl as string,
-        thumbnailUrl: buildHistoryThumbUrl(imageUrl),
+        originalImageUrl: r.image_url as string,
+        thumbnailUrl: buildHistoryThumbUrl(r.image_url),
         status: "done" as const,
         cost: Number(r.cost ?? 0),
         authorName: null,
         authorEmail,
         // backward-compat:
-        image_url: imageUrl as string,
+        image_url: r.image_url as string,
         created_at: r.created_at as string,
-      }];
+      };
     });
     const total = Math.min(count ?? items.length, maxKeep);
     return { items, total, limit, offset, maxKeep, maxDays, isAdmin };

@@ -22,7 +22,6 @@ type HistoryItem = {
   createdAt: string;
   thumbnailUrl: string | null;
   originalImageUrl: string;
-  generationTaskId?: string | null;
   cost: number;
   authorName?: string | null;
   authorEmail?: string | null;
@@ -31,8 +30,17 @@ type HistoryItem = {
   created_at: string;
 };
 
-function getHistoryIdentityKey(item: HistoryItem) {
-  return item.generationTaskId || item.id;
+function normalizeHistoryImageKey(item: HistoryItem) {
+  const raw = item.originalImageUrl || item.image_url || item.thumbnailUrl || "";
+  if (!raw) return item.id;
+  try {
+    const url = new URL(raw);
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return raw.split(/[?#]/, 1)[0] || item.id;
+  }
 }
 
 function timeAgo(iso: string) {
@@ -178,11 +186,11 @@ export function Canvas({ userId, generating, generatedUrl, currentPrompt, curren
       if (typeof res.isAdmin === "boolean") setIsAdmin(res.isAdmin);
       setHistory((prev) => {
         const base = mode === "append" ? prev : [];
-        // Merge paged results by stable history/task identity.
-        const seen = new Set(base.map(getHistoryIdentityKey));
+        // 双保险：按图片 URL 去重，杜绝同一张图片重复展示
+        const seen = new Set(base.map(normalizeHistoryImageKey));
         const merged = [...base];
         for (const it of items) {
-          const key = getHistoryIdentityKey(it);
+          const key = normalizeHistoryImageKey(it);
           if (seen.has(key)) continue;
           seen.add(key);
           merged.push(it);
