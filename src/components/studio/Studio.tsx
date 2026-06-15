@@ -26,6 +26,18 @@ type RetryPrefill = {
   inputParams?: Record<string, unknown>;
 };
 
+type ReuseSource = {
+  prompt: string;
+  modelKey?: string;
+  inputParams?: Record<string, unknown>;
+};
+
+function getReusableReferenceImages(inputParams?: Record<string, unknown>) {
+  return Array.isArray(inputParams?.referenceImages)
+    ? inputParams.referenceImages.filter((url): url is string => typeof url === "string" && /^https?:\/\//i.test(url))
+    : [];
+}
+
 function writeSessionJson(key: string, value: unknown) {
   if (typeof window === "undefined") return;
   try {
@@ -109,6 +121,8 @@ export function Studio() {
   const [cancelingTaskIds, setCancelingTaskIds] = useState<string[]>([]);
   const [retryingTaskIds, setRetryingTaskIds] = useState<string[]>([]);
   const [retryPrefill, setRetryPrefill] = useState<RetryPrefill | null>(null);
+  const [reusePrefill, setReusePrefill] = useState<RetryPrefill | null>(null);
+  const [currentReuseSource, setCurrentReuseSource] = useState<ReuseSource | null>(null);
   const [referenceResetToken, setReferenceResetToken] = useState(0);
   const pollingTaskIdsRef = useRef<Set<string>>(new Set());
   const adminActiveTaskCount = adminTasks.filter((task) =>
@@ -184,6 +198,8 @@ export function Studio() {
     setCancelingTaskIds([]);
     setRetryingTaskIds([]);
     setRetryPrefill(null);
+    setReusePrefill(null);
+    setCurrentReuseSource(null);
     setReferenceResetToken(0);
     pollingTaskIdsRef.current.clear();
   }, [session?.user?.id]);
@@ -198,6 +214,8 @@ export function Studio() {
       setCancelingTaskIds([]);
       setRetryingTaskIds([]);
       setRetryPrefill(null);
+      setReusePrefill(null);
+      setCurrentReuseSource(null);
       setReferenceResetToken(0);
       pollingTaskIdsRef.current.clear();
       return;
@@ -290,6 +308,11 @@ export function Studio() {
                 const modelName = matchedTask?.modelName ?? "";
                 setCurrentPrompt(prompt);
                 setCurrentModel(modelName);
+                setCurrentReuseSource({
+                  prompt,
+                  modelKey: matchedTask?.modelKey,
+                  inputParams: matchedTask?.inputParams,
+                });
                 setProgress(null);
                 rememberLatestResult(task.resultImageUrl, prompt, modelName);
               }
@@ -323,7 +346,7 @@ export function Studio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id, adminTasks]);
 
-  const handleGenerateStart = (info: { prompt: string; modelName: string }) => {
+  const handleGenerateStart = (info: { prompt: string; modelName: string; modelKey?: string; inputParams?: Record<string, unknown> }) => {
     if (session && !adminBatchHasContext) {
       setAdminTasks([]);
     }
@@ -333,6 +356,11 @@ export function Studio() {
     prepareCanvasForNewTask();
     setCurrentPrompt(info.prompt);
     setCurrentModel(info.modelName);
+    setCurrentReuseSource({
+      prompt: info.prompt,
+      modelKey: info.modelKey,
+      inputParams: info.inputParams,
+    });
   };
   const handleGenerateDone = (url: string | null) => {
     setGenerating(false);
@@ -558,6 +586,11 @@ export function Studio() {
           const modelName = matchedTask?.modelName ?? "";
           setCurrentPrompt(prompt);
           setCurrentModel(modelName);
+          setCurrentReuseSource({
+            prompt,
+            modelKey: matchedTask?.modelKey,
+            inputParams: matchedTask?.inputParams,
+          });
           setProgress(null);
           rememberLatestResult(task.resultImageUrl, prompt, modelName);
         }
@@ -600,6 +633,30 @@ export function Studio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id, adminTasks, startingTaskIds, generating]);
 
+  const handleReuseCurrentResult = () => {
+    const source = currentReuseSource ?? (currentPrompt ? { prompt: currentPrompt } : null);
+    if (!source?.prompt) {
+      toast.error("没有可复用的提示词");
+      return;
+    }
+
+    const referenceImages = getReusableReferenceImages(source.inputParams);
+    setReusePrefill({
+      nonce: Date.now(),
+      prompt: source.prompt,
+      modelKey: source.modelKey,
+      inputParams: {
+        ...(source.inputParams ?? {}),
+        referenceImages,
+      },
+    });
+    if (referenceImages.length > 0) {
+      toast.success("已复用提示词和参考图，可修改后再次生成");
+    } else {
+      toast.message("已复用提示词，未找到可复用参考图");
+    }
+  };
+
   const showAuth = !loading && (!session || forceAuth);
   const credits = profile?.credits ?? 0;
 
@@ -619,6 +676,7 @@ export function Studio() {
             onProgress={setProgress}
             generating={generating}
             retryPrefill={retryPrefill}
+            reusePrefill={reusePrefill}
             referenceResetToken={referenceResetToken}
             isAdmin={!!session}
             adminPreparingNextTask={adminPreparingNextTask}
@@ -637,11 +695,17 @@ export function Studio() {
             progress={shouldShowQueueLoadingOnCanvas ? queueProgress : progress}
             historyOpen={historyOpen}
             onHistoryOpenChange={setHistoryOpen}
-            onSelectHistory={(url, prompt, model) => {
+            onReuseCurrent={handleReuseCurrentResult}
+            onSelectHistory={(url, prompt, model, reuseSource) => {
               setGeneratedUrl(url);
               setGeneratedUrlSource("history");
               setCurrentPrompt(prompt);
               setCurrentModel(model);
+              setCurrentReuseSource({
+                prompt,
+                modelKey: reuseSource?.modelKey ?? undefined,
+                inputParams: reuseSource?.inputParams ?? undefined,
+              });
               setReferenceResetToken((token) => token + 1);
             }}
           />

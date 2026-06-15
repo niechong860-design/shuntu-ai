@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Download, Copy, Maximize2, Sparkles, ArrowUpRight, X, Clock, ImageIcon, ListOrdered, Loader2, CheckCircle2 } from "lucide-react";
+import { Download, Copy, Maximize2, Sparkles, ArrowUpRight, X, Clock, ImageIcon, ListOrdered, Loader2, CheckCircle2, RotateCcw } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
@@ -22,6 +22,9 @@ type HistoryItem = {
   createdAt: string;
   thumbnailUrl: string | null;
   originalImageUrl: string;
+  modelKey?: string | null;
+  generationTaskId?: string | null;
+  inputParams?: Record<string, any> | null;
   cost: number;
   authorName?: string | null;
   authorEmail?: string | null;
@@ -66,7 +69,8 @@ type Props = {
   progress?: GenProgress | null;
   historyOpen: boolean;
   onHistoryOpenChange: (v: boolean) => void;
-  onSelectHistory: (url: string, prompt: string, model: string) => void;
+  onReuseCurrent: () => void;
+  onSelectHistory: (url: string, prompt: string, model: string, reuseSource?: { modelKey?: string | null; inputParams?: Record<string, any> | null }) => void;
 };
 
 
@@ -101,7 +105,7 @@ async function copyToClipboard(text: string) {
   }
 }
 
-export function Canvas({ userId, generating, generatedUrl, currentPrompt, currentModel, progress, historyOpen, onHistoryOpenChange, onSelectHistory }: Props) {
+export function Canvas({ userId, generating, generatedUrl, currentPrompt, currentModel, progress, historyOpen, onHistoryOpenChange, onReuseCurrent, onSelectHistory }: Props) {
   const [lightbox, setLightbox] = useState<HistoryItem | null>(null);
   const [heroLightbox, setHeroLightbox] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -253,6 +257,9 @@ export function Canvas({ userId, generating, generatedUrl, currentPrompt, curren
               <HeroAction label="复制提示词" onClick={() => copyToClipboard(heroPrompt)}>
                 <Copy className="h-3.5 w-3.5" />
               </HeroAction>
+              <HeroAction label="一键复用" onClick={onReuseCurrent}>
+                <RotateCcw className="h-3.5 w-3.5" />
+              </HeroAction>
               <HeroAction label="下载" onClick={() => downloadImage(generatedUrl, `lovable-${Date.now()}.png`)}>
                 <Download className="h-3.5 w-3.5" />
               </HeroAction>
@@ -321,7 +328,10 @@ export function Canvas({ userId, generating, generatedUrl, currentPrompt, curren
                       >
                         <button
                           onClick={() => {
-                            onSelectHistory(item.originalImageUrl, item.prompt ?? "", item.model);
+                            onSelectHistory(item.originalImageUrl, item.prompt ?? "", item.model, {
+                              modelKey: item.modelKey,
+                              inputParams: item.inputParams,
+                            });
                             onHistoryOpenChange(false);
                           }}
                           className="absolute inset-0"

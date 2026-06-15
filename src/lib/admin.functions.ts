@@ -561,7 +561,7 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
     const endIdx = Math.min(offset + limit, maxKeep) - 1;
     let query = supabaseAdmin
       .from("generation_history")
-      .select("id, user_id, model, prompt, image_url, created_at, cost", { count: "exact" })
+      .select("id, user_id, model, prompt, image_url, generation_task_id, created_at, cost", { count: "exact" })
       .not("image_url", "is", null)
       .order("created_at", { ascending: false })
       .range(offset, endIdx);
@@ -572,6 +572,24 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
     }
     const { data: rows, error, count } = await query;
     if (error) throw new Error(error.message);
+
+    const taskIds = Array.from(new Set((rows ?? [])
+      .map((r: any) => r.generation_task_id)
+      .filter((value: unknown): value is string => typeof value === "string" && value.length > 0)));
+    const taskReuseMap = new Map<string, { modelKey: string | null; inputParams: Record<string, any> | null }>();
+    if (taskIds.length > 0) {
+      const { data: taskRows, error: taskError } = await (supabaseAdmin as any)
+        .from("generation_tasks")
+        .select("id, model_id, input_params")
+        .in("id", taskIds);
+      if (taskError) throw new Error(taskError.message);
+      for (const task of taskRows ?? []) {
+        taskReuseMap.set(task.id, {
+          modelKey: (task.model_id ?? null) as string | null,
+          inputParams: (task.input_params ?? null) as Record<string, any> | null,
+        });
+      }
+    }
 
     // 管理员需要显示作者信息
     let authorEmailMap = new Map<string, string | null>();
@@ -600,6 +618,8 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
       return {
         id: r.id as string,
         userId: r.user_id as string,
+        generationTaskId: (r.generation_task_id ?? null) as string | null,
+        modelKey: r.generation_task_id ? taskReuseMap.get(r.generation_task_id)?.modelKey ?? null : null,
         model: r.model as string,
         prompt: (r.prompt ?? null) as string | null,
         finalPrompt: (r.prompt ?? null) as string | null,
@@ -608,6 +628,7 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
         createdAt: r.created_at as string,
         originalImageUrl: r.image_url as string,
         thumbnailUrl: buildHistoryThumbUrl(r.image_url),
+        inputParams: r.generation_task_id ? taskReuseMap.get(r.generation_task_id)?.inputParams ?? null : null,
         status: "done" as const,
         cost: Number(r.cost ?? 0),
         authorName: null,

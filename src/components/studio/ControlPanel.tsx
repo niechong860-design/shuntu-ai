@@ -63,6 +63,7 @@ type ActiveGen = {
   modelKey: string;
   modelName: string;
   prompt: string;
+  inputParams?: Record<string, unknown>;
   startTs: number;
   initialPos: number;
   renderBudget: number;
@@ -92,11 +93,17 @@ function clearActive() {
 
 
 type Props = {
- onGenerateStart: (info: { prompt: string; modelName: string }) => void;
+ onGenerateStart: (info: { prompt: string; modelName: string; modelKey?: string; inputParams?: Record<string, unknown> }) => void;
  onGenerateDone: (imageUrl: string | null) => void;
   onProgress?: (p: GenProgress | null) => void;
   generating: boolean;
   retryPrefill?: {
+    nonce: number;
+    prompt: string;
+    modelKey?: string;
+    inputParams?: Record<string, unknown>;
+  } | null;
+  reusePrefill?: {
     nonce: number;
     prompt: string;
     modelKey?: string;
@@ -122,6 +129,7 @@ export function ControlPanel({
   onProgress,
   generating,
   retryPrefill,
+  reusePrefill,
   referenceResetToken = 0,
   isAdmin = false,
   adminPreparingNextTask = false,
@@ -183,11 +191,10 @@ export function ControlPanel({
     toast.success("已载入案例参数，可直接生成");
   }, []);
 
-  useEffect(() => {
-    if (!retryPrefill) return;
-    setPrompt(retryPrefill.prompt);
-    if (retryPrefill.modelKey) setModelKey(retryPrefill.modelKey);
-    const inputParams = retryPrefill.inputParams ?? {};
+  const applyPrefill = (prefill: { prompt: string; modelKey?: string; inputParams?: Record<string, unknown> }) => {
+    setPrompt(prefill.prompt);
+    if (prefill.modelKey) setModelKey(prefill.modelKey);
+    const inputParams = prefill.inputParams ?? {};
     const aspectRatio = typeof inputParams.aspectRatio === "string" ? inputParams.aspectRatio : null;
     const nextSize = typeof inputParams.size === "string" ? inputParams.size : null;
     const referenceImages = Array.isArray(inputParams.referenceImages)
@@ -198,8 +205,18 @@ export function ControlPanel({
     setRefs(referenceImages);
     setStyleId("");
     setInspirationMode(false);
+  };
+
+  useEffect(() => {
+    if (!retryPrefill) return;
+    applyPrefill(retryPrefill);
     toast.success("已回填失败任务参数，可编辑后重试");
   }, [retryPrefill]);
+
+  useEffect(() => {
+    if (!reusePrefill) return;
+    applyPrefill(reusePrefill);
+  }, [reusePrefill]);
 
   useEffect(() => {
     if (referenceResetToken <= 0) return;
@@ -393,7 +410,12 @@ export function ControlPanel({
     const active = loadActive(userId);
     if (!active) return;
     console.log("[resume] restoring in-flight task", active.taskId);
-    onGenerateStart({ prompt: active.prompt, modelName: active.modelName });
+    onGenerateStart({
+      prompt: active.prompt,
+      modelName: active.modelName,
+      modelKey: active.modelKey,
+      inputParams: active.inputParams,
+    });
     onProgress?.({
       stage: "queued",
       attempt: 0,
@@ -503,7 +525,20 @@ export function ControlPanel({
       toast.error(SAFETY_BLOCK_MESSAGE);
       return;
     }
-    onGenerateStart({ prompt: finalPrompt, modelName: activeModel.name ?? activeModel.model_key });
+    const httpRefs = isTextOnly ? [] : refs.filter((u) => /^https?:\/\//i.test(u));
+    const inputParams = {
+      aspectRatio: ratio,
+      size,
+      referenceImages: httpRefs,
+      styleId: effectiveStyleId || null,
+      inspirationMode,
+    };
+    onGenerateStart({
+      prompt: finalPrompt,
+      modelName: activeModel.name ?? activeModel.model_key,
+      modelKey: activeModel.model_key,
+      inputParams,
+    });
     const tStart = Date.now();
     const initialPos = 18 + Math.floor(Math.random() * 25);
     const renderBudget = 12 + Math.floor(Math.random() * 10);
@@ -513,7 +548,6 @@ export function ControlPanel({
       message: "正在提交任务到生成队列…",
     });
     try {
-      const httpRefs = isTextOnly ? [] : refs.filter((u) => /^https?:\/\//i.test(u));
       const payload = {
         modelKey: activeModel.model_key,
         prompt: finalPrompt,
@@ -549,6 +583,7 @@ export function ControlPanel({
         modelKey: activeModel.model_key,
         modelName,
         prompt: finalPrompt,
+        inputParams,
         startTs: tStart,
         initialPos,
         renderBudget,
