@@ -21,8 +21,12 @@ type ArchiveGeneratedImageInput = {
 const PUBLIC_IMAGE_BASE_URL = "https://img.shuntu.cc";
 const CLOUDFLARE_ENV_GLOBAL_KEY = "__SHUNTU_CLOUDFLARE_ENV__";
 
+function getRawCloudflareGlobalEnv(): unknown {
+  return (globalThis as Record<string, unknown>)[CLOUDFLARE_ENV_GLOBAL_KEY];
+}
+
 function getCloudflareEnv(): CloudflareEnvLike {
-  const globalEnv = (globalThis as Record<string, unknown>)[CLOUDFLARE_ENV_GLOBAL_KEY];
+  const globalEnv = getRawCloudflareGlobalEnv();
   const cloudflareEnv = globalEnv && typeof globalEnv === "object" ? (globalEnv as CloudflareEnvLike) : {};
   const processEnv = typeof process !== "undefined" ? process.env : undefined;
   return {
@@ -33,6 +37,14 @@ function getCloudflareEnv(): CloudflareEnvLike {
 
 function warnArchive(stage: string, data: Record<string, unknown>) {
   console.warn("[r2-image-archive]", { stage, ...data });
+}
+
+function getImageUrlHost(imageUrl: string): string | null {
+  try {
+    return new URL(imageUrl).host;
+  } catch {
+    return null;
+  }
 }
 
 function normalizePublicBaseUrl(value: string | undefined): string | null {
@@ -60,14 +72,31 @@ export async function archiveGeneratedImageToR2({
   userId,
   modelKey,
 }: ArchiveGeneratedImageInput): Promise<string> {
+  warnArchive("entered", {
+    taskId,
+    modelKey: modelKey ?? null,
+    imageUrlHost: getImageUrlHost(imageUrl),
+  });
+
   if (!imageUrl) return imageUrl;
   if (imageUrl.startsWith(`${PUBLIC_IMAGE_BASE_URL}/`) || imageUrl === PUBLIC_IMAGE_BASE_URL) {
     return imageUrl;
   }
 
+  const globalEnv = getRawCloudflareGlobalEnv();
+  const hasGlobalEnv = !!globalEnv && typeof globalEnv === "object";
+  const globalEnvKeys = hasGlobalEnv ? Object.keys(globalEnv as Record<string, unknown>) : [];
   const env = getCloudflareEnv();
   const bucket = env.SHUNTU_GENERATED_IMAGES;
   const publicBaseUrl = normalizePublicBaseUrl(env.R2_PUBLIC_BASE_URL);
+  warnArchive("env_check", {
+    hasGlobalEnv,
+    globalEnvKeys,
+    hasBucket: !!bucket,
+    hasBucketPut: typeof bucket?.put === "function",
+    publicBaseUrl,
+  });
+
   if (!bucket || typeof bucket.put !== "function" || !publicBaseUrl) {
     warnArchive("missing_config", {
       taskId,
@@ -96,7 +125,9 @@ export async function archiveGeneratedImageToR2({
     const key = getArchiveKey(taskId, extension);
     const body = await response.arrayBuffer();
     await bucket.put(key, body, { httpMetadata: { contentType } });
-    return `${publicBaseUrl}/${key}`;
+    const finalUrl = `${publicBaseUrl}/${key}`;
+    warnArchive("put_success", { key, finalUrl });
+    return finalUrl;
   } catch (error) {
     warnArchive("archive_failed", {
       taskId,
