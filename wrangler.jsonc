@@ -9,6 +9,13 @@
   },
   "vars": {
     "SUPABASE_URL": "https://nkkrjqzcofzqcyxdkmjy.supabase.co",
-    "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_h758ulTO0AGw5k8OmgwlIg_ud9te9pK"
-  }
+    "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_h758ulTO0AGw5k8OmgwlIg_ud9te9pK",
+    "R2_PUBLIC_BASE_URL": "https://img.shuntu.cc"
+  },
+  "r2_buckets": [
+    {
+      "binding": "SHUNTU_GENERATED_IMAGES",
+      "bucket_name": "shuntu-generated-images"
+    }
+  ]
 }
