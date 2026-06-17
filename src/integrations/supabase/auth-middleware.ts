@@ -7,7 +7,7 @@ import type { Database } from './types'
 
 
 export const requireSupabaseAuth = createMiddleware({ type: 'function' }).server(
-  async ({ next }) => {
+  async ({ next, context }) => {
     
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY;
@@ -71,6 +71,7 @@ export const requireSupabaseAuth = createMiddleware({ type: 'function' }).server
 
     return next({
       context: {
+        ...context,
         supabase,
         userId: data.claims.sub,
         claims: data.claims,
