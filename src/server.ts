@@ -4,7 +4,7 @@ import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 
 type ServerEntry = {
-  fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
+  fetch: (request: Request, requestOpts?: unknown, ctx?: unknown) => Promise<Response> | Response;
 };
 
 const CLOUDFLARE_ENV_GLOBAL_KEY = "__SHUNTU_CLOUDFLARE_ENV__";
@@ -73,7 +73,11 @@ export default {
     try {
       (globalThis as Record<string, unknown>)[CLOUDFLARE_ENV_GLOBAL_KEY] = env;
       const handler = await getServerEntry();
-      const response = await handler.fetch(request, env, ctx);
+      const response = await handler.fetch(request, {
+        context: {
+          cloudflare: { env, ctx },
+        },
+      });
       return await normalizeCatastrophicSsrResponse(response);
     } catch (error) {
       console.error(error);

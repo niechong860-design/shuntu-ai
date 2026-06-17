@@ -1,3 +1,5 @@
+import { getStartContext } from "@tanstack/start-storage-context";
+
 type R2BucketLike = {
   put: (
     key: string,
@@ -25,13 +27,27 @@ function getRawCloudflareGlobalEnv(): unknown {
   return (globalThis as Record<string, unknown>)[CLOUDFLARE_ENV_GLOBAL_KEY];
 }
 
+function getRawCloudflareContextEnv(): unknown {
+  const startContext = getStartContext({ throwIfNotFound: false });
+  const context = startContext?.contextAfterGlobalMiddlewares as
+    | { cloudflare?: { env?: unknown }; cloudflareEnv?: unknown }
+    | undefined;
+  return context?.cloudflare?.env ?? context?.cloudflareEnv;
+}
+
 function getCloudflareEnv(): CloudflareEnvLike {
+  const contextEnv = getRawCloudflareContextEnv();
   const globalEnv = getRawCloudflareGlobalEnv();
+  const cloudflareContextEnv = contextEnv && typeof contextEnv === "object" ? (contextEnv as CloudflareEnvLike) : {};
   const cloudflareEnv = globalEnv && typeof globalEnv === "object" ? (globalEnv as CloudflareEnvLike) : {};
   const processEnv = typeof process !== "undefined" ? process.env : undefined;
   return {
     ...cloudflareEnv,
-    R2_PUBLIC_BASE_URL: processEnv?.R2_PUBLIC_BASE_URL ?? cloudflareEnv.R2_PUBLIC_BASE_URL,
+    ...cloudflareContextEnv,
+    R2_PUBLIC_BASE_URL:
+      processEnv?.R2_PUBLIC_BASE_URL ??
+      cloudflareContextEnv.R2_PUBLIC_BASE_URL ??
+      cloudflareEnv.R2_PUBLIC_BASE_URL,
   };
 }
 
@@ -83,6 +99,9 @@ export async function archiveGeneratedImageToR2({
     return imageUrl;
   }
 
+  const contextEnv = getRawCloudflareContextEnv();
+  const hasContextEnv = !!contextEnv && typeof contextEnv === "object";
+  const contextEnvKeys = hasContextEnv ? Object.keys(contextEnv as Record<string, unknown>) : [];
   const globalEnv = getRawCloudflareGlobalEnv();
   const hasGlobalEnv = !!globalEnv && typeof globalEnv === "object";
   const globalEnvKeys = hasGlobalEnv ? Object.keys(globalEnv as Record<string, unknown>) : [];
@@ -90,6 +109,8 @@ export async function archiveGeneratedImageToR2({
   const bucket = env.SHUNTU_GENERATED_IMAGES;
   const publicBaseUrl = normalizePublicBaseUrl(env.R2_PUBLIC_BASE_URL);
   warnArchive("env_check", {
+    hasContextEnv,
+    contextEnvKeys,
     hasGlobalEnv,
     globalEnvKeys,
     hasBucket: !!bucket,
