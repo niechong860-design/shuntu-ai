@@ -74,12 +74,27 @@ function getArchiveKey(taskId: string, extension: string, now = new Date()): str
   return `generated/${year}/${month}/${safeTaskId}.${extension}`;
 }
 
+function getImageHost(imageUrl: string): string {
+  try {
+    return new URL(imageUrl).hostname;
+  } catch {
+    return "invalid_url";
+  }
+}
+
 export async function archiveGeneratedImageToR2({
   imageUrl,
   taskId,
   userId,
   modelKey,
 }: ArchiveGeneratedImageInput): Promise<string> {
+  warnArchive("entered", {
+    taskId,
+    modelKey: modelKey ?? null,
+    imageHost: imageUrl ? getImageHost(imageUrl) : "invalid_url",
+    hasImageUrl: !!imageUrl,
+  });
+
   if (!imageUrl) return imageUrl;
   if (imageUrl.startsWith(`${PUBLIC_IMAGE_BASE_URL}/`) || imageUrl === PUBLIC_IMAGE_BASE_URL) {
     return imageUrl;
