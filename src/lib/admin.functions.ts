@@ -4,6 +4,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { checkPromptSafety, SAFETY_SERVER_BLOCK_MESSAGE } from "@/lib/promptSafety";
 import { pollFoxApiTask, submitFoxApiImageEdit, submitFoxApiImageGenerationTask } from "@/lib/foxapi-backup";
+import { archiveGeneratedImageToR2 } from "@/lib/r2-image-archive";
 
 const FOXAPI_BACKUP_MODEL_KEY = "gpt-image-2-backup";
 
@@ -838,6 +839,18 @@ async function finalizeUserGenerationTaskOnce(
   };
 }
 
+async function archiveSuccessfulImageUrl(
+  imageUrl: string,
+  meta: { taskId: string; userId?: string | null; modelKey?: string | null },
+): Promise<string> {
+  return archiveGeneratedImageToR2({
+    imageUrl,
+    taskId: meta.taskId,
+    userId: meta.userId,
+    modelKey: meta.modelKey,
+  });
+}
+
 export const startGenerationTask = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
@@ -903,8 +916,14 @@ export const startGenerationTask = createServerFn({ method: "POST" })
       const finishedAt = new Date().toISOString();
 
       if (result.status === "succeeded") {
+        let finalImageUrl = result.resultImageUrl;
         try {
-          const finalizeResult = await finalizeUserGenerationTaskOnce(supabase, task.id as string, result.resultImageUrl);
+          finalImageUrl = await archiveSuccessfulImageUrl(result.resultImageUrl, {
+            taskId: task.id as string,
+            userId,
+            modelKey: (task.model_id ?? null) as string | null,
+          });
+          const finalizeResult = await finalizeUserGenerationTaskOnce(supabase, task.id as string, finalImageUrl);
           const { error: payloadUpdateError } = await (supabaseAdmin as any)
             .from("generation_tasks")
             .update({
@@ -920,7 +939,7 @@ export const startGenerationTask = createServerFn({ method: "POST" })
             taskId: task.id as string,
             status: "succeeded" as const,
             startedAt: task.started_at as string,
-            resultImageUrl: result.resultImageUrl,
+            resultImageUrl: finalImageUrl,
             errorMessage: null as string | null,
             resultPayload: result.resultPayload,
             ...finalizeResult,
@@ -932,7 +951,7 @@ export const startGenerationTask = createServerFn({ method: "POST" })
             .update({
               status: "failed",
               error_message: message,
-              result_image_url: result.resultImageUrl,
+              result_image_url: finalImageUrl,
               result_payload: result.resultPayload,
               completed_at: finishedAt,
               updated_at: finishedAt,
@@ -1042,8 +1061,14 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
     const now = new Date().toISOString();
     if (pollResult.status === "succeeded") {
       const resultPayload = { ...(task.result_payload ?? {}), ...pollResult.resultPayload, providerStatus: "succeeded" };
+      let finalImageUrl = pollResult.resultImageUrl;
       try {
-        const finalizeResult = await finalizeUserGenerationTaskOnce(supabase, task.id as string, pollResult.resultImageUrl);
+        finalImageUrl = await archiveSuccessfulImageUrl(pollResult.resultImageUrl, {
+          taskId: task.id as string,
+          userId,
+          modelKey: (task.model_id ?? null) as string | null,
+        });
+        const finalizeResult = await finalizeUserGenerationTaskOnce(supabase, task.id as string, finalImageUrl);
         const { error: payloadUpdateError } = await (supabaseAdmin as any)
           .from("generation_tasks")
           .update({
@@ -1058,7 +1083,7 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
         return {
           taskId: task.id as string,
           status: "succeeded" as const,
-          resultImageUrl: pollResult.resultImageUrl,
+          resultImageUrl: finalImageUrl,
           errorMessage: null as string | null,
           resultPayload,
           ...finalizeResult,
@@ -1824,6 +1849,11 @@ export const generateImage = createServerFn({ method: "POST" })
       safeCost = Number(row?.cost ?? 0) || 0;
       safeCredits = Number(row?.credits ?? 0) || 0;
 
+      imageUrl = await archiveSuccessfulImageUrl(imageUrl, {
+        taskId: `legacy_${crypto.randomUUID()}`,
+        userId,
+        modelKey: data.modelKey,
+      });
       await supabase.rpc("set_latest_history_image", {
         _model: model.name,
         _image_url: imageUrl,
@@ -1853,7 +1883,7 @@ export const checkImageStatus = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
+    const { supabase, userId } = context;
     if (data.modelKey === FOXAPI_BACKUP_MODEL_KEY) {
       const result = await pollFoxApiTask(data.taskId);
       if (result.status === "running") {
@@ -1886,10 +1916,16 @@ export const checkImageStatus = createServerFn({ method: "POST" })
         }
       }
       if (data.modelName) {
+        const archivedUrl = await archiveSuccessfulImageUrl(url, {
+          taskId: data.taskId,
+          userId,
+          modelKey: data.modelKey ?? null,
+        });
         await supabase.rpc("set_latest_history_image", {
           _model: data.modelName,
-          _image_url: url,
+          _image_url: archivedUrl,
         });
+        return { status: "success" as const, reason: null as null, imageUrl: archivedUrl, message: null as string | null, code: null as number | null, taskStatus: result.providerStatus, rawMsg: null as string | null, debug: null as null };
       }
       return { status: "success" as const, reason: null as null, imageUrl: url, message: null as string | null, code: null as number | null, taskStatus: result.providerStatus, rawMsg: null as string | null, debug: null as null };
     }
@@ -1953,10 +1989,16 @@ export const checkImageStatus = createServerFn({ method: "POST" })
           }
         }
         if (data.modelName) {
+          const archivedUrl = await archiveSuccessfulImageUrl(url, {
+            taskId: data.taskId,
+            userId,
+            modelKey: data.modelKey ?? null,
+          });
           await supabase.rpc("set_latest_history_image", {
             _model: data.modelName,
-            _image_url: url,
+            _image_url: archivedUrl,
           });
+          return { status: "success" as const, reason: null as null, imageUrl: archivedUrl, message: null as string | null, code, taskStatus, rawMsg, debug: rawDebug };
         }
         return { status: "success" as const, reason: null as null, imageUrl: url, message: null as string | null, code, taskStatus, rawMsg, debug: rawDebug };
       }
