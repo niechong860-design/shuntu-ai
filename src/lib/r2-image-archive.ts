@@ -18,6 +18,7 @@ type ArchiveGeneratedImageInput = {
   taskId: string;
   userId?: string | null;
   modelKey?: string | null;
+  cloudflareEnv?: unknown;
 };
 
 const PUBLIC_IMAGE_BASE_URL = "https://img.shuntu.cc";
@@ -35,19 +36,23 @@ function getRawCloudflareContextEnv(): unknown {
   return context?.cloudflare?.env ?? context?.cloudflareEnv;
 }
 
-function getCloudflareEnv(): CloudflareEnvLike {
+function getCloudflareEnv(explicitEnv?: unknown): CloudflareEnvLike {
   const contextEnv = getRawCloudflareContextEnv();
   const globalEnv = getRawCloudflareGlobalEnv();
+  const explicitCloudflareEnv = explicitEnv && typeof explicitEnv === "object" ? (explicitEnv as CloudflareEnvLike) : {};
   const cloudflareContextEnv = contextEnv && typeof contextEnv === "object" ? (contextEnv as CloudflareEnvLike) : {};
   const cloudflareEnv = globalEnv && typeof globalEnv === "object" ? (globalEnv as CloudflareEnvLike) : {};
   const processEnv = typeof process !== "undefined" ? process.env : undefined;
   return {
     ...cloudflareEnv,
     ...cloudflareContextEnv,
+    ...explicitCloudflareEnv,
     R2_PUBLIC_BASE_URL:
-      processEnv?.R2_PUBLIC_BASE_URL ??
+      explicitCloudflareEnv.R2_PUBLIC_BASE_URL ??
       cloudflareContextEnv.R2_PUBLIC_BASE_URL ??
-      cloudflareEnv.R2_PUBLIC_BASE_URL,
+      cloudflareEnv.R2_PUBLIC_BASE_URL ??
+      processEnv?.R2_PUBLIC_BASE_URL ??
+      PUBLIC_IMAGE_BASE_URL,
   };
 }
 
@@ -85,8 +90,8 @@ function getImageHost(imageUrl: string): string {
 export async function archiveGeneratedImageToR2({
   imageUrl,
   taskId,
-  userId,
   modelKey,
+  cloudflareEnv,
 }: ArchiveGeneratedImageInput): Promise<string> {
   warnArchive("entered", {
     taskId,
@@ -104,14 +109,15 @@ export async function archiveGeneratedImageToR2({
   const hasContextEnv = !!contextEnv && typeof contextEnv === "object";
   const globalEnv = getRawCloudflareGlobalEnv();
   const hasGlobalEnv = !!globalEnv && typeof globalEnv === "object";
-  const env = getCloudflareEnv();
+  const hasExplicitEnv = !!cloudflareEnv && typeof cloudflareEnv === "object";
+  const env = getCloudflareEnv(cloudflareEnv);
   const bucket = env.SHUNTU_GENERATED_IMAGES;
   const publicBaseUrl = normalizePublicBaseUrl(env.R2_PUBLIC_BASE_URL);
   if (!bucket || typeof bucket.put !== "function" || !publicBaseUrl) {
     warnArchive("missing_config", {
       taskId,
-      userId: userId ?? null,
       modelKey: modelKey ?? null,
+      hasExplicitEnv,
       hasContextEnv,
       hasGlobalEnv,
       hasBucket: !!bucket,
@@ -124,13 +130,13 @@ export async function archiveGeneratedImageToR2({
   try {
     const response = await fetch(imageUrl);
     if (!response.ok) {
-      warnArchive("fetch_failed", { taskId, userId: userId ?? null, modelKey: modelKey ?? null, status: response.status });
+      warnArchive("fetch_failed", { taskId, modelKey: modelKey ?? null, status: response.status });
       return imageUrl;
     }
 
     const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
     if (!contentType.startsWith("image/")) {
-      warnArchive("invalid_content_type", { taskId, userId: userId ?? null, modelKey: modelKey ?? null, contentType });
+      warnArchive("invalid_content_type", { taskId, modelKey: modelKey ?? null, contentType });
       return imageUrl;
     }
 
@@ -143,7 +149,6 @@ export async function archiveGeneratedImageToR2({
   } catch (error) {
     warnArchive("archive_failed", {
       taskId,
-      userId: userId ?? null,
       modelKey: modelKey ?? null,
       message: error instanceof Error ? error.message : String(error),
     });

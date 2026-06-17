@@ -841,14 +841,20 @@ async function finalizeUserGenerationTaskOnce(
 
 async function archiveSuccessfulImageUrl(
   imageUrl: string,
-  meta: { taskId: string; userId?: string | null; modelKey?: string | null },
+  meta: { taskId: string; userId?: string | null; modelKey?: string | null; cloudflareEnv?: unknown },
 ): Promise<string> {
   return archiveGeneratedImageToR2({
     imageUrl,
     taskId: meta.taskId,
     userId: meta.userId,
     modelKey: meta.modelKey,
+    cloudflareEnv: meta.cloudflareEnv,
   });
+}
+
+function getCloudflareEnvFromServerContext(context: unknown): unknown {
+  const serverContext = context as { cloudflare?: { env?: unknown }; cloudflareEnv?: unknown } | null | undefined;
+  return serverContext?.cloudflare?.env ?? serverContext?.cloudflareEnv;
 }
 
 export const startGenerationTask = createServerFn({ method: "POST" })
@@ -858,6 +864,7 @@ export const startGenerationTask = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const { userId, supabase } = context;
+    const cloudflareEnv = getCloudflareEnvFromServerContext(context);
 
     const { count: runningCount, error: runningCountError } = await (supabaseAdmin as any)
       .from("generation_tasks")
@@ -922,6 +929,7 @@ export const startGenerationTask = createServerFn({ method: "POST" })
             taskId: task.id as string,
             userId,
             modelKey: (task.model_id ?? null) as string | null,
+            cloudflareEnv,
           });
           const finalizeResult = await finalizeUserGenerationTaskOnce(supabase, task.id as string, finalImageUrl);
           const { error: payloadUpdateError } = await (supabaseAdmin as any)
@@ -1024,6 +1032,7 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const { userId, supabase } = context;
+    const cloudflareEnv = getCloudflareEnvFromServerContext(context);
 
     const { data: task, error } = await (supabaseAdmin as any)
       .from("generation_tasks")
@@ -1067,6 +1076,7 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
           taskId: task.id as string,
           userId,
           modelKey: (task.model_id ?? null) as string | null,
+          cloudflareEnv,
         });
         const finalizeResult = await finalizeUserGenerationTaskOnce(supabase, task.id as string, finalImageUrl);
         const { error: payloadUpdateError } = await (supabaseAdmin as any)
@@ -1630,6 +1640,7 @@ export const generateImage = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
+    const cloudflareEnv = getCloudflareEnvFromServerContext(context);
 
     // 服务端违规词二次校验，防止绕过前端
     const safety = checkPromptSafety(data.prompt);
@@ -1853,6 +1864,7 @@ export const generateImage = createServerFn({ method: "POST" })
         taskId: `legacy_${crypto.randomUUID()}`,
         userId,
         modelKey: data.modelKey,
+        cloudflareEnv,
       });
       await supabase.rpc("set_latest_history_image", {
         _model: model.name,
@@ -1884,6 +1896,7 @@ export const checkImageStatus = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
+    const cloudflareEnv = getCloudflareEnvFromServerContext(context);
     if (data.modelKey === FOXAPI_BACKUP_MODEL_KEY) {
       const result = await pollFoxApiTask(data.taskId);
       if (result.status === "running") {
@@ -1920,6 +1933,7 @@ export const checkImageStatus = createServerFn({ method: "POST" })
           taskId: data.taskId,
           userId,
           modelKey: data.modelKey ?? null,
+          cloudflareEnv,
         });
         await supabase.rpc("set_latest_history_image", {
           _model: data.modelName,
@@ -1993,6 +2007,7 @@ export const checkImageStatus = createServerFn({ method: "POST" })
             taskId: data.taskId,
             userId,
             modelKey: data.modelKey ?? null,
+            cloudflareEnv,
           });
           await supabase.rpc("set_latest_history_image", {
             _model: data.modelName,
