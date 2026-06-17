@@ -121,7 +121,6 @@ export async function archiveGeneratedImageToR2({
       hasContextEnv,
       hasGlobalEnv,
       hasBucket: !!bucket,
-      hasBucketPut: typeof bucket?.put === "function",
       hasPublicBaseUrl: !!publicBaseUrl,
     });
     return imageUrl;
@@ -145,12 +144,24 @@ export async function archiveGeneratedImageToR2({
     const body = await response.arrayBuffer();
     await bucket.put(key, body, { httpMetadata: { contentType } });
     const finalUrl = `${publicBaseUrl}/${key}`;
+    warnArchive("success", {
+      taskId,
+      modelKey: modelKey ?? null,
+      imageHost: getImageHost(finalUrl),
+      hasBucket: true,
+      hasExplicitEnv,
+      hasContextEnv,
+      hasGlobalEnv,
+      hasPublicBaseUrl: true,
+      contentType,
+    });
     return finalUrl;
   } catch (error) {
     warnArchive("archive_failed", {
       taskId,
       modelKey: modelKey ?? null,
-      message: error instanceof Error ? error.message : String(error),
+      errorName: error instanceof Error ? error.name : "UnknownError",
+      errorMessage: error instanceof Error ? error.message : String(error),
     });
     return imageUrl;
   }
