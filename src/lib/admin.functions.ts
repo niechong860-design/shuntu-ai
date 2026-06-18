@@ -1044,10 +1044,40 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
     if (!task) throw new Error("任务不存在，或不属于当前任务。");
     if (task.status !== "running") {
       const finalized = task.status === "succeeded" && task.deduction_status === "charged" && !!task.deduction_id;
+      let resultImageUrl = (task.result_image_url ?? null) as string | null;
+      if (finalized && resultImageUrl && !resultImageUrl.startsWith("https://img.shuntu.cc/")) {
+        const originalImageUrl = resultImageUrl;
+        try {
+          resultImageUrl = await archiveSuccessfulImageUrl(originalImageUrl, {
+            taskId: task.id as string,
+            userId,
+            modelKey: (task.model_id ?? null) as string | null,
+            cloudflareEnv,
+          });
+          if (resultImageUrl !== originalImageUrl) {
+            const { error: archiveUrlUpdateError } = await (supabaseAdmin as any)
+              .from("generation_tasks")
+              .update({
+                result_image_url: resultImageUrl,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", task.id)
+              .eq("user_id", userId)
+              .eq("status", "succeeded")
+              .eq("deduction_status", "charged");
+            if (archiveUrlUpdateError) {
+              console.warn("[pollGenerationTask] archived result_image_url update failed", archiveUrlUpdateError);
+            }
+          }
+        } catch (e) {
+          console.warn("[pollGenerationTask] archived completed task image failed", e);
+          resultImageUrl = originalImageUrl;
+        }
+      }
       return {
         taskId: task.id as string,
         status: finalized ? "succeeded" as const : task.status === "succeeded" ? "failed" as const : task.status as "failed" | "queued" | "canceled",
-        resultImageUrl: (task.result_image_url ?? null) as string | null,
+        resultImageUrl,
         errorMessage: finalized ? (task.error_message ?? null) as string | null : task.status === "succeeded" ? "Task completed without charged deduction or history" : (task.error_message ?? null) as string | null,
         resultPayload: task.result_payload ?? null,
         deductionStatus: (task.deduction_status ?? null) as string | null,
