@@ -4,9 +4,15 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { checkPromptSafety, SAFETY_SERVER_BLOCK_MESSAGE } from "@/lib/promptSafety";
 import { pollFoxApiTask, submitFoxApiImageEdit, submitFoxApiImageGenerationTask } from "@/lib/foxapi-backup";
-import { archiveGeneratedImageToR2 } from "@/lib/r2-image-archive";
+import { archiveGeneratedImageToR2, deleteGeneratedImageFromR2Url } from "@/lib/r2-image-archive";
 
 const FOXAPI_BACKUP_MODEL_KEY = "gpt-image-2-backup";
+
+type HistoryPruneRow = {
+  id: string;
+  image_url: string | null;
+  generation_task_id: string | null;
+};
 
 async function assertAdmin(userId: string) {
   const { data, error } = await supabaseAdmin
@@ -508,6 +514,47 @@ function buildHistoryThumbUrl(url: string | null | undefined): string | null {
   return `${transformed}${sep}width=480&quality=62&resize=contain`;
 }
 
+function getErrorName(error: unknown): string {
+  return error instanceof Error ? error.name : typeof error;
+}
+
+async function getPrunedHistoryImageUrls(rows: HistoryPruneRow[]): Promise<string[]> {
+  const urls = new Set<string>();
+  const taskIds = new Set<string>();
+
+  for (const row of rows) {
+    if (row.image_url) urls.add(row.image_url);
+    if (row.generation_task_id) taskIds.add(row.generation_task_id);
+  }
+
+  if (taskIds.size > 0) {
+    try {
+      const { data, error } = await (supabaseAdmin as any)
+        .from("generation_tasks")
+        .select("result_image_url")
+        .in("id", Array.from(taskIds));
+      if (error) {
+        console.warn("[history] prune task image lookup failed", { errorName: getErrorName(error) });
+      } else {
+        for (const task of data ?? []) {
+          if (task.result_image_url) urls.add(task.result_image_url);
+        }
+      }
+    } catch (error) {
+      console.warn("[history] prune task image lookup failed", { errorName: getErrorName(error) });
+    }
+  }
+
+  return Array.from(urls);
+}
+
+async function deletePrunedHistoryR2Images(rows: HistoryPruneRow[]) {
+  const urls = await getPrunedHistoryImageUrls(rows);
+  for (const url of urls) {
+    await deleteGeneratedImageFromR2Url(url);
+  }
+}
+
 export const getMyGenerationHistory = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { limit?: number; offset?: number } | undefined) => ({
@@ -531,11 +578,25 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
 
     // 自动清理：超过 15 天 或 超过 maxKeep 张，删除最旧的
     try {
-      await supabaseAdmin
+      const { data: expiredRows, error: expiredLookupError } = await supabaseAdmin
+        .from("generation_history")
+        .select("id, image_url, generation_task_id")
+        .eq("user_id", userId)
+        .lt("created_at", cutoff);
+      if (expiredLookupError) {
+        console.warn("[history] prune expired lookup failed", { errorName: getErrorName(expiredLookupError) });
+      }
+
+      const { error: expiredDeleteError } = await supabaseAdmin
         .from("generation_history")
         .delete()
         .eq("user_id", userId)
         .lt("created_at", cutoff);
+      if (expiredDeleteError) {
+        console.warn("[history] prune expired delete failed", { errorName: getErrorName(expiredDeleteError) });
+      } else {
+        await deletePrunedHistoryR2Images((expiredRows ?? []) as HistoryPruneRow[]);
+      }
 
       const { data: keepIds } = await supabaseAdmin
         .from("generation_history")
@@ -545,14 +606,29 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
         .range(0, maxKeep - 1);
       const keepSet = (keepIds ?? []).map((r: any) => r.id);
       if (keepSet.length >= maxKeep) {
-        await supabaseAdmin
+        const keepClause = `(${keepSet.map((id: string) => `"${id}"`).join(",")})`;
+        const { data: overflowRows, error: overflowLookupError } = await supabaseAdmin
+          .from("generation_history")
+          .select("id, image_url, generation_task_id")
+          .eq("user_id", userId)
+          .not("id", "in", keepClause);
+        if (overflowLookupError) {
+          console.warn("[history] prune overflow lookup failed", { errorName: getErrorName(overflowLookupError) });
+        }
+
+        const { error: overflowDeleteError } = await supabaseAdmin
           .from("generation_history")
           .delete()
           .eq("user_id", userId)
-          .not("id", "in", `(${keepSet.map((id: string) => `"${id}"`).join(",")})`);
+          .not("id", "in", keepClause);
+        if (overflowDeleteError) {
+          console.warn("[history] prune overflow delete failed", { errorName: getErrorName(overflowDeleteError) });
+        } else {
+          await deletePrunedHistoryR2Images((overflowRows ?? []) as HistoryPruneRow[]);
+        }
       }
     } catch (e) {
-      console.warn("[history] prune failed", e);
+      console.warn("[history] prune failed", { errorName: getErrorName(e) });
     }
 
     // 管理员可以查看所有用户的历史（用于核查违规）；普通用户只能看自己的
