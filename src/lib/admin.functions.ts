@@ -867,6 +867,12 @@ export const debugR2RuntimeEnv = createServerFn({ method: "POST" })
     const contextWithCloudflare = context as { cloudflare?: unknown } | null | undefined;
     const globalCloudflareEnv =
       (globalThis as Record<string, unknown>)["__SHUNTU_CLOUDFLARE_ENV__"];
+    const nitroGlobalEnv = (globalThis as Record<string, unknown>)["__env__"] as
+      | {
+          SHUNTU_GENERATED_IMAGES?: { put?: unknown };
+          R2_PUBLIC_BASE_URL?: unknown;
+        }
+      | undefined;
     const cloudflareValue = contextWithCloudflare?.cloudflare;
     const contextKeys =
       context && typeof context === "object"
@@ -880,6 +886,15 @@ export const debugR2RuntimeEnv = createServerFn({ method: "POST" })
       globalCloudflareEnv && typeof globalCloudflareEnv === "object"
         ? Object.keys(globalCloudflareEnv as Record<string, unknown>).sort()
         : [];
+    const nitroGlobalEnvKeys =
+      nitroGlobalEnv && typeof nitroGlobalEnv === "object"
+        ? Object.keys(nitroGlobalEnv as Record<string, unknown>).sort()
+        : [];
+    const nitroBucket = nitroGlobalEnv?.SHUNTU_GENERATED_IMAGES;
+    const nitroPublicBaseUrl =
+      typeof nitroGlobalEnv?.R2_PUBLIC_BASE_URL === "string"
+        ? nitroGlobalEnv.R2_PUBLIC_BASE_URL
+        : null;
     const cloudflareEnv = getCloudflareEnvFromServerContext(context) as
       | {
           SHUNTU_GENERATED_IMAGES?: { put?: unknown };
@@ -907,6 +922,11 @@ export const debugR2RuntimeEnv = createServerFn({ method: "POST" })
       cloudflareKeys,
       hasGlobalCloudflareEnv: !!globalCloudflareEnv,
       globalCloudflareEnvKeys,
+      hasNitroGlobalEnv: !!nitroGlobalEnv,
+      nitroGlobalEnvKeys,
+      nitroHasBucket: !!nitroBucket,
+      nitroHasBucketPut: typeof nitroBucket?.put === "function",
+      nitroHasPublicBaseUrl: !!nitroPublicBaseUrl,
     };
   });
 
