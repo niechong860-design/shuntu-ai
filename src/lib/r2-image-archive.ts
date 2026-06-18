@@ -6,6 +6,7 @@ type R2BucketLike = {
     value: ArrayBuffer | ArrayBufferView | Blob | ReadableStream,
     options?: { httpMetadata?: { contentType?: string } },
   ) => Promise<unknown>;
+  delete?: (key: string) => Promise<unknown>;
 };
 
 type CloudflareEnvLike = {
@@ -22,6 +23,8 @@ type ArchiveGeneratedImageInput = {
 };
 
 const PUBLIC_IMAGE_BASE_URL = "https://img.shuntu.cc";
+const PUBLIC_IMAGE_HOST = "img.shuntu.cc";
+const GENERATED_IMAGE_KEY_PREFIX = "generated/";
 const CLOUDFLARE_ENV_GLOBAL_KEY = "__SHUNTU_CLOUDFLARE_ENV__";
 
 function getRawCloudflareGlobalEnv(): unknown {
@@ -82,6 +85,44 @@ function getImageHost(imageUrl: string): string {
     return new URL(imageUrl).hostname;
   } catch {
     return "invalid_url";
+  }
+}
+
+export function getGeneratedR2KeyFromPublicUrl(imageUrl: string | null | undefined): string | null {
+  if (!imageUrl) return null;
+
+  try {
+    const url = new URL(imageUrl);
+    if (url.protocol !== "https:" || url.hostname !== PUBLIC_IMAGE_HOST) return null;
+    if (!url.pathname.startsWith(`/${GENERATED_IMAGE_KEY_PREFIX}`)) return null;
+
+    const key = decodeURIComponent(url.pathname.slice(1));
+    if (!key.startsWith(GENERATED_IMAGE_KEY_PREFIX)) return null;
+    if (key.split("/").some((segment) => segment === "." || segment === "..")) return null;
+    return key;
+  } catch {
+    return null;
+  }
+}
+
+export async function deleteGeneratedImageFromR2Url(
+  imageUrl: string | null | undefined,
+  cloudflareEnv?: unknown,
+): Promise<boolean> {
+  const key = getGeneratedR2KeyFromPublicUrl(imageUrl);
+  if (!key || !key.startsWith(GENERATED_IMAGE_KEY_PREFIX)) return false;
+
+  const env = getCloudflareEnv(cloudflareEnv);
+  const bucket = env.SHUNTU_GENERATED_IMAGES;
+  if (!bucket || typeof bucket.delete !== "function") return false;
+
+  try {
+    await bucket.delete(key);
+    return true;
+  } catch (error) {
+    const errorName = error instanceof Error ? error.name : typeof error;
+    console.warn("[history] r2 delete failed", { errorName });
+    return false;
   }
 }
 
