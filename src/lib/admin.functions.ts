@@ -1,5 +1,4 @@
 import { createServerFn } from "@tanstack/react-start";
-import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
@@ -857,78 +856,6 @@ function getCloudflareEnvFromServerContext(context: unknown): unknown {
   const serverContext = context as { cloudflare?: { env?: unknown }; cloudflareEnv?: unknown } | null | undefined;
   return serverContext?.cloudflare?.env ?? serverContext?.cloudflareEnv;
 }
-
-// TEMP R2 runtime diagnostic. Remove before merging to main.
-export const debugR2RuntimeEnv = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const request = getRequest();
-    const requestUrl = request?.url ? new URL(request.url) : null;
-    const contextWithCloudflare = context as { cloudflare?: unknown } | null | undefined;
-    const globalCloudflareEnv =
-      (globalThis as Record<string, unknown>)["__SHUNTU_CLOUDFLARE_ENV__"];
-    const nitroGlobalEnv = (globalThis as Record<string, unknown>)["__env__"] as
-      | {
-          SHUNTU_GENERATED_IMAGES?: { put?: unknown };
-          R2_PUBLIC_BASE_URL?: unknown;
-        }
-      | undefined;
-    const cloudflareValue = contextWithCloudflare?.cloudflare;
-    const contextKeys =
-      context && typeof context === "object"
-        ? Object.keys(context as Record<string, unknown>).sort()
-        : [];
-    const cloudflareKeys =
-      cloudflareValue && typeof cloudflareValue === "object"
-        ? Object.keys(cloudflareValue as Record<string, unknown>).sort()
-        : [];
-    const globalCloudflareEnvKeys =
-      globalCloudflareEnv && typeof globalCloudflareEnv === "object"
-        ? Object.keys(globalCloudflareEnv as Record<string, unknown>).sort()
-        : [];
-    const nitroGlobalEnvKeys =
-      nitroGlobalEnv && typeof nitroGlobalEnv === "object"
-        ? Object.keys(nitroGlobalEnv as Record<string, unknown>).sort()
-        : [];
-    const nitroBucket = nitroGlobalEnv?.SHUNTU_GENERATED_IMAGES;
-    const nitroPublicBaseUrl =
-      typeof nitroGlobalEnv?.R2_PUBLIC_BASE_URL === "string"
-        ? nitroGlobalEnv.R2_PUBLIC_BASE_URL
-        : null;
-    const cloudflareEnv = getCloudflareEnvFromServerContext(context) as
-      | {
-          SHUNTU_GENERATED_IMAGES?: { put?: unknown };
-          R2_PUBLIC_BASE_URL?: unknown;
-        }
-      | null
-      | undefined;
-    const bucket = cloudflareEnv?.SHUNTU_GENERATED_IMAGES;
-    const publicBaseUrl =
-      typeof cloudflareEnv?.R2_PUBLIC_BASE_URL === "string"
-        ? cloudflareEnv.R2_PUBLIC_BASE_URL
-        : null;
-
-    return {
-      hasCloudflareContext: !!contextWithCloudflare?.cloudflare,
-      hasCloudflareEnv: !!cloudflareEnv,
-      hasBucket: !!bucket,
-      hasBucketPut: typeof bucket?.put === "function",
-      hasPublicBaseUrl: !!publicBaseUrl,
-      publicBaseUrl,
-      bucketBindingName: "SHUNTU_GENERATED_IMAGES",
-      requestHost: requestUrl?.host ?? null,
-      requestOrigin: requestUrl?.origin ?? null,
-      contextKeys,
-      cloudflareKeys,
-      hasGlobalCloudflareEnv: !!globalCloudflareEnv,
-      globalCloudflareEnvKeys,
-      hasNitroGlobalEnv: !!nitroGlobalEnv,
-      nitroGlobalEnvKeys,
-      nitroHasBucket: !!nitroBucket,
-      nitroHasBucketPut: typeof nitroBucket?.put === "function",
-      nitroHasPublicBaseUrl: !!nitroPublicBaseUrl,
-    };
-  });
 
 export const startGenerationTask = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

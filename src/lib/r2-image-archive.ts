@@ -57,9 +57,6 @@ function getCloudflareEnv(explicitEnv?: unknown): CloudflareEnvLike {
   };
 }
 
-function warnArchive(stage: string, data: Record<string, unknown>) {
-  console.warn("[r2-image-archive]", { stage, ...data });
-}
 
 function normalizePublicBaseUrl(value: string | undefined): string | null {
   const trimmed = String(value ?? "").trim().replace(/\/+$/, "");
@@ -94,12 +91,6 @@ export async function archiveGeneratedImageToR2({
   modelKey,
   cloudflareEnv,
 }: ArchiveGeneratedImageInput): Promise<string> {
-  warnArchive("entered", {
-    taskId,
-    modelKey: modelKey ?? null,
-    imageHost: imageUrl ? getImageHost(imageUrl) : "invalid_url",
-    hasImageUrl: !!imageUrl,
-  });
 
   if (!imageUrl) return imageUrl;
   if (imageUrl.startsWith(`${PUBLIC_IMAGE_BASE_URL}/`) || imageUrl === PUBLIC_IMAGE_BASE_URL) {
@@ -115,15 +106,6 @@ export async function archiveGeneratedImageToR2({
   const bucket = env.SHUNTU_GENERATED_IMAGES;
   const publicBaseUrl = normalizePublicBaseUrl(env.R2_PUBLIC_BASE_URL);
   if (!bucket || typeof bucket.put !== "function" || !publicBaseUrl) {
-    warnArchive("missing_config", {
-      taskId,
-      modelKey: modelKey ?? null,
-      hasExplicitEnv,
-      hasContextEnv,
-      hasGlobalEnv,
-      hasBucket: !!bucket,
-      hasPublicBaseUrl: !!publicBaseUrl,
-    });
     return imageUrl;
   }
 
@@ -138,13 +120,11 @@ export async function archiveGeneratedImageToR2({
       redirect: "follow",
     });
     if (!response.ok) {
-      warnArchive("fetch_failed", { taskId, modelKey: modelKey ?? null, status: response.status });
       return imageUrl;
     }
 
     const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
     if (!contentType.startsWith("image/")) {
-      warnArchive("invalid_content_type", { taskId, modelKey: modelKey ?? null, contentType });
       return imageUrl;
     }
 
@@ -153,25 +133,8 @@ export async function archiveGeneratedImageToR2({
     const body = await response.arrayBuffer();
     await bucket.put(key, body, { httpMetadata: { contentType } });
     const finalUrl = `${publicBaseUrl}/${key}`;
-    warnArchive("success", {
-      taskId,
-      modelKey: modelKey ?? null,
-      imageHost: getImageHost(finalUrl),
-      hasBucket: true,
-      hasExplicitEnv,
-      hasContextEnv,
-      hasGlobalEnv,
-      hasPublicBaseUrl: true,
-      contentType,
-    });
     return finalUrl;
   } catch (error) {
-    warnArchive("archive_failed", {
-      taskId,
-      modelKey: modelKey ?? null,
-      errorName: error instanceof Error ? error.name : "UnknownError",
-      errorMessage: error instanceof Error ? error.message : String(error),
-    });
     return imageUrl;
   }
 }

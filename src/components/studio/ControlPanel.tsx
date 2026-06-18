@@ -7,7 +7,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { useServerFn } from "@tanstack/react-start";
-import { listModelsConfig, generateImage, checkImageStatus, generateRandomPrompt, debugR2RuntimeEnv } from "@/lib/admin.functions";
+import { listModelsConfig, generateImage, checkImageStatus, generateRandomPrompt } from "@/lib/admin.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { consumeStudioPrefill } from "@/lib/studio-prefill";
@@ -134,7 +134,6 @@ export function ControlPanel({
   const generate = useServerFn(generateImage);
   const checkStatus = useServerFn(checkImageStatus);
   const randomPromptFn = useServerFn(generateRandomPrompt);
-  const debugR2Runtime = useServerFn(debugR2RuntimeEnv);
   const [inspiring, setInspiring] = useState(false);
   const { refreshProfile, session } = useAuth();
 
@@ -585,25 +584,6 @@ export function ControlPanel({
     }
   };
 
-  // TEMP R2 runtime diagnostic. Remove before merging to main.
-  const showR2RuntimeDebug =
-    typeof window !== "undefined" && window.location.hostname.includes(".workers.dev");
-  const handleR2RuntimeDebug = async () => {
-    try {
-      const result = await debugR2Runtime({});
-      console.log("[debug-r2-runtime]", result);
-      alert(JSON.stringify(result, null, 2));
-    } catch (error) {
-      const result = {
-        errorName: error instanceof Error ? error.name : "UnknownError",
-        errorMessage: error instanceof Error ? error.message : String(error),
-      };
-      console.log("[debug-r2-runtime]", result);
-      alert(JSON.stringify(result, null, 2));
-    }
-  };
-
-
   return (
     <aside className="flex h-full min-h-0 flex-col overflow-hidden border-r border-border/60 bg-card/40">
       {/* 上半部分：参考图 + 提示词 — 固定高度，不参与滚动 */}
@@ -890,15 +870,6 @@ export function ControlPanel({
 
       {/* 立即生成 — 紧贴风格模板 */}
       <div className="shrink-0 border-t border-primary/15 bg-gradient-to-b from-primary/[0.04] to-background/85 p-3 backdrop-blur-xl">
-        {showR2RuntimeDebug && (
-          <button
-            type="button"
-            onClick={handleR2RuntimeDebug}
-            className="mb-2 flex w-full items-center justify-center rounded-xl border border-amber-400/40 bg-amber-400/[0.08] px-4 py-2 text-xs font-semibold text-amber-200 transition-colors hover:bg-amber-400/[0.14]"
-          >
-            R2诊断
-          </button>
-        )}
         {canPrepareNextAdminTask && (
           <button
             type="button"
