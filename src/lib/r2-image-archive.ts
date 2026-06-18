@@ -127,7 +127,15 @@ export async function archiveGeneratedImageToR2({
   }
 
   try {
-    const response = await fetch(imageUrl);
+    const response = await fetch(imageUrl, {
+      headers: {
+        accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
+        "user-agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+      },
+      redirect: "follow",
+    });
     if (!response.ok) {
       warnArchive("fetch_failed", { taskId, modelKey: modelKey ?? null, status: response.status });
       return imageUrl;
