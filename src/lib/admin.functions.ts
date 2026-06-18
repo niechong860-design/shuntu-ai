@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
@@ -856,6 +857,39 @@ function getCloudflareEnvFromServerContext(context: unknown): unknown {
   const serverContext = context as { cloudflare?: { env?: unknown }; cloudflareEnv?: unknown } | null | undefined;
   return serverContext?.cloudflare?.env ?? serverContext?.cloudflareEnv;
 }
+
+// TEMP R2 runtime diagnostic. Remove before merging to main.
+export const debugR2RuntimeEnv = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const request = getRequest();
+    const requestUrl = request?.url ? new URL(request.url) : null;
+    const contextWithCloudflare = context as { cloudflare?: unknown } | null | undefined;
+    const cloudflareEnv = getCloudflareEnvFromServerContext(context) as
+      | {
+          SHUNTU_GENERATED_IMAGES?: { put?: unknown };
+          R2_PUBLIC_BASE_URL?: unknown;
+        }
+      | null
+      | undefined;
+    const bucket = cloudflareEnv?.SHUNTU_GENERATED_IMAGES;
+    const publicBaseUrl =
+      typeof cloudflareEnv?.R2_PUBLIC_BASE_URL === "string"
+        ? cloudflareEnv.R2_PUBLIC_BASE_URL
+        : null;
+
+    return {
+      hasCloudflareContext: !!contextWithCloudflare?.cloudflare,
+      hasCloudflareEnv: !!cloudflareEnv,
+      hasBucket: !!bucket,
+      hasBucketPut: typeof bucket?.put === "function",
+      hasPublicBaseUrl: !!publicBaseUrl,
+      publicBaseUrl,
+      bucketBindingName: "SHUNTU_GENERATED_IMAGES",
+      requestHost: requestUrl?.host ?? null,
+      requestOrigin: requestUrl?.origin ?? null,
+    };
+  });
 
 export const startGenerationTask = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
