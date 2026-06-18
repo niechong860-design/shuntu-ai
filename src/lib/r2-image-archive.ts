@@ -25,7 +25,8 @@ const PUBLIC_IMAGE_BASE_URL = "https://img.shuntu.cc";
 const CLOUDFLARE_ENV_GLOBAL_KEY = "__SHUNTU_CLOUDFLARE_ENV__";
 
 function getRawCloudflareGlobalEnv(): unknown {
-  return (globalThis as Record<string, unknown>)[CLOUDFLARE_ENV_GLOBAL_KEY];
+  const globalRecord = globalThis as Record<string, unknown>;
+  return globalRecord[CLOUDFLARE_ENV_GLOBAL_KEY] ?? globalRecord.__env__;
 }
 
 function getRawCloudflareContextEnv(): unknown {
