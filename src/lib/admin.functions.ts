@@ -2712,48 +2712,78 @@ export const adminSetContactInfo = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-// Generate a random creative prompt via Lovable AI Gateway
+// Generate a random creative prompt from local templates. No external AI Gateway credits required.
 export const generateRandomPrompt = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async () => {
-    const apiKey = process.env.LOVABLE_API_KEY;
-    if (!apiKey) throw new Error("AI 服务未配置");
-    const themes = [
-      "电商产品", "时尚人像", "未来科幻", "自然风光", "复古胶片",
-      "美食摄影", "极简静物", "建筑空间", "梦幻插画", "国风山水",
-      "赛博朋克", "ins 极简", "小红书风", "工业摄影", "宠物萌宠",
-    ];
-    const seed = themes[Math.floor(Math.random() * themes.length)];
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
-        messages: [
-          {
-            role: "system",
-            content:
-              "你是顶级 AI 绘画提示词专家。每次只输出一条中文提示词，描述具体场景、主体、光影、镜头、色调、氛围，60-120字，不要使用引号、序号、Markdown、解释，也不要写比例或分辨率。",
-          },
-          { role: "user", content: `请围绕「${seed}」随机生成一条全新的高质量绘画提示词。` },
-        ],
-        temperature: 1.1,
-      }),
-    });
-    if (!res.ok) {
-      const t = await res.text().catch(() => "");
-      throw new Error(`生成失败：${res.status} ${t.slice(0, 200)}`);
-    }
-    const data = await res.json();
-    const text = (data?.choices?.[0]?.message?.content ?? "").toString().trim().replace(/^["「『]+|["」』]+$/g, "");
-    if (!text) throw new Error("AI 未返回内容");
-    return { prompt: text };
+    const pick = (items: readonly string[]) =>
+      items[Math.floor(Math.random() * items.length)] ?? items[0] ?? "";
+
+    const subjects = [
+      "一只毛茸茸的小猫在阳光卧室里安静望向镜头",
+      "一款高级感护肤品摆放在水波纹玻璃台面上",
+      "一位穿黑色西装的年轻人在霓虹街头回眸",
+      "一辆未来感电动跑车停在雨夜城市道路中央",
+      "一杯冰镇气泡饮料放在夏日海边木桌上",
+      "一组珠宝首饰陈列在深色丝绒与金色光影中",
+      "一间极简风客厅被清晨自然光照亮",
+      "一座赛博朋克城市在夜色中闪烁蓝紫色灯光",
+      "一份精致甜点摆在高级餐厅的大理石桌面上",
+      "一位国风少女站在烟雨山水与古建筑之间",
+    ] as const;
+
+    const scenes = [
+      "背景干净留白，主体突出，适合商业海报",
+      "环境充满电影感层次，远景有柔和虚化",
+      "画面具有小红书封面质感，精致、明亮、耐看",
+      "构图稳定，视觉中心明确，适合电商主图",
+      "空间纵深明显，前景和背景形成自然层次",
+    ] as const;
+
+    const lighting = [
+      "柔和自然光，边缘带一点金色轮廓光",
+      "高级棚拍布光，明暗对比细腻",
+      "雨夜霓虹反光，蓝紫色高光点缀",
+      "清晨窗边光线，温暖通透",
+      "低饱和柔光，质感安静克制",
+    ] as const;
+
+    const camera = [
+      "85mm 人像镜头效果，浅景深，细节清晰",
+      "微距摄影质感，材质纹理清楚可见",
+      "广角空间摄影，线条干净，透视自然",
+      "电影镜头语言，画面有故事感",
+      "产品摄影视角，光泽、阴影和体积感突出",
+    ] as const;
+
+    const colors = [
+      "整体色调高级灰与暖白结合",
+      "配色以蓝紫霓虹和深黑为主",
+      "奶油色、浅棕色和柔和金色搭配",
+      "低饱和复古胶片色调",
+      "清透明亮的自然色彩，干净不杂乱",
+    ] as const;
+
+    const details = [
+      "主体边缘清晰，材质真实，画面无杂乱文字",
+      "保留丰富细节，质感真实，适合高端品牌视觉",
+      "氛围精致、有呼吸感，画面干净高级",
+      "细节丰富但不过度复杂，适合直接用于宣传图",
+      "构图有留白，方便后期添加标题和卖点文案",
+    ] as const;
+
+    const prompt = [
+      pick(subjects),
+      pick(scenes),
+      pick(lighting),
+      pick(camera),
+      pick(colors),
+      pick(details),
+    ].join("，") + "。";
+
+    return { prompt };
   });
 
-// --- Admin: Test a model end-to-end (submit + poll for async) ---
 export const adminTestModel = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
