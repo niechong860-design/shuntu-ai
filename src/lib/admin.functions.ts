@@ -4,6 +4,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { checkPromptSafety, SAFETY_SERVER_BLOCK_MESSAGE } from "@/lib/promptSafety";
 import { pollFoxApiTask, submitFoxApiImageEdit, submitFoxApiImageGenerationTask } from "@/lib/foxapi-backup";
+import { archiveGeneratedImageToR2 } from "@/lib/r2-image-archive";
 
 const FOXAPI_BACKUP_MODEL_KEY = "gpt-image-2-backup";
 
@@ -859,6 +860,24 @@ async function finalizeUserGenerationTaskOnce(
   };
 }
 
+async function archiveSuccessfulImageUrl(
+  imageUrl: string,
+  meta: { taskId: string; userId?: string | null; modelKey?: string | null; cloudflareEnv?: unknown },
+): Promise<string> {
+  return archiveGeneratedImageToR2({
+    imageUrl,
+    taskId: meta.taskId,
+    userId: meta.userId,
+    modelKey: meta.modelKey,
+    cloudflareEnv: meta.cloudflareEnv,
+  });
+}
+
+function getCloudflareEnvFromServerContext(context: unknown): unknown {
+  const serverContext = context as { cloudflare?: { env?: unknown }; cloudflareEnv?: unknown } | null | undefined;
+  return serverContext?.cloudflare?.env ?? serverContext?.cloudflareEnv;
+}
+
 export const startGenerationTask = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
@@ -866,6 +885,7 @@ export const startGenerationTask = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const { userId, supabase } = context;
+    const cloudflareEnv = getCloudflareEnvFromServerContext(context);
 
     const { count: runningCount, error: runningCountError } = await (supabaseAdmin as any)
       .from("generation_tasks")
@@ -924,8 +944,15 @@ export const startGenerationTask = createServerFn({ method: "POST" })
       const finishedAt = new Date().toISOString();
 
       if (result.status === "succeeded") {
+        let finalImageUrl = result.resultImageUrl;
         try {
-          const finalizeResult = await finalizeUserGenerationTaskOnce(supabase, task.id as string, result.resultImageUrl);
+          finalImageUrl = await archiveSuccessfulImageUrl(result.resultImageUrl, {
+            taskId: task.id as string,
+            userId,
+            modelKey: (task.model_id ?? null) as string | null,
+            cloudflareEnv,
+          });
+          const finalizeResult = await finalizeUserGenerationTaskOnce(supabase, task.id as string, finalImageUrl);
           const { error: payloadUpdateError } = await (supabaseAdmin as any)
             .from("generation_tasks")
             .update({
@@ -941,7 +968,7 @@ export const startGenerationTask = createServerFn({ method: "POST" })
             taskId: task.id as string,
             status: "succeeded" as const,
             startedAt: task.started_at as string,
-            resultImageUrl: result.resultImageUrl,
+            resultImageUrl: finalImageUrl,
             errorMessage: null as string | null,
             resultPayload: result.resultPayload,
             ...finalizeResult,
@@ -953,7 +980,7 @@ export const startGenerationTask = createServerFn({ method: "POST" })
             .update({
               status: "failed",
               error_message: message,
-              result_image_url: result.resultImageUrl,
+              result_image_url: finalImageUrl,
               result_payload: result.resultPayload,
               completed_at: finishedAt,
               updated_at: finishedAt,
@@ -1026,6 +1053,7 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const { userId, supabase } = context;
+    const cloudflareEnv = getCloudflareEnvFromServerContext(context);
 
     const { data: task, error } = await (supabaseAdmin as any)
       .from("generation_tasks")
@@ -1037,10 +1065,40 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
     if (!task) throw new Error("任务不存在，或不属于当前任务。");
     if (task.status !== "running") {
       const finalized = task.status === "succeeded" && task.deduction_status === "charged" && !!task.deduction_id;
+      let resultImageUrl = (task.result_image_url ?? null) as string | null;
+      if (finalized && resultImageUrl && !resultImageUrl.startsWith("https://img.shuntu.cc/")) {
+        const originalImageUrl = resultImageUrl;
+        try {
+          resultImageUrl = await archiveSuccessfulImageUrl(originalImageUrl, {
+            taskId: task.id as string,
+            userId,
+            modelKey: (task.model_id ?? null) as string | null,
+            cloudflareEnv,
+          });
+          if (resultImageUrl !== originalImageUrl) {
+            const { error: archiveUrlUpdateError } = await (supabaseAdmin as any)
+              .from("generation_tasks")
+              .update({
+                result_image_url: resultImageUrl,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", task.id)
+              .eq("user_id", userId)
+              .eq("status", "succeeded")
+              .eq("deduction_status", "charged");
+            if (archiveUrlUpdateError) {
+              console.warn("[pollGenerationTask] archived result_image_url update failed", archiveUrlUpdateError);
+            }
+          }
+        } catch (e) {
+          console.warn("[pollGenerationTask] archived completed task image failed", e);
+          resultImageUrl = originalImageUrl;
+        }
+      }
       return {
         taskId: task.id as string,
         status: finalized ? "succeeded" as const : task.status === "succeeded" ? "failed" as const : task.status as "failed" | "queued" | "canceled",
-        resultImageUrl: (task.result_image_url ?? null) as string | null,
+        resultImageUrl,
         errorMessage: finalized ? (task.error_message ?? null) as string | null : task.status === "succeeded" ? "Task completed without charged deduction or history" : (task.error_message ?? null) as string | null,
         resultPayload: task.result_payload ?? null,
         deductionStatus: (task.deduction_status ?? null) as string | null,
@@ -1063,8 +1121,15 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
     const now = new Date().toISOString();
     if (pollResult.status === "succeeded") {
       const resultPayload = { ...(task.result_payload ?? {}), ...pollResult.resultPayload, providerStatus: "succeeded" };
+      let finalImageUrl = pollResult.resultImageUrl;
       try {
-        const finalizeResult = await finalizeUserGenerationTaskOnce(supabase, task.id as string, pollResult.resultImageUrl);
+        finalImageUrl = await archiveSuccessfulImageUrl(pollResult.resultImageUrl, {
+          taskId: task.id as string,
+          userId,
+          modelKey: (task.model_id ?? null) as string | null,
+          cloudflareEnv,
+        });
+        const finalizeResult = await finalizeUserGenerationTaskOnce(supabase, task.id as string, finalImageUrl);
         const { error: payloadUpdateError } = await (supabaseAdmin as any)
           .from("generation_tasks")
           .update({
@@ -1079,7 +1144,7 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
         return {
           taskId: task.id as string,
           status: "succeeded" as const,
-          resultImageUrl: pollResult.resultImageUrl,
+          resultImageUrl: finalImageUrl,
           errorMessage: null as string | null,
           resultPayload,
           ...finalizeResult,
@@ -1626,6 +1691,7 @@ export const generateImage = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
+    const cloudflareEnv = getCloudflareEnvFromServerContext(context);
 
     // 服务端违规词二次校验，防止绕过前端
     const safety = checkPromptSafety(data.prompt);
@@ -1845,6 +1911,12 @@ export const generateImage = createServerFn({ method: "POST" })
       safeCost = Number(row?.cost ?? 0) || 0;
       safeCredits = Number(row?.credits ?? 0) || 0;
 
+      imageUrl = await archiveSuccessfulImageUrl(imageUrl, {
+        taskId: `legacy_${crypto.randomUUID()}`,
+        userId,
+        modelKey: data.modelKey,
+        cloudflareEnv,
+      });
       await supabase.rpc("set_latest_history_image", {
         _model: model.name,
         _image_url: imageUrl,
@@ -1874,7 +1946,8 @@ export const checkImageStatus = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
+    const { supabase, userId } = context;
+    const cloudflareEnv = getCloudflareEnvFromServerContext(context);
     if (data.modelKey === FOXAPI_BACKUP_MODEL_KEY) {
       const result = await pollFoxApiTask(data.taskId);
       if (result.status === "running") {
@@ -1906,13 +1979,19 @@ export const checkImageStatus = createServerFn({ method: "POST" })
           console.error("[foxapi-backup]", { modelKey: data.modelKey, stage: "deduction_exception", taskId: data.taskId, providerStatus: result.providerStatus, elapsedMs: result.elapsedMs });
         }
       }
+      const archivedUrl = await archiveSuccessfulImageUrl(url, {
+        taskId: data.taskId,
+        userId,
+        modelKey: data.modelKey ?? null,
+        cloudflareEnv,
+      });
       if (data.modelName) {
         await supabase.rpc("set_latest_history_image", {
           _model: data.modelName,
-          _image_url: url,
+          _image_url: archivedUrl,
         });
       }
-      return { status: "success" as const, reason: null as null, imageUrl: url, message: null as string | null, code: null as number | null, taskStatus: result.providerStatus, rawMsg: null as string | null, debug: null as null };
+      return { status: "success" as const, reason: null as null, imageUrl: archivedUrl, message: null as string | null, code: null as number | null, taskStatus: result.providerStatus, rawMsg: null as string | null, debug: null as null };
     }
 
     const { global_api_key } = await loadGlobalConfig();
@@ -1973,13 +2052,19 @@ export const checkImageStatus = createServerFn({ method: "POST" })
             console.error("[checkImageStatus] 扣费异常", e);
           }
         }
+        const archivedUrl = await archiveSuccessfulImageUrl(url, {
+          taskId: data.taskId,
+          userId,
+          modelKey: data.modelKey ?? null,
+          cloudflareEnv,
+        });
         if (data.modelName) {
           await supabase.rpc("set_latest_history_image", {
             _model: data.modelName,
-            _image_url: url,
+            _image_url: archivedUrl,
           });
         }
-        return { status: "success" as const, reason: null as null, imageUrl: url, message: null as string | null, code, taskStatus, rawMsg, debug: rawDebug };
+        return { status: "success" as const, reason: null as null, imageUrl: archivedUrl, message: null as string | null, code, taskStatus, rawMsg, debug: rawDebug };
       }
       return { status: "pending" as const, reason: null as null, imageUrl: null as string | null, message: "成功但URL未就绪", code, taskStatus, rawMsg, debug: rawDebug };
     }

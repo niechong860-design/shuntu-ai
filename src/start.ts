@@ -3,6 +3,24 @@ import { attachSupabaseAuth } from "@/integrations/supabase/auth-attacher";
 
 import { renderErrorPage } from "./lib/error-page";
 
+function sameOriginServerFnFetch(input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]): ReturnType<typeof fetch> {
+  if (typeof window === "undefined") return fetch(input, init);
+
+  try {
+    const url = typeof input === "string" || input instanceof URL ? input.toString() : null;
+    if (!url) return fetch(input, init);
+
+    const parsed = new URL(url, window.location.origin);
+    if (parsed.pathname.startsWith("/_serverFn/") && parsed.origin !== window.location.origin) {
+      return fetch(`${window.location.origin}${parsed.pathname}${parsed.search}${parsed.hash}`, init);
+    }
+  } catch {
+    // Fall through to the original URL if parsing ever fails.
+  }
+
+  return fetch(input, init);
+}
+
 const errorMiddleware = createMiddleware().server(async ({ next }) => {
   try {
     return await next();
@@ -21,4 +39,7 @@ const errorMiddleware = createMiddleware().server(async ({ next }) => {
 export const startInstance = createStart(() => ({
   requestMiddleware: [errorMiddleware],
   functionMiddleware: [attachSupabaseAuth],
+  serverFns: {
+    fetch: sameOriginServerFnFetch,
+  },
 }));

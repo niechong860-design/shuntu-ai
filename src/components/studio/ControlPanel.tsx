@@ -619,7 +619,6 @@ export function ControlPanel({
     }
   };
 
-
   return (
     <aside className="flex h-full min-h-0 flex-col overflow-hidden border-r border-border/60 bg-card/40">
       {/* 上半部分：参考图 + 提示词 — 固定高度，不参与滚动 */}
