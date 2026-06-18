@@ -865,6 +865,21 @@ export const debugR2RuntimeEnv = createServerFn({ method: "POST" })
     const request = getRequest();
     const requestUrl = request?.url ? new URL(request.url) : null;
     const contextWithCloudflare = context as { cloudflare?: unknown } | null | undefined;
+    const globalCloudflareEnv =
+      (globalThis as Record<string, unknown>)["__SHUNTU_CLOUDFLARE_ENV__"];
+    const cloudflareValue = contextWithCloudflare?.cloudflare;
+    const contextKeys =
+      context && typeof context === "object"
+        ? Object.keys(context as Record<string, unknown>).sort()
+        : [];
+    const cloudflareKeys =
+      cloudflareValue && typeof cloudflareValue === "object"
+        ? Object.keys(cloudflareValue as Record<string, unknown>).sort()
+        : [];
+    const globalCloudflareEnvKeys =
+      globalCloudflareEnv && typeof globalCloudflareEnv === "object"
+        ? Object.keys(globalCloudflareEnv as Record<string, unknown>).sort()
+        : [];
     const cloudflareEnv = getCloudflareEnvFromServerContext(context) as
       | {
           SHUNTU_GENERATED_IMAGES?: { put?: unknown };
@@ -888,6 +903,10 @@ export const debugR2RuntimeEnv = createServerFn({ method: "POST" })
       bucketBindingName: "SHUNTU_GENERATED_IMAGES",
       requestHost: requestUrl?.host ?? null,
       requestOrigin: requestUrl?.origin ?? null,
+      contextKeys,
+      cloudflareKeys,
+      hasGlobalCloudflareEnv: !!globalCloudflareEnv,
+      globalCloudflareEnvKeys,
     };
   });
 
