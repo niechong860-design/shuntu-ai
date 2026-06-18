@@ -1958,20 +1958,19 @@ export const checkImageStatus = createServerFn({ method: "POST" })
           console.error("[foxapi-backup]", { modelKey: data.modelKey, stage: "deduction_exception", taskId: data.taskId, providerStatus: result.providerStatus, elapsedMs: result.elapsedMs });
         }
       }
+      const archivedUrl = await archiveSuccessfulImageUrl(url, {
+        taskId: data.taskId,
+        userId,
+        modelKey: data.modelKey ?? null,
+        cloudflareEnv,
+      });
       if (data.modelName) {
-        const archivedUrl = await archiveSuccessfulImageUrl(url, {
-          taskId: data.taskId,
-          userId,
-          modelKey: data.modelKey ?? null,
-          cloudflareEnv,
-        });
         await supabase.rpc("set_latest_history_image", {
           _model: data.modelName,
           _image_url: archivedUrl,
         });
-        return { status: "success" as const, reason: null as null, imageUrl: archivedUrl, message: null as string | null, code: null as number | null, taskStatus: result.providerStatus, rawMsg: null as string | null, debug: null as null };
       }
-      return { status: "success" as const, reason: null as null, imageUrl: url, message: null as string | null, code: null as number | null, taskStatus: result.providerStatus, rawMsg: null as string | null, debug: null as null };
+      return { status: "success" as const, reason: null as null, imageUrl: archivedUrl, message: null as string | null, code: null as number | null, taskStatus: result.providerStatus, rawMsg: null as string | null, debug: null as null };
     }
 
     const { global_api_key } = await loadGlobalConfig();
@@ -2032,20 +2031,19 @@ export const checkImageStatus = createServerFn({ method: "POST" })
             console.error("[checkImageStatus] 扣费异常", e);
           }
         }
+        const archivedUrl = await archiveSuccessfulImageUrl(url, {
+          taskId: data.taskId,
+          userId,
+          modelKey: data.modelKey ?? null,
+          cloudflareEnv,
+        });
         if (data.modelName) {
-          const archivedUrl = await archiveSuccessfulImageUrl(url, {
-            taskId: data.taskId,
-            userId,
-            modelKey: data.modelKey ?? null,
-            cloudflareEnv,
-          });
           await supabase.rpc("set_latest_history_image", {
             _model: data.modelName,
             _image_url: archivedUrl,
           });
-          return { status: "success" as const, reason: null as null, imageUrl: archivedUrl, message: null as string | null, code, taskStatus, rawMsg, debug: rawDebug };
         }
-        return { status: "success" as const, reason: null as null, imageUrl: url, message: null as string | null, code, taskStatus, rawMsg, debug: rawDebug };
+        return { status: "success" as const, reason: null as null, imageUrl: archivedUrl, message: null as string | null, code, taskStatus, rawMsg, debug: rawDebug };
       }
       return { status: "pending" as const, reason: null as null, imageUrl: null as string | null, message: "成功但URL未就绪", code, taskStatus, rawMsg, debug: rawDebug };
     }
