@@ -19,6 +19,7 @@ import { toast } from "sonner";
 
 type ModelCfg = {
   id: string; model_key: string; name: string; description: string | null; cost: number;
+  sort_order?: number | null;
   extra_params?: Record<string, unknown> | null;
 };
 
@@ -60,15 +61,33 @@ const MODEL_BADGES: Record<string, ModelBadge> = {
   nanobanana2: { label: "推荐", icon: Star, className: "bg-primary/15 text-primary border-primary/30" },
 };
 
+const BADGE_COLOR_CLASSES: Record<string, string> = {
+  green: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+  red: "bg-rose-500/15 text-rose-400 border-rose-500/30",
+  orange: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+  cyan: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30",
+  purple: "bg-violet-500/15 text-violet-300 border-violet-500/30",
+  gray: "bg-muted text-muted-foreground border-border",
+};
+
+const pickDefaultModel = (list: ModelCfg[]): ModelCfg | undefined =>
+  list.find((m) => m.extra_params?.ui_default_model === true);
+
+const putDefaultModelFirst = (list: ModelCfg[], defaultModel?: ModelCfg): ModelCfg[] => {
+  if (!defaultModel) return list;
+  return [defaultModel, ...list.filter((m) => m.id !== defaultModel.id)];
+};
+
 const getModelBadge = (model?: ModelCfg | null): ModelBadge | null => {
   if (!model) return null;
   const extra = model.extra_params ?? {};
   const configuredText = typeof extra.ui_badge_text === "string" ? extra.ui_badge_text.trim() : "";
   if (extra.ui_badge_enabled === true && configuredText) {
+    const color = typeof extra.ui_badge_color === "string" ? extra.ui_badge_color : "cyan";
     return {
       label: configuredText,
       icon: Star,
-      className: "bg-primary/15 text-primary border-primary/30",
+      className: BADGE_COLOR_CLASSES[color] ?? BADGE_COLOR_CLASSES.cyan,
     };
   }
   return MODEL_BADGES[model.model_key] ?? null;
@@ -183,12 +202,17 @@ export function ControlPanel({
     if (!session) return;
     fetchModels({}).then((data) => {
       const list = (data ?? []) as ModelCfg[];
-      setModels(list);
-      const configuredDefault = list.find((m) => m.extra_params?.ui_default_model === true);
+      const configuredDefault = pickDefaultModel(list);
+      const orderedList = putDefaultModelFirst(list, configuredDefault);
       const initialModel = configuredDefault ?? list[0];
-      if (initialModel && !modelKey) setModelKey(initialModel.model_key);
+      setModels(orderedList);
+      if (initialModel) {
+        setModelKey((current) => {
+          const currentStillEnabled = current && list.some((m) => m.model_key === current);
+          return currentStillEnabled ? current : initialModel.model_key;
+        });
+      }
     }).catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
   // Apply a one-shot prefill payload coming from the inspiration plaza ("一键复用")

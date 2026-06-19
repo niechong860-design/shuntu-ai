@@ -42,6 +42,7 @@ type EditState = {
   fetch_url: string;
   ui_badge_enabled: boolean;
   ui_badge_text: string;
+  ui_badge_color: string;
   ui_default_model: boolean;
   extra_params: string; // raw JSON string in textarea
 };
@@ -49,9 +50,18 @@ type EditState = {
 const empty = (): EditState => ({
   id: "", name: "", model_key: "", description: "", cost: "1",
   api_url: "", api_key: "", request_format: "async_id", prompt_key: "prompt", fetch_url: "",
-  ui_badge_enabled: false, ui_badge_text: "", ui_default_model: false,
+  ui_badge_enabled: false, ui_badge_text: "", ui_badge_color: "cyan", ui_default_model: false,
   extra_params: "{}",
 });
+
+const BADGE_COLOR_OPTIONS = [
+  { value: "green", label: "绿色" },
+  { value: "red", label: "红色" },
+  { value: "orange", label: "橙色" },
+  { value: "cyan", label: "青色" },
+  { value: "purple", label: "紫色" },
+  { value: "gray", label: "灰色" },
+];
 
 const maskKey = (k: string | null) => {
   if (!k) return "";
@@ -95,6 +105,7 @@ export function ModelsPanel() {
       fetch_url: r.fetch_url ?? "",
       ui_badge_enabled: extra.ui_badge_enabled === true,
       ui_badge_text: typeof extra.ui_badge_text === "string" ? extra.ui_badge_text : "",
+      ui_badge_color: typeof extra.ui_badge_color === "string" ? extra.ui_badge_color : "cyan",
       ui_default_model: extra.ui_default_model === true,
       extra_params: JSON.stringify(extra, null, 2),
     });
@@ -114,6 +125,7 @@ export function ModelsPanel() {
     ...extra,
     ui_badge_enabled: state.ui_badge_enabled,
     ui_badge_text: state.ui_badge_text.trim(),
+    ui_badge_color: state.ui_badge_color,
     ui_default_model: state.ui_default_model,
   });
 
@@ -444,6 +456,18 @@ function ModelFormDialog({
                   onChange={(e) => setState({ ...state, ui_badge_text: e.target.value })}
                   placeholder="推荐 / 热门 / 最强 / 最新 / 备用"
                 />
+              </div>
+              <div className="mt-3 space-y-1">
+                <label className="text-[11px] text-muted-foreground">标签颜色</label>
+                <select
+                  value={state.ui_badge_color}
+                  onChange={(e) => setState({ ...state, ui_badge_color: e.target.value })}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-xs"
+                >
+                  {BADGE_COLOR_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
