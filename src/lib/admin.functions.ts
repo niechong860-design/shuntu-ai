@@ -1335,10 +1335,7 @@ async function submitAdminPreviewGenerationTask(task: any): Promise<
   }
 
   const httpReferenceImages = referenceImages.filter((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u));
-  if ((model as any).model_key === GPT_IMAGE_2_BACKUP_MODEL_KEY) {
-    if (httpReferenceImages.length === 0) {
-      throw new Error("该模型仅支持图生图，请先上传参考图");
-    }
+  if ((model as any).model_key === GPT_IMAGE_2_BACKUP_MODEL_KEY && httpReferenceImages.length > 0) {
     const result = await submitGptImage2BackupEdit({
       model,
       prompt,
