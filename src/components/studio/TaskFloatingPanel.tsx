@@ -15,6 +15,8 @@ export type FloatingTask = {
   resultImageUrl?: string | null;
 };
 
+const GPT_IMAGE_2_BACKUP_MODEL_KEY = "gpt_image_2_backup";
+
 const STATUS_META: Record<TaskStatus, { label: string; icon: typeof Clock3; className: string }> = {
   waiting: { label: "等待中", icon: Clock3, className: "text-muted-foreground" },
   submitting: { label: "提交中", icon: CircleDashed, className: "text-sky-300" },
@@ -121,7 +123,11 @@ export function TaskFloatingPanel({
           ) : (
             <div className="space-y-2">
               {tasks.map((task) => {
-                const meta = STATUS_META[task.status];
+                const displayStatus =
+                  task.status === "submitting" && task.modelKey === GPT_IMAGE_2_BACKUP_MODEL_KEY
+                    ? "generating"
+                    : task.status;
+                const meta = STATUS_META[displayStatus];
                 const Icon = meta.icon;
                 const starting = startingTaskIds.includes(task.id);
                 const canceling = cancelingTaskIds.includes(task.id);
@@ -129,7 +135,7 @@ export function TaskFloatingPanel({
                 return (
                   <div key={task.id} className="rounded-lg border border-border/60 bg-white/[0.03] px-3 py-2">
                     <div className="flex items-center gap-2">
-                      <Icon className={`h-3.5 w-3.5 ${meta.className} ${task.status === "generating" ? "animate-spin" : ""}`} />
+                      <Icon className={`h-3.5 w-3.5 ${meta.className} ${displayStatus === "generating" ? "animate-spin" : ""}`} />
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-xs font-medium text-foreground">{task.title}</div>
                         <div className={`text-[10px] ${meta.className}`}>{meta.label}</div>

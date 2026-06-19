@@ -10,6 +10,7 @@ import { toast } from "sonner";
 
 const AnnouncementCenter = lazy(() => import("./AnnouncementCenter").then((m) => ({ default: m.AnnouncementCenter })));
 const AuthModal = lazy(() => import("@/components/auth/AuthModal").then((m) => ({ default: m.AuthModal })));
+const GPT_IMAGE_2_BACKUP_MODEL_KEY = "gpt_image_2_backup";
 
 const latestResultStorageKey = (userId: string) => `shuntu:studio:last-result:${userId}`;
 
@@ -62,7 +63,11 @@ function getActiveQueueTask(tasks: FloatingTask[]) {
 }
 
 function getQueueProgress(task: FloatingTask): GenProgress {
-  if (task.status === "generating") {
+  const displayAsGenerating =
+    task.status === "generating" ||
+    (task.status === "submitting" && task.modelKey === GPT_IMAGE_2_BACKUP_MODEL_KEY);
+
+  if (displayAsGenerating) {
     return {
       stage: "rendering",
       attempt: 0,
