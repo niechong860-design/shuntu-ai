@@ -74,7 +74,28 @@ type Props = {
 };
 
 
-async function downloadImage(url: string, filename: string) {
+function safeDecodeFilename(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function getDownloadFilename(url: string, fallback = "shuntu-generated-image.png") {
+  try {
+    const parsed = new URL(url, window.location.href);
+    const lastSegment = parsed.pathname.split("/").filter(Boolean).pop();
+    if (lastSegment) return safeDecodeFilename(lastSegment);
+  } catch {
+    const lastSegment = url.split("?")[0]?.split("#")[0]?.split("/").filter(Boolean).pop();
+    if (lastSegment) return safeDecodeFilename(lastSegment);
+  }
+  return fallback;
+}
+
+async function downloadImage(url: string, fallbackFilename = "shuntu-generated-image.png") {
+  const filename = getDownloadFilename(url, fallbackFilename);
   try {
     const res = await fetch(url, { mode: "cors" });
     if (!res.ok) throw new Error(String(res.status));
@@ -89,9 +110,7 @@ async function downloadImage(url: string, filename: string) {
     setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
     toast.success("已开始下载");
   } catch {
-    // 跨域失败时退回到新标签页打开，让用户右键保存
-    window.open(url, "_blank", "noopener,noreferrer");
-    toast.message("已在新标签打开，请右键图片另存为");
+    toast.error("下载失败，请稍后重试");
   }
 }
 
