@@ -80,6 +80,24 @@ function getArchiveKey(taskId: string, extension: string, now = new Date()): str
   return `generated/${year}/${month}/${safeTaskId}.${extension}`;
 }
 
+function parseBase64ImageDataUrl(imageUrl: string): { contentType: string; body: Uint8Array } | null {
+  const match = imageUrl.match(/^data:(image\/(?:png|jpe?g|webp));base64,([a-z0-9+/=\s]+)$/i);
+  if (!match) return null;
+
+  const contentType = match[1].toLowerCase() === "image/jpg" ? "image/jpeg" : match[1].toLowerCase();
+  const base64 = match[2].replace(/\s/g, "");
+  try {
+    const binary = atob(base64);
+    const body = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      body[i] = binary.charCodeAt(i);
+    }
+    return { contentType, body };
+  } catch {
+    return null;
+  }
+}
+
 function getImageHost(imageUrl: string): string {
   try {
     return new URL(imageUrl).hostname;
@@ -148,6 +166,18 @@ export async function archiveGeneratedImageToR2({
   const publicBaseUrl = normalizePublicBaseUrl(env.R2_PUBLIC_BASE_URL);
   if (!bucket || typeof bucket.put !== "function" || !publicBaseUrl) {
     return imageUrl;
+  }
+
+  const dataImage = parseBase64ImageDataUrl(imageUrl);
+  if (dataImage) {
+    try {
+      const extension = getExtension(dataImage.contentType);
+      const key = getArchiveKey(taskId, extension);
+      await bucket.put(key, dataImage.body, { httpMetadata: { contentType: dataImage.contentType } });
+      return `${publicBaseUrl}/${key}`;
+    } catch {
+      return imageUrl;
+    }
   }
 
   try {

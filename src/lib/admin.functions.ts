@@ -7,6 +7,8 @@ import { pollFoxApiTask, submitFoxApiImageEdit, submitFoxApiImageGenerationTask 
 import { archiveGeneratedImageToR2, deleteGeneratedImageFromR2Url } from "@/lib/r2-image-archive";
 
 const FOXAPI_BACKUP_MODEL_KEY = "gpt-image-2-backup";
+const GPT_IMAGE_2_BACKUP_MODEL_KEY = "gpt_image_2_backup";
+const GPT_IMAGE_2_BACKUP_EDIT_URL = "https://image1.vibelearning.top/v1/images/edits";
 
 type HistoryPruneRow = {
   id: string;
@@ -1332,6 +1334,31 @@ async function submitAdminPreviewGenerationTask(task: any): Promise<
     };
   }
 
+  const httpReferenceImages = referenceImages.filter((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u));
+  if ((model as any).model_key === GPT_IMAGE_2_BACKUP_MODEL_KEY) {
+    if (httpReferenceImages.length === 0) {
+      throw new Error("该模型仅支持图生图，请先上传参考图");
+    }
+    const result = await submitGptImage2BackupEdit({
+      model,
+      prompt,
+      referenceImages: httpReferenceImages,
+      pureApiKey,
+      baseUrl: base_url,
+    });
+    return {
+      status: "succeeded",
+      resultImageUrl: result.imageUrl,
+      resultPayload: {
+        requestFormat: "sync_url",
+        providerStatus: "succeeded",
+        requestId: task.request_id,
+        upstreamCode: result.upstreamCode,
+        mode: "edit",
+      },
+    };
+  }
+
   const requestFormat = (model as any).request_format || "async_id";
   const body = buildAdminPreviewUpstreamBody({
     model,
@@ -1341,7 +1368,7 @@ async function submitAdminPreviewGenerationTask(task: any): Promise<
     referenceImages,
   });
 
-  const res = await fetch(submitUrl, {
+  const res = await fetchWithRetry(submitUrl, {
     method: "POST",
     headers: buildUpstreamHeaders(pureApiKey),
     body: JSON.stringify(body),
@@ -1381,6 +1408,75 @@ async function submitAdminPreviewGenerationTask(task: any): Promise<
   };
 }
 
+function firstConfiguredHttpUrl(value: unknown, fallback: string): string {
+  if (typeof value !== "string") return fallback;
+  const match = value.match(/https?:\/\/[^\s)\]'"<>]+/i);
+  return (match?.[0] ?? fallback).replace(/[。.,]+$/u, "");
+}
+
+function imageFilename(index: number, contentType: string): string {
+  const normalized = contentType.toLowerCase();
+  const extension = normalized.includes("jpeg") || normalized.includes("jpg")
+    ? "jpg"
+    : normalized.includes("webp")
+    ? "webp"
+    : "png";
+  return `reference-${index + 1}.${extension}`;
+}
+
+async function fetchReferenceImageBlob(imageUrl: string, index: number): Promise<{ blob: Blob; filename: string }> {
+  try {
+    const response = await fetch(imageUrl, {
+      headers: { accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8" },
+      redirect: "follow",
+    });
+    if (!response.ok) throw new Error("reference image fetch failed");
+    const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
+    if (!contentType.startsWith("image/")) throw new Error("reference image content-type invalid");
+    const blob = await response.blob();
+    if (!blob.size) throw new Error("reference image empty");
+    return { blob, filename: imageFilename(index, contentType) };
+  } catch {
+    throw new Error("参考图读取失败，请更换图片后重试");
+  }
+}
+
+async function submitGptImage2BackupEdit(params: {
+  model: any;
+  prompt: string;
+  referenceImages: string[];
+  pureApiKey: string;
+  baseUrl: string;
+}): Promise<{ imageUrl: string; upstreamCode: unknown }> {
+  const extra = (params.model?.extra_params ?? {}) as Record<string, unknown>;
+  const editUrl = firstConfiguredHttpUrl(extra.edit_api_url, GPT_IMAGE_2_BACKUP_EDIT_URL);
+  const form = new FormData();
+  form.append("model", String(extra.model ?? "gpt-image-2"));
+  form.append("prompt", params.prompt);
+  form.append("size", String(extra.size ?? "1024x1024"));
+  form.append("n", String(extra.n ?? 1));
+  form.append("response_format", String(extra.response_format ?? "url"));
+
+  const imageField = params.referenceImages.length === 1 ? "image" : "image[]";
+  const images = await Promise.all(params.referenceImages.map(fetchReferenceImageBlob));
+  for (const image of images) {
+    form.append(imageField, image.blob, image.filename);
+  }
+
+  const response = await fetchWithRetry(resolveUrl(params.baseUrl, editUrl), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${params.pureApiKey}` },
+    body: form,
+  });
+  const text = await response.text();
+  const json = parseUpstreamResponse(text);
+  if (!response.ok) throw new Error(friendlyUpstreamError(response.status));
+  if (Number(json?.code) >= 400) throw new Error(friendlyUpstreamError(Number(json?.code) || 500));
+  const imageUrl = extractImageUrl(json ?? text);
+  if (!imageUrl) throw new Error(friendlyUpstreamError(502));
+  return { imageUrl, upstreamCode: json?.code ?? null };
+}
+
 function buildAdminPreviewUpstreamBody(params: {
   model: any;
   prompt: string;
@@ -1391,7 +1487,7 @@ function buildAdminPreviewUpstreamBody(params: {
   const promptKey = params.model?.prompt_key || "prompt";
   const modelKey = params.model?.model_key;
   const size = VALID_SIZES.has(params.aspectRatio) ? params.aspectRatio : "auto";
-  const textOnlyModels = new Set(["wan26"]);
+  const textOnlyModels = new Set(["wan26", "gpt_image_2_backup"]);
   const httpRefs = textOnlyModels.has(modelKey)
     ? []
     : params.referenceImages.filter((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u));

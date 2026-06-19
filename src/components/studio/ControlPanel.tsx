@@ -18,6 +18,9 @@ import { STYLE_TEMPLATES, applyStyleSuffix, type StyleTemplate } from "@/lib/sty
 import { toast } from "sonner";
 
 
+const GPT_IMAGE_2_BACKUP_MODEL_KEY = "gpt_image_2_backup";
+const GPT_IMAGE_2_BACKUP_REQUIRES_REF_MESSAGE = "该模型仅支持图生图，请先上传参考图";
+
 type ModelCfg = {
   id: string; model_key: string; name: string; description: string | null; cost: number;
 };
@@ -231,6 +234,9 @@ export function ControlPanel({
   // 仅文生图的模型：禁止参考图（前端隐藏入口 + 提交时不带 refs）
   const TEXT_ONLY_MODELS = new Set(["wan26"]);
   const isTextOnly = activeModel ? TEXT_ONLY_MODELS.has(activeModel.model_key) : false;
+  const uploadedHttpRefs = refs.filter((u) => /^https?:\/\//i.test(u));
+  const isGptImage2BackupMissingRef =
+    activeModel?.model_key === GPT_IMAGE_2_BACKUP_MODEL_KEY && uploadedHttpRefs.length === 0;
   // 切换到仅文生图模型时，自动清空已有参考图，避免残留
   useEffect(() => {
     if (isTextOnly && refs.length > 0) setRefs([]);
@@ -459,6 +465,10 @@ export function ControlPanel({
         return;
       }
       if (!activeModel) return;
+      if (isGptImage2BackupMissingRef) {
+        toast.error(GPT_IMAGE_2_BACKUP_REQUIRES_REF_MESSAGE);
+        return;
+      }
       if (!prompt || !prompt.trim()) {
         toast.error("请输入图片描述后再生成。");
         return;
@@ -473,7 +483,7 @@ export function ControlPanel({
       }
       setIsCreatingQueuedTask(true);
       try {
-        const httpRefs = isTextOnly ? [] : refs.filter((u) => /^https?:\/\//i.test(u));
+        const httpRefs = isTextOnly ? [] : uploadedHttpRefs;
         const ok = await onAdminCreateQueuedTask?.({
           modelKey: activeModel.model_key,
           modelName: activeModel.name ?? activeModel.model_key,
@@ -511,6 +521,10 @@ export function ControlPanel({
     }
 
     if (generating || !activeModel) return;
+    if (isGptImage2BackupMissingRef) {
+      toast.error(GPT_IMAGE_2_BACKUP_REQUIRES_REF_MESSAGE);
+      return;
+    }
     if (!prompt || !prompt.trim()) {
       toast.error("请输入图片描述后再生成。");
       return;
@@ -525,7 +539,7 @@ export function ControlPanel({
       toast.error(SAFETY_BLOCK_MESSAGE);
       return;
     }
-    const httpRefs = isTextOnly ? [] : refs.filter((u) => /^https?:\/\//i.test(u));
+    const httpRefs = isTextOnly ? [] : uploadedHttpRefs;
     const inputParams = {
       aspectRatio: ratio,
       size,
