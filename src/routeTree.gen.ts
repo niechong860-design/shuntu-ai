@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as InspirationRouteImport } from './routes/inspiration'
 import { Route as DisclaimerRouteImport } from './routes/disclaimer'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiDownloadImageRouteImport } from './routes/api/download-image'
 
 const InspirationRoute = InspirationRouteImport.update({
   id: '/inspiration',
@@ -28,35 +29,44 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiDownloadImageRoute = ApiDownloadImageRouteImport.update({
+  id: '/api/download-image',
+  path: '/api/download-image',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/disclaimer': typeof DisclaimerRoute
   '/inspiration': typeof InspirationRoute
+  '/api/download-image': typeof ApiDownloadImageRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/disclaimer': typeof DisclaimerRoute
   '/inspiration': typeof InspirationRoute
+  '/api/download-image': typeof ApiDownloadImageRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/disclaimer': typeof DisclaimerRoute
   '/inspiration': typeof InspirationRoute
+  '/api/download-image': typeof ApiDownloadImageRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/disclaimer' | '/inspiration'
+  fullPaths: '/' | '/disclaimer' | '/inspiration' | '/api/download-image'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/disclaimer' | '/inspiration'
-  id: '__root__' | '/' | '/disclaimer' | '/inspiration'
+  to: '/' | '/disclaimer' | '/inspiration' | '/api/download-image'
+  id: '__root__' | '/' | '/disclaimer' | '/inspiration' | '/api/download-image'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DisclaimerRoute: typeof DisclaimerRoute
   InspirationRoute: typeof InspirationRoute
+  ApiDownloadImageRoute: typeof ApiDownloadImageRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -82,6 +92,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/download-image': {
+      id: '/api/download-image'
+      path: '/api/download-image'
+      fullPath: '/api/download-image'
+      preLoaderRoute: typeof ApiDownloadImageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -89,6 +106,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DisclaimerRoute: DisclaimerRoute,
   InspirationRoute: InspirationRoute,
+  ApiDownloadImageRoute: ApiDownloadImageRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

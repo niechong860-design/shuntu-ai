@@ -97,7 +97,8 @@ function getDownloadFilename(url: string, fallback = "shuntu-generated-image.png
 async function downloadImage(url: string, fallbackFilename = "shuntu-generated-image.png") {
   const filename = getDownloadFilename(url, fallbackFilename);
   try {
-    const res = await fetch(url, { mode: "cors" });
+    const proxyUrl = `/api/download-image?url=${encodeURIComponent(url)}`;
+    const res = await fetch(proxyUrl);
     if (!res.ok) throw new Error(String(res.status));
     const blob = await res.blob();
     const objectUrl = URL.createObjectURL(blob);
