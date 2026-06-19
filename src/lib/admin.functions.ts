@@ -1339,6 +1339,7 @@ async function submitAdminPreviewGenerationTask(task: any): Promise<
     const result = await submitGptImage2BackupEdit({
       model,
       prompt,
+      aspectRatio,
       referenceImages: httpReferenceImages,
       pureApiKey,
       baseUrl: base_url,
@@ -1421,6 +1422,19 @@ function imageFilename(index: number, contentType: string): string {
   return `reference-${index + 1}.${extension}`;
 }
 
+function resolveGptImage2BackupSize(aspectRatio?: string): string {
+  const sizeMap: Record<string, string> = {
+    "1:1": "1024x1024",
+    "3:4": "1024x1536",
+    "4:3": "1536x1024",
+    "9:16": "1024x1536",
+    "16:9": "1536x1024",
+    "2:3": "1024x1536",
+    "3:2": "1536x1024",
+  };
+  return sizeMap[String(aspectRatio ?? "").trim()] ?? "1024x1024";
+}
+
 async function fetchReferenceImageBlob(imageUrl: string, index: number): Promise<{ blob: Blob; filename: string }> {
   try {
     const response = await fetch(imageUrl, {
@@ -1441,6 +1455,7 @@ async function fetchReferenceImageBlob(imageUrl: string, index: number): Promise
 async function submitGptImage2BackupEdit(params: {
   model: any;
   prompt: string;
+  aspectRatio?: string;
   referenceImages: string[];
   pureApiKey: string;
   baseUrl: string;
@@ -1450,7 +1465,7 @@ async function submitGptImage2BackupEdit(params: {
   const form = new FormData();
   form.append("model", String(extra.model ?? "gpt-image-2"));
   form.append("prompt", params.prompt);
-  form.append("size", String(extra.size ?? "1024x1024"));
+  form.append("size", resolveGptImage2BackupSize(params.aspectRatio));
   form.append("n", String(extra.n ?? 1));
   form.append("response_format", String(extra.response_format ?? "url"));
 
@@ -1541,6 +1556,9 @@ function buildAdminPreviewUpstreamBody(params: {
     [promptKey]: params.prompt,
     ...extra,
   };
+  if (modelKey === GPT_IMAGE_2_BACKUP_MODEL_KEY) {
+    body.size = resolveGptImage2BackupSize(params.aspectRatio);
+  }
   if (!urlsHandledByExtra && httpRefs.length > 0) {
     body.urls = httpRefs;
   }
