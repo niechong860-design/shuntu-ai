@@ -396,10 +396,12 @@ function ModelFormDialog({
 }) {
   return (
     <Dialog open={!!state} onOpenChange={(v) => !v && setState(null)}>
-      <DialogContent className="max-w-md border-border/70 bg-card/80 backdrop-blur-2xl">
+      <DialogContent className="flex max-h-[90vh] max-w-md flex-col overflow-hidden border-border/70 bg-card/80 backdrop-blur-2xl">
         <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
         {state && (
-          <div className="space-y-3 pt-2">
+          <>
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+          <div className="space-y-3 pb-4 pt-2">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="text-[11px] text-muted-foreground">显示名称</label>
@@ -517,8 +519,13 @@ function ModelFormDialog({
               </p>
             </div>
 
-            <Button className="w-full" onClick={onSubmit} disabled={busy}>保存</Button>
           </div>
+          </div>
+          <div className="flex shrink-0 gap-2 border-t border-border/60 bg-card/95 pt-3">
+            <Button variant="outline" className="flex-1" onClick={() => setState(null)} disabled={busy}>取消</Button>
+            <Button className="flex-1" onClick={onSubmit} disabled={busy}>保存</Button>
+          </div>
+          </>
         )}
       </DialogContent>
     </Dialog>
