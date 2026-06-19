@@ -40,12 +40,16 @@ type EditState = {
   request_format: "async_id" | "sync_url";
   prompt_key: string;
   fetch_url: string;
+  ui_badge_enabled: boolean;
+  ui_badge_text: string;
+  ui_default_model: boolean;
   extra_params: string; // raw JSON string in textarea
 };
 
 const empty = (): EditState => ({
   id: "", name: "", model_key: "", description: "", cost: "1",
   api_url: "", api_key: "", request_format: "async_id", prompt_key: "prompt", fetch_url: "",
+  ui_badge_enabled: false, ui_badge_text: "", ui_default_model: false,
   extra_params: "{}",
 });
 
@@ -80,15 +84,21 @@ export function ModelsPanel() {
   };
   useEffect(() => { load(); }, []);
 
-  const openEdit = (r: ModelCfg) => setEditing({
-    id: r.id, name: r.name, model_key: r.model_key,
-    description: r.description ?? "", cost: String(r.cost),
-    api_url: r.api_url ?? "", api_key: r.api_key ?? "",
-    request_format: (r.request_format ?? "async_id") as "async_id" | "sync_url",
-    prompt_key: r.prompt_key ?? "prompt",
-    fetch_url: r.fetch_url ?? "",
-    extra_params: JSON.stringify(r.extra_params ?? {}, null, 2),
-  });
+  const openEdit = (r: ModelCfg) => {
+    const extra = r.extra_params ?? {};
+    setEditing({
+      id: r.id, name: r.name, model_key: r.model_key,
+      description: r.description ?? "", cost: String(r.cost),
+      api_url: r.api_url ?? "", api_key: r.api_key ?? "",
+      request_format: (r.request_format ?? "async_id") as "async_id" | "sync_url",
+      prompt_key: r.prompt_key ?? "prompt",
+      fetch_url: r.fetch_url ?? "",
+      ui_badge_enabled: extra.ui_badge_enabled === true,
+      ui_badge_text: typeof extra.ui_badge_text === "string" ? extra.ui_badge_text : "",
+      ui_default_model: extra.ui_default_model === true,
+      extra_params: JSON.stringify(extra, null, 2),
+    });
+  };
 
   const parseExtra = (s: string): Record<string, unknown> | null => {
     const t = s.trim();
@@ -100,6 +110,13 @@ export function ModelsPanel() {
     } catch { return null; }
   };
 
+  const mergeUiExtra = (extra: Record<string, unknown>, state: EditState): Record<string, unknown> => ({
+    ...extra,
+    ui_badge_enabled: state.ui_badge_enabled,
+    ui_badge_text: state.ui_badge_text.trim(),
+    ui_default_model: state.ui_default_model,
+  });
+
   const save = async () => {
     if (!editing) return;
     const n = Number(editing.cost);
@@ -108,6 +125,7 @@ export function ModelsPanel() {
     if (editing.api_url && !/^https?:\/\//i.test(editing.api_url)) return toast.error("API 接口地址必须是 http(s) URL");
     const extra = parseExtra(editing.extra_params);
     if (extra === null) return toast.error("额外请求参数必须是合法的 JSON 对象");
+    const nextExtra = mergeUiExtra(extra, editing);
     setBusy(true);
     try {
       await update({ data: {
@@ -121,7 +139,7 @@ export function ModelsPanel() {
         request_format: editing.request_format,
         prompt_key: editing.prompt_key.trim() || "prompt",
         fetch_url: editing.fetch_url.trim() || null,
-        extra_params: extra,
+        extra_params: nextExtra,
       }});
       toast.success("模型已更新");
       setEditing(null);
@@ -138,6 +156,7 @@ export function ModelsPanel() {
     if (creating.api_url && !/^https?:\/\//i.test(creating.api_url)) return toast.error("API 接口地址必须是 http(s) URL");
     const extra = parseExtra(creating.extra_params);
     if (extra === null) return toast.error("额外请求参数必须是合法的 JSON 对象");
+    const nextExtra = mergeUiExtra(extra, creating);
     setBusy(true);
     try {
       await create({ data: {
@@ -150,7 +169,7 @@ export function ModelsPanel() {
         request_format: creating.request_format,
         prompt_key: creating.prompt_key.trim() || "prompt",
         fetch_url: creating.fetch_url.trim() || undefined,
-        extra_params: extra,
+        extra_params: nextExtra,
       }});
       toast.success("模型添加成功");
       setCreating(null);
@@ -394,6 +413,38 @@ function ModelFormDialog({
             <div className="space-y-1">
               <label className="text-[11px] text-muted-foreground">单次出图消耗点数</label>
               <Input type="number" min={0} step="0.1" value={state.cost} onChange={(e) => setState({ ...state, cost: e.target.value })} placeholder="2" />
+            </div>
+
+            <div className="border-t border-border/40 pt-3">
+              <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">前台展示</div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-center gap-2 rounded-md border border-border/60 px-3 py-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={state.ui_badge_enabled}
+                    onChange={(e) => setState({ ...state, ui_badge_enabled: e.target.checked })}
+                    className="h-3.5 w-3.5"
+                  />
+                  显示模型标签
+                </label>
+                <label className="flex items-center gap-2 rounded-md border border-border/60 px-3 py-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={state.ui_default_model}
+                    onChange={(e) => setState({ ...state, ui_default_model: e.target.checked })}
+                    className="h-3.5 w-3.5"
+                  />
+                  前台默认模型
+                </label>
+              </div>
+              <div className="mt-3 space-y-1">
+                <label className="text-[11px] text-muted-foreground">模型标签文字</label>
+                <Input
+                  value={state.ui_badge_text}
+                  onChange={(e) => setState({ ...state, ui_badge_text: e.target.value })}
+                  placeholder="推荐 / 热门 / 最强 / 最新 / 备用"
+                />
+              </div>
             </div>
 
             <div className="border-t border-border/40 pt-3">

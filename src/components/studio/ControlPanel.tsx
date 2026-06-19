@@ -19,6 +19,7 @@ import { toast } from "sonner";
 
 type ModelCfg = {
   id: string; model_key: string; name: string; description: string | null; cost: number;
+  extra_params?: Record<string, unknown> | null;
 };
 
 const RATIOS = [
@@ -51,10 +52,26 @@ export type GenProgress = {
 
 const ACTIVE_GEN_KEY = "lovable-active-gen-v1";
 
-const MODEL_BADGES: Record<string, { label: string; icon: typeof Crown; className: string }> = {
+type ModelBadge = { label: string; icon: typeof Crown; className: string };
+
+const MODEL_BADGES: Record<string, ModelBadge> = {
   nanobanana_pro: { label: "最强", icon: Crown, className: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
   "gpt-image-2": { label: "最火", icon: Flame, className: "bg-rose-500/15 text-rose-400 border-rose-500/30" },
   nanobanana2: { label: "推荐", icon: Star, className: "bg-primary/15 text-primary border-primary/30" },
+};
+
+const getModelBadge = (model?: ModelCfg | null): ModelBadge | null => {
+  if (!model) return null;
+  const extra = model.extra_params ?? {};
+  const configuredText = typeof extra.ui_badge_text === "string" ? extra.ui_badge_text.trim() : "";
+  if (extra.ui_badge_enabled === true && configuredText) {
+    return {
+      label: configuredText,
+      icon: Star,
+      className: "bg-primary/15 text-primary border-primary/30",
+    };
+  }
+  return MODEL_BADGES[model.model_key] ?? null;
 };
 type ActiveGen = {
   userId: string;
@@ -167,7 +184,9 @@ export function ControlPanel({
     fetchModels({}).then((data) => {
       const list = (data ?? []) as ModelCfg[];
       setModels(list);
-      if (list[0] && !modelKey) setModelKey(list[0].model_key);
+      const configuredDefault = list.find((m) => m.extra_params?.ui_default_model === true);
+      const initialModel = configuredDefault ?? list[0];
+      if (initialModel && !modelKey) setModelKey(initialModel.model_key);
     }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
@@ -224,6 +243,7 @@ export function ControlPanel({
 
 
   const activeModel = models.find((m) => m.model_key === modelKey);
+  const activeBadge = getModelBadge(activeModel);
   const activeRatio = RATIOS.find((r) => r.id === ratio)!;
   const ActiveRatioIcon = activeRatio.icon;
   const activeCost = Number(activeModel?.cost ?? 0);
@@ -685,13 +705,12 @@ export function ControlPanel({
                       <button className="flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/[0.05] px-2.5 py-1.5 text-[11px] font-medium transition-colors hover:border-primary/45 hover:bg-primary/[0.1]">
                         <Sparkles className="h-3 w-3 text-primary" />
                         {activeModel?.name ?? "选择模型"}
-                        {activeModel && MODEL_BADGES[activeModel.model_key] && (() => {
-                          const b = MODEL_BADGES[activeModel.model_key];
-                          const Ic = b.icon;
+                        {activeBadge && (() => {
+                          const Ic = activeBadge.icon;
                           return (
-                            <span className={`inline-flex items-center gap-0.5 rounded border px-1 py-px text-[9px] font-medium ${b.className}`}>
+                            <span className={`inline-flex items-center gap-0.5 rounded border px-1 py-px text-[9px] font-medium ${activeBadge.className}`}>
                               <Ic className="h-2.5 w-2.5" fill="currentColor" />
-                              {b.label}
+                              {activeBadge.label}
                             </span>
                           );
                         })()}
@@ -705,7 +724,7 @@ export function ControlPanel({
                       )}
                       {models.map((m) => {
                         const active = m.model_key === modelKey;
-                        const badge = MODEL_BADGES[m.model_key];
+                        const badge = getModelBadge(m);
                         const BadgeIcon = badge?.icon;
                         return (
                           <button
