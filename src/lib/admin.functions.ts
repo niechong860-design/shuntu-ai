@@ -10,6 +10,16 @@ const FOXAPI_BACKUP_MODEL_KEY = "gpt-image-2-backup";
 const GPT_IMAGE_2_BACKUP_MODEL_KEY = "gpt_image_2_backup";
 const GPT_IMAGE_2_BACKUP_EDIT_URL = "https://image1.vibelearning.top/v1/images/edits";
 
+function sanitizeUpstreamExtraParams(extraParams: unknown): Record<string, any> {
+  if (!extraParams || typeof extraParams !== "object" || Array.isArray(extraParams)) return {};
+  const sanitized: Record<string, any> = {};
+  for (const [key, value] of Object.entries(extraParams as Record<string, any>)) {
+    if (key.startsWith("ui_")) continue;
+    sanitized[key] = value;
+  }
+  return sanitized;
+}
+
 type HistoryPruneRow = {
   id: string;
   image_url: string | null;
@@ -1490,7 +1500,7 @@ async function submitGptImage2BackupEdit(params: {
   pureApiKey: string;
   baseUrl: string;
 }): Promise<{ imageUrl: string; upstreamCode: unknown }> {
-  const extra = (params.model?.extra_params ?? {}) as Record<string, unknown>;
+  const extra = sanitizeUpstreamExtraParams(params.model?.extra_params) as Record<string, unknown>;
   const editUrl = firstConfiguredHttpUrl(extra.edit_api_url, GPT_IMAGE_2_BACKUP_EDIT_URL);
   const form = new FormData();
   form.append("model", String(extra.model ?? "gpt-image-2"));
@@ -1571,7 +1581,7 @@ function buildAdminPreviewUpstreamBody(params: {
     }
     return v;
   };
-  const extra = substitute(params.model?.extra_params ?? {}) as Record<string, any>;
+  const extra = substitute(sanitizeUpstreamExtraParams(params.model?.extra_params)) as Record<string, any>;
   let urlsHandledByExtra = false;
   for (const [key, val] of Object.entries(extra)) {
     if (val === urlToken) {
@@ -2017,7 +2027,7 @@ export const generateImage = createServerFn({ method: "POST" })
     const grokAspect = GROK_ALLOWED.has(data.aspectRatio)
       ? data.aspectRatio
       : (GROK_FALLBACK[data.aspectRatio] ?? "1:1");
-    const rawExtra = (model as any).extra_params ?? {};
+    const rawExtra = sanitizeUpstreamExtraParams((model as any).extra_params);
     const substitute = (v: any): any => {
       if (typeof v === "string") {
         const trimmed = v.trim();
@@ -3024,7 +3034,7 @@ export const adminTestModel = createServerFn({ method: "POST" })
     if (mErr) throw new Error(mErr.message);
     if (!model) throw new Error("模型不存在");
     if ((model as any).model_key === FOXAPI_BACKUP_MODEL_KEY) {
-      const extraParams = ((model as any).extra_params ?? {}) as Record<string, unknown>;
+      const extraParams = sanitizeUpstreamExtraParams((model as any).extra_params) as Record<string, unknown>;
       const testImageUrl = [extraParams.testImageUrl, extraParams.test_image_url, extraParams.referenceImageUrl, extraParams.reference_image_url]
         .find((value): value is string => typeof value === "string" && /^https?:\/\//i.test(value));
       if (!testImageUrl) {
@@ -3087,7 +3097,7 @@ export const adminTestModel = createServerFn({ method: "POST" })
       }
       return v;
     };
-    const extra = substitute((model as any).extra_params ?? {}) as Record<string, unknown>;
+    const extra = substitute(sanitizeUpstreamExtraParams((model as any).extra_params)) as Record<string, unknown>;
     // 清掉空字符串占位（urls）
     for (const k of Object.keys(extra)) {
       if (extra[k] === "" || (Array.isArray(extra[k]) && (extra[k] as any[]).length === 0)) {
