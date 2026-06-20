@@ -1340,6 +1340,7 @@ async function submitAdminPreviewGenerationTask(task: any): Promise<
       model,
       prompt,
       aspectRatio,
+      resolution: sizeValue,
       referenceImages: httpReferenceImages,
       pureApiKey,
       baseUrl: base_url,
@@ -1422,17 +1423,45 @@ function imageFilename(index: number, contentType: string): string {
   return `reference-${index + 1}.${extension}`;
 }
 
-function resolveGptImage2BackupSize(aspectRatio?: string): string {
-  const sizeMap: Record<string, string> = {
-    "1:1": "1024x1024",
-    "3:4": "1024x1536",
-    "4:3": "1536x1024",
-    "9:16": "1024x1536",
-    "16:9": "1536x1024",
-    "2:3": "1024x1536",
-    "3:2": "1536x1024",
+function resolveGptImage2BackupSize(aspectRatio?: string, resolution?: string): string {
+  const ratio = String(aspectRatio ?? "").trim();
+  const normalizedResolution = String(resolution ?? "1K").trim().toUpperCase();
+  const sizeMaps: Record<string, Record<string, string>> = {
+    "1K": {
+      "1:1": "1024x1024",
+      "3:4": "1024x1536",
+      "4:3": "1536x1024",
+      "9:16": "1024x1536",
+      "16:9": "1536x1024",
+      "2:3": "1024x1536",
+      "3:2": "1536x1024",
+    },
+    "2K": {
+      "1:1": "2048x2048",
+      "3:4": "1664x2496",
+      "4:3": "2496x1664",
+      "9:16": "1440x2560",
+      "16:9": "2560x1440",
+      "2:3": "1664x2496",
+      "3:2": "2496x1664",
+    },
+    "4K": {
+      "1:1": "4096x4096",
+      "3:4": "3072x4096",
+      "4:3": "4096x3072",
+      "9:16": "2224x3712",
+      "16:9": "3712x2224",
+      "2:3": "2224x3712",
+      "3:2": "3712x2224",
+    },
   };
-  return sizeMap[String(aspectRatio ?? "").trim()] ?? "1024x1024";
+  const fallbackByResolution: Record<string, string> = {
+    "1K": "1024x1024",
+    "2K": "2048x2048",
+    "4K": "4096x4096",
+  };
+  const map = sizeMaps[normalizedResolution] ?? sizeMaps["1K"];
+  return map[ratio] ?? fallbackByResolution[normalizedResolution] ?? fallbackByResolution["1K"];
 }
 
 async function fetchReferenceImageBlob(imageUrl: string, index: number): Promise<{ blob: Blob; filename: string }> {
@@ -1456,6 +1485,7 @@ async function submitGptImage2BackupEdit(params: {
   model: any;
   prompt: string;
   aspectRatio?: string;
+  resolution?: string;
   referenceImages: string[];
   pureApiKey: string;
   baseUrl: string;
@@ -1465,7 +1495,8 @@ async function submitGptImage2BackupEdit(params: {
   const form = new FormData();
   form.append("model", String(extra.model ?? "gpt-image-2"));
   form.append("prompt", params.prompt);
-  form.append("size", resolveGptImage2BackupSize(params.aspectRatio));
+  form.append("size", resolveGptImage2BackupSize(params.aspectRatio, params.resolution));
+  form.append("quality", String(extra.quality ?? "standard"));
   form.append("n", String(extra.n ?? 1));
   form.append("response_format", String(extra.response_format ?? "url"));
 
@@ -1557,7 +1588,8 @@ function buildAdminPreviewUpstreamBody(params: {
     ...extra,
   };
   if (modelKey === GPT_IMAGE_2_BACKUP_MODEL_KEY) {
-    body.size = resolveGptImage2BackupSize(params.aspectRatio);
+    body.size = resolveGptImage2BackupSize(params.aspectRatio, params.size);
+    body.quality = String(extra.quality ?? "standard");
   }
   if (!urlsHandledByExtra && httpRefs.length > 0) {
     body.urls = httpRefs;
