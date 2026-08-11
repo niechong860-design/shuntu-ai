@@ -5,7 +5,8 @@ import { Canvas } from "./Canvas";
 import { TopBar } from "./TopBar";
 import { TaskFloatingPanel, type FloatingTask } from "./TaskFloatingPanel";
 import { useAuth } from "@/hooks/use-auth";
-import { cancelGenerationTask, cancelMyQueuedGenerationTasks, createGenerationTask, getMyGenerationTasks, pollGenerationTask, startGenerationTask } from "@/lib/admin.functions";
+import { cancelGenerationTask, cancelMyQueuedGenerationTasks, createGenerationTask, getMyGenerationHistory, getMyGenerationTasks, pollGenerationTask, startGenerationTask } from "@/lib/admin.functions";
+import { getCachedHistoryFirstPage, setCachedHistoryFirstPage } from "@/lib/history-metadata-cache";
 import { toast } from "sonner";
 
 const AnnouncementCenter = lazy(() => import("./AnnouncementCenter").then((m) => ({ default: m.AnnouncementCenter })));
@@ -105,6 +106,7 @@ function getQueueProgress(task: FloatingTask): GenProgress {
 export function Studio() {
   const { session, profile, loading } = useAuth();
   const fetchGenerationTasks = useServerFn(getMyGenerationTasks);
+  const fetchHistory = useServerFn(getMyGenerationHistory);
   const createTask = useServerFn(createGenerationTask);
   const cancelTask = useServerFn(cancelGenerationTask);
   const cancelQueuedTasks = useServerFn(cancelMyQueuedGenerationTasks);
@@ -130,6 +132,36 @@ export function Studio() {
   const [currentReuseSource, setCurrentReuseSource] = useState<ReuseSource | null>(null);
   const [referenceResetToken, setReferenceResetToken] = useState(0);
   const pollingTaskIdsRef = useRef<Set<string>>(new Set());
+
+  // History is non-critical: fetch only metadata once the authenticated UI is idle.
+  useEffect(() => {
+    const userId = session?.user.id;
+    if (!userId || loading || getCachedHistoryFirstPage(userId)) return;
+    let cancelled = false;
+    const schedule =
+      typeof window !== "undefined" && "requestIdleCallback" in window
+        ? (window as Window & { requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback
+        : (cb: () => void) => window.setTimeout(cb, 1200);
+    const idleId = schedule(async () => {
+      if (cancelled) return;
+      try {
+        const page = await fetchHistory({ data: { limit: 20, offset: 0 } });
+        if (!cancelled && session?.user.id === userId) {
+          setCachedHistoryFirstPage(userId, page as Parameters<typeof setCachedHistoryFirstPage>[1]);
+        }
+      } catch {
+        // Prefetch is best-effort and must never affect the main UI.
+      }
+    }, { timeout: 5000 });
+    return () => {
+      cancelled = true;
+      if ("cancelIdleCallback" in window && typeof idleId === "number") {
+        (window as Window & { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback?.(idleId);
+      } else {
+        window.clearTimeout(idleId as number);
+      }
+    };
+  }, [fetchHistory, loading, session?.user.id]);
   const adminActiveTaskCount = adminTasks.filter((task) =>
     task.status === "waiting" || task.status === "submitting" || task.status === "generating"
   ).length;

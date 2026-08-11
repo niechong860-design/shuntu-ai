@@ -5,11 +5,145 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { getMyGenerationHistory } from "@/lib/admin.functions";
+import { getCachedHistoryFirstPage, setCachedHistoryFirstPage } from "@/lib/history-metadata-cache";
+import { supabase } from "@/integrations/supabase/client";
 import type { GenProgress } from "./ControlPanel";
 
 const FALLBACK_THUMB = "/style-previews/default.webp";
 const PAGE_SIZE = 20;
 const HISTORY_RESET_CACHE_MS = 60_000;
+
+const thumbnailQueue: Array<() => void> = [];
+let activeThumbnailLoads = 0;
+const MAX_THUMBNAIL_LOADS = 4;
+
+function pumpThumbnailQueue() {
+  while (activeThumbnailLoads < MAX_THUMBNAIL_LOADS && thumbnailQueue.length > 0) {
+    thumbnailQueue.shift()?.();
+  }
+}
+
+function enqueueThumbnailLoad(start: () => void, finish: () => void) {
+  let cancelled = false;
+  let started = false;
+  const job = () => {
+    if (cancelled) return;
+    started = true;
+    activeThumbnailLoads += 1;
+    start();
+  };
+  thumbnailQueue.push(job);
+  pumpThumbnailQueue();
+  return () => {
+    cancelled = true;
+    if (started) finish();
+  };
+}
+
+function HistoryThumbnail({ src }: { src: string }) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const [load, setLoad] = useState(false);
+  const [started, setStarted] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [imageSrc, setImageSrc] = useState(src);
+  const [resolvedSrc, setResolvedSrc] = useState<string | null>(null);
+  const finishedRef = useRef(false);
+  const objectUrlRef = useRef<string | null>(null);
+  const finish = useCallback(() => {
+    if (finishedRef.current) return;
+    finishedRef.current = true;
+    activeThumbnailLoads = Math.max(0, activeThumbnailLoads - 1);
+    pumpThumbnailQueue();
+  }, []);
+
+  useEffect(() => {
+    const element = hostRef.current;
+    if (!element) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setLoad(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setLoad(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "300px" },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!load || failed || started) return;
+    finishedRef.current = false;
+    const cancel = enqueueThumbnailLoad(() => {
+      setStarted(true);
+      void (async () => {
+        try {
+          if (!imageSrc.startsWith("/api/history-thumbnail/")) {
+            setResolvedSrc(imageSrc);
+            finish();
+            return;
+          }
+          const { data } = await supabase.auth.getSession();
+          const token = data.session?.access_token;
+          if (!token) throw new Error("Missing session");
+          const response = await fetch(imageSrc, { headers: { Authorization: `Bearer ${token}` } });
+          if (!response.ok) throw new Error(`Thumbnail request failed: ${response.status}`);
+          const objectUrl = URL.createObjectURL(await response.blob());
+          objectUrlRef.current = objectUrl;
+          setResolvedSrc(objectUrl);
+          finish();
+        } catch {
+          finish();
+          if (imageSrc !== FALLBACK_THUMB) {
+            setStarted(false);
+            setImageSrc(FALLBACK_THUMB);
+          } else {
+            setFailed(true);
+          }
+        }
+      })();
+    }, finish);
+    return cancel;
+  }, [failed, finish, imageSrc, load]);
+
+  useEffect(() => () => {
+    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+  }, []);
+
+  return (
+    <div ref={hostRef} className="h-full w-full">
+      {started && resolvedSrc && !failed ? (
+        <img
+          src={resolvedSrc}
+          alt=""
+          width={480}
+          height={480}
+          loading="lazy"
+          decoding="async"
+          onLoad={finish}
+          onError={() => {
+            finish();
+            if (imageSrc !== FALLBACK_THUMB) {
+              if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+              objectUrlRef.current = null;
+              setResolvedSrc(null);
+              setStarted(false);
+              setImageSrc(FALLBACK_THUMB);
+              return;
+            }
+            setFailed(true);
+          }}
+          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+        />
+      ) : null}
+    </div>
+  );
+}
 
 type HistoryItem = {
   id: string;
@@ -191,7 +325,8 @@ export function Canvas({ userId, generating, generatedUrl, currentPrompt, curren
     }
     try {
       const offset = mode === "append" ? rawLoadedCountRef.current : 0;
-      const res = (await fetchHistory({ data: { limit: PAGE_SIZE, offset } })) as {
+      const cached = mode === "reset" ? getCachedHistoryFirstPage(requestUserId) : null;
+      const res = cached ?? (await fetchHistory({ data: { limit: PAGE_SIZE, offset } })) as {
         items: HistoryItem[]; total?: number; limit: number; offset: number; maxKeep?: number; maxDays?: number; isAdmin?: boolean;
       };
       if (userIdRef.current !== requestUserId) return;
@@ -208,6 +343,7 @@ export function Canvas({ userId, generating, generatedUrl, currentPrompt, curren
       if (res.maxKeep) setMaxKeep(res.maxKeep);
       if (res.maxDays) setMaxDays(res.maxDays);
       if (typeof res.isAdmin === "boolean") setIsAdmin(res.isAdmin);
+      if (mode === "reset") setCachedHistoryFirstPage(requestUserId, res);
       setHistory((prev) => {
         const base = mode === "append" ? prev : [];
         // 双保险：按图片 URL 去重，杜绝同一张图片重复展示
@@ -356,19 +492,7 @@ export function Canvas({ userId, generating, generatedUrl, currentPrompt, curren
                           }}
                           className="absolute inset-0"
                         >
-                          <img
-                            src={thumb}
-                            alt=""
-                            width={480}
-                            height={480}
-                            loading="lazy"
-                            decoding="async"
-                            onError={(e) => {
-                              const img = e.currentTarget as HTMLImageElement;
-                              if (!img.src.endsWith(FALLBACK_THUMB)) img.src = FALLBACK_THUMB;
-                            }}
-                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-                          />
+                          <HistoryThumbnail src={thumb} />
                         </button>
                         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/0 opacity-0 transition-opacity group-hover:opacity-100" />
                         {isAdmin && (

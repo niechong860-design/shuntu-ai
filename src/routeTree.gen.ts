@@ -13,6 +13,7 @@ import { Route as InspirationRouteImport } from './routes/inspiration'
 import { Route as DisclaimerRouteImport } from './routes/disclaimer'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiDownloadImageRouteImport } from './routes/api/download-image'
+import { Route as ApiHistoryThumbnailIdRouteImport } from './routes/api/history-thumbnail.$id'
 
 const InspirationRoute = InspirationRouteImport.update({
   id: '/inspiration',
@@ -34,18 +35,25 @@ const ApiDownloadImageRoute = ApiDownloadImageRouteImport.update({
   path: '/api/download-image',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiHistoryThumbnailIdRoute = ApiHistoryThumbnailIdRouteImport.update({
+  id: '/api/history-thumbnail/$id',
+  path: '/api/history-thumbnail/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/disclaimer': typeof DisclaimerRoute
   '/inspiration': typeof InspirationRoute
   '/api/download-image': typeof ApiDownloadImageRoute
+  '/api/history-thumbnail/$id': typeof ApiHistoryThumbnailIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/disclaimer': typeof DisclaimerRoute
   '/inspiration': typeof InspirationRoute
   '/api/download-image': typeof ApiDownloadImageRoute
+  '/api/history-thumbnail/$id': typeof ApiHistoryThumbnailIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -53,13 +61,30 @@ export interface FileRoutesById {
   '/disclaimer': typeof DisclaimerRoute
   '/inspiration': typeof InspirationRoute
   '/api/download-image': typeof ApiDownloadImageRoute
+  '/api/history-thumbnail/$id': typeof ApiHistoryThumbnailIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/disclaimer' | '/inspiration' | '/api/download-image'
+  fullPaths:
+    | '/'
+    | '/disclaimer'
+    | '/inspiration'
+    | '/api/download-image'
+    | '/api/history-thumbnail/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/disclaimer' | '/inspiration' | '/api/download-image'
-  id: '__root__' | '/' | '/disclaimer' | '/inspiration' | '/api/download-image'
+  to:
+    | '/'
+    | '/disclaimer'
+    | '/inspiration'
+    | '/api/download-image'
+    | '/api/history-thumbnail/$id'
+  id:
+    | '__root__'
+    | '/'
+    | '/disclaimer'
+    | '/inspiration'
+    | '/api/download-image'
+    | '/api/history-thumbnail/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -67,6 +92,7 @@ export interface RootRouteChildren {
   DisclaimerRoute: typeof DisclaimerRoute
   InspirationRoute: typeof InspirationRoute
   ApiDownloadImageRoute: typeof ApiDownloadImageRoute
+  ApiHistoryThumbnailIdRoute: typeof ApiHistoryThumbnailIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -99,6 +125,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiDownloadImageRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/history-thumbnail/$id': {
+      id: '/api/history-thumbnail/$id'
+      path: '/api/history-thumbnail/$id'
+      fullPath: '/api/history-thumbnail/$id'
+      preLoaderRoute: typeof ApiHistoryThumbnailIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -107,7 +140,18 @@ const rootRouteChildren: RootRouteChildren = {
   DisclaimerRoute: DisclaimerRoute,
   InspirationRoute: InspirationRoute,
   ApiDownloadImageRoute: ApiDownloadImageRoute,
+  ApiHistoryThumbnailIdRoute: ApiHistoryThumbnailIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

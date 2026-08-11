@@ -513,9 +513,17 @@ export const consumeGeneration = createServerFn({ method: "POST" })
 
 // --- 获取当前用户生成历史（分页 + 缩略图）---
 // 列表只返回轻量 thumbnailUrl，原图 originalImageUrl 用于详情/下载。
-function buildHistoryThumbUrl(url: string | null | undefined): string | null {
+function buildHistoryThumbUrl(historyId: string, url: string | null | undefined): string | null {
   if (!url) return null;
   if (/^(blob:|data:)/i.test(url)) return url;
+  try {
+    const parsed = new URL(url);
+    if (parsed.origin === "https://img.shuntu.cc" && parsed.pathname.startsWith("/generated/")) {
+      return `/api/history-thumbnail/${encodeURIComponent(historyId)}`;
+    }
+  } catch {
+    // Preserve the legacy URL below when the stored value is not absolute.
+  }
   if (!url.includes("/storage/v1/object/public/") && !url.includes("/storage/v1/render/image/public/")) {
     return url;
   }
@@ -716,7 +724,7 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
         aspectRatio: null as string | null,
         createdAt: r.created_at as string,
         originalImageUrl: r.image_url as string,
-        thumbnailUrl: buildHistoryThumbUrl(r.image_url),
+        thumbnailUrl: buildHistoryThumbUrl(r.id, r.image_url),
         inputParams: r.generation_task_id ? taskReuseMap.get(r.generation_task_id)?.inputParams ?? null : null,
         status: "done" as const,
         cost: Number(r.cost ?? 0),
