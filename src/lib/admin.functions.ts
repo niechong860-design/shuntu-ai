@@ -4,6 +4,13 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { checkPromptSafety, SAFETY_SERVER_BLOCK_MESSAGE } from "@/lib/promptSafety";
 import { pollFoxApiTask, submitFoxApiImageEdit, submitFoxApiImageGenerationTask } from "@/lib/foxapi-backup";
+import {
+  buildGptImageProProviderPayload,
+  GPT_IMAGE_PRO_MODEL_KEY,
+  GPT_IMAGE_PRO_VBL_EDITS_URL,
+  GPT_IMAGE_PRO_VBL_GENERATIONS_URL,
+  validateGptImageProProviderPayload,
+} from "@/lib/gpt-image-pro-provider-contract";
 import { archiveGeneratedImageToR2, deleteGeneratedImageFromR2Url } from "@/lib/r2-image-archive";
 
 const FOXAPI_BACKUP_MODEL_KEY = "gpt-image-2-backup";
@@ -1326,13 +1333,21 @@ async function submitAdminPreviewGenerationTask(task: any): Promise<
   const pureApiKey = String(targetKey).replace(/Bearer\s+/i, "").trim();
   if (!pureApiKey && (model as any).model_key !== FOXAPI_BACKUP_MODEL_KEY) throw new Error("该模型或全局接口设置尚未配置 API Key。");
 
-  const submitUrl = (model as any).model_key === FOXAPI_BACKUP_MODEL_KEY ? "" : resolveUrl(base_url, (model as any).api_url);
+  const isGptImagePro = (model as any).model_key === GPT_IMAGE_PRO_MODEL_KEY;
+  const submitUrl = (model as any).model_key === FOXAPI_BACKUP_MODEL_KEY
+    ? ""
+    : isGptImagePro
+      ? GPT_IMAGE_PRO_VBL_GENERATIONS_URL
+      : resolveUrl(base_url, (model as any).api_url);
   const prompt = String(task.prompt ?? "").trim();
   if (!prompt) throw new Error("任务提示词为空。");
 
   const aspectRatio = String(inputParams.aspectRatio ?? "1:1");
   const sizeValue = String(inputParams.size ?? "1K");
   const referenceImages = Array.isArray(inputParams.referenceImages) ? inputParams.referenceImages : [];
+  const gptImageProReferenceImages = isGptImagePro
+    ? referenceImages.filter((value): value is string => typeof value === "string" && /^(https?:|data:image\/)/i.test(value))
+    : [];
   if ((model as any).model_key === FOXAPI_BACKUP_MODEL_KEY) {
     const httpRefs = referenceImages.filter((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u));
     const result = httpRefs.length === 0
@@ -1362,6 +1377,27 @@ async function submitAdminPreviewGenerationTask(task: any): Promise<
       referenceImages: httpReferenceImages,
       pureApiKey,
       baseUrl: base_url,
+    });
+    return {
+      status: "succeeded",
+      resultImageUrl: result.imageUrl,
+      resultPayload: {
+        requestFormat: "sync_url",
+        providerStatus: "succeeded",
+        requestId: task.request_id,
+        upstreamCode: result.upstreamCode,
+        mode: "edit",
+      },
+    };
+  }
+  if (isGptImagePro && gptImageProReferenceImages.length > 0) {
+    const result = await submitGptImageProEdit({
+      model,
+      prompt,
+      aspectRatio,
+      resolution: sizeValue,
+      referenceImages: gptImageProReferenceImages,
+      pureApiKey,
     });
     return {
       status: "succeeded",
@@ -1538,6 +1574,56 @@ async function submitGptImage2BackupEdit(params: {
   return { imageUrl, upstreamCode: json?.code ?? null };
 }
 
+async function submitGptImageProEdit(params: {
+  model: any;
+  prompt: string;
+  aspectRatio?: string;
+  resolution?: string;
+  referenceImages: string[];
+  pureApiKey: string;
+}): Promise<{ imageUrl: string; upstreamCode: unknown }> {
+  const payload = buildGptImageProProviderPayload({
+    prompt: params.prompt,
+    aspectRatio: params.aspectRatio,
+    resolution: params.resolution,
+    providerOptions: sanitizeUpstreamExtraParams(params.model?.extra_params),
+  });
+  validateGptImageProProviderPayload(payload, params.referenceImages.length);
+
+  const form = new FormData();
+  form.append("model", payload.model);
+  form.append("prompt", payload.prompt);
+  form.append("size", payload.size);
+  form.append("quality", payload.quality);
+  form.append("n", String(payload.n));
+  form.append("response_format", payload.response_format);
+  form.append("output_format", payload.output_format);
+
+  const imageField = params.referenceImages.length === 1 ? "image" : "image[]";
+  const images = await Promise.all(params.referenceImages.map(fetchReferenceImageBlob));
+  for (const image of images) form.append(imageField, image.blob, image.filename);
+
+  console.info("[gpt-image-pro] provider request", {
+    route: "/v1/images/edits",
+    model: payload.model,
+    quality: payload.quality,
+    size: payload.size,
+    referenceImageCount: images.length,
+  });
+  const response = await fetchWithRetry(GPT_IMAGE_PRO_VBL_EDITS_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${params.pureApiKey}` },
+    body: form,
+  });
+  const text = await response.text();
+  const json = parseUpstreamResponse(text);
+  if (!response.ok) throw new Error(friendlyUpstreamError(response.status));
+  if (Number(json?.code) >= 400) throw new Error(friendlyUpstreamError(Number(json?.code) || 500));
+  const imageUrl = extractImageUrl(json ?? text);
+  if (!imageUrl) throw new Error(friendlyUpstreamError(502));
+  return { imageUrl, upstreamCode: json?.code ?? null };
+}
+
 function buildAdminPreviewUpstreamBody(params: {
   model: any;
   prompt: string;
@@ -1545,6 +1631,14 @@ function buildAdminPreviewUpstreamBody(params: {
   size: string;
   referenceImages: unknown[];
 }): Record<string, any> {
+  if (params.model?.model_key === GPT_IMAGE_PRO_MODEL_KEY) {
+    return buildGptImageProProviderPayload({
+      prompt: params.prompt,
+      aspectRatio: params.aspectRatio,
+      resolution: params.size,
+      providerOptions: sanitizeUpstreamExtraParams(params.model?.extra_params),
+    });
+  }
   const promptKey = params.model?.prompt_key || "prompt";
   const modelKey = params.model?.model_key;
   const size = VALID_SIZES.has(params.aspectRatio) ? params.aspectRatio : "auto";
@@ -1987,7 +2081,12 @@ export const generateImage = createServerFn({ method: "POST" })
       "Content-Type": "application/json",
       "Authorization": pureApiKey,
     };
-    const submitUrl = model.model_key === FOXAPI_BACKUP_MODEL_KEY ? "" : resolveUrl(base_url, model.api_url || "");
+    const isGptImagePro = model.model_key === GPT_IMAGE_PRO_MODEL_KEY;
+    let submitUrl = model.model_key === FOXAPI_BACKUP_MODEL_KEY
+      ? ""
+      : isGptImagePro
+        ? GPT_IMAGE_PRO_VBL_GENERATIONS_URL
+        : resolveUrl(base_url, model.api_url || "");
 
     const size = VALID_SIZES.has(data.aspectRatio) ? data.aspectRatio : "auto";
     // 后端硬性限制：仅文生图模型不允许带参考图
@@ -1996,6 +2095,9 @@ export const generateImage = createServerFn({ method: "POST" })
     const httpRefs = isTextOnly
       ? []
       : (data.referenceImages ?? []).filter((u) => /^https?:\/\//i.test(u));
+    const gptImageProReferenceImages = isGptImagePro
+      ? (data.referenceImages ?? []).filter((u) => /^(https?:|data:image\/)/i.test(u))
+      : [];
     const promptKey = (model as any).prompt_key || "prompt";
     const requestFormat = (model as any).request_format || "async_id";
 
@@ -2074,7 +2176,7 @@ export const generateImage = createServerFn({ method: "POST" })
       delete (extra as any).aspect_ratio;
     }
 
-    const body: Record<string, unknown> = {
+    let body: Record<string, unknown> = {
       [promptKey]: finalPrompt,
       ...extra, // 每个模型自定义参数（如 size、image_weight、aspect_ratio 等）
     };
@@ -2082,13 +2184,46 @@ export const generateImage = createServerFn({ method: "POST" })
     if (!urlsHandledByExtra && Array.isArray(httpRefs) && httpRefs.length > 0) {
       body.urls = httpRefs;
     }
-    console.log("[generateImage] submit body →", JSON.stringify({ url: submitUrl, body }, null, 2));
+    if (isGptImagePro) {
+      body = buildGptImageProProviderPayload({
+        prompt: finalPrompt,
+        aspectRatio: data.aspectRatio,
+        resolution: data.size,
+        providerOptions: extra,
+      });
+      console.info("[gpt-image-pro] provider request", {
+        route: "/v1/images/generations",
+        model: body.model,
+        quality: body.quality,
+        size: body.size,
+        referenceImageCount: gptImageProReferenceImages.length,
+      });
+    } else {
+      console.log("[generateImage] submit body →", JSON.stringify({ url: submitUrl, body }, null, 2));
+    }
 
 
     let imageUrl: string | null = null;
     let taskId: string | null = null;
 
-    if (requestFormat === "sync_url") {
+    if (isGptImagePro && gptImageProReferenceImages.length > 0) {
+      try {
+        const result = await submitGptImageProEdit({
+          model,
+          prompt: finalPrompt,
+          aspectRatio: data.aspectRatio,
+          resolution: data.size,
+          referenceImages: gptImageProReferenceImages,
+          pureApiKey,
+        });
+        imageUrl = result.imageUrl;
+      } catch (error) {
+        console.error("[gpt-image-pro] edit request failed", error);
+        return failGeneration(friendlyUpstreamError(502));
+      }
+    }
+
+    if (imageUrl === null && requestFormat === "sync_url") {
       let res: Response;
       try {
         res = await fetchWithRetry(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
@@ -2108,7 +2243,7 @@ export const generateImage = createServerFn({ method: "POST" })
       }
       imageUrl = extractImageUrl(json ?? text);
       if (!imageUrl) return failGeneration(friendlyUpstreamError(502));
-    } else {
+    } else if (imageUrl === null) {
       try {
         const res = await fetchWithRetry(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
         const text = await res.text();
@@ -3079,7 +3214,10 @@ export const adminTestModel = createServerFn({ method: "POST" })
       "Content-Type": "application/json",
       "Authorization": pureApiKey,
     };
-    const submitUrl = resolveUrl(base_url, model.api_url);
+    const isGptImagePro = model.model_key === GPT_IMAGE_PRO_MODEL_KEY;
+    const submitUrl = isGptImagePro
+      ? GPT_IMAGE_PRO_VBL_GENERATIONS_URL
+      : resolveUrl(base_url, model.api_url);
     const promptKey = (model as any).prompt_key || "prompt";
     const requestFormat = (model as any).request_format || "async_id";
     const testPrompt = (data.prompt && data.prompt.trim()) || "a cute orange tabby kitten sitting in a sunny garden, soft natural light, high detail";
@@ -3112,7 +3250,23 @@ export const adminTestModel = createServerFn({ method: "POST" })
         delete extra[k];
       }
     }
-    const body: Record<string, unknown> = { [promptKey]: testPrompt, ...extra };
+    const body: Record<string, unknown> = isGptImagePro
+      ? buildGptImageProProviderPayload({
+        prompt: testPrompt,
+        aspectRatio: "1:1",
+        resolution: "1K",
+        providerOptions: extra,
+      })
+      : { [promptKey]: testPrompt, ...extra };
+    if (isGptImagePro) {
+      console.info("[gpt-image-pro] provider request", {
+        route: "/v1/images/generations",
+        model: body.model,
+        quality: body.quality,
+        size: body.size,
+        referenceImageCount: 0,
+      });
+    }
 
     // 提交
     let res: Response;
