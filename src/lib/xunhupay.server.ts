@@ -189,6 +189,22 @@ function simpleSignedFields(payload: JsonRecord) {
   return fields;
 }
 
+function simpleDataFields(data: JsonRecord) {
+  const fields: XunhuFields = {};
+
+  for (const [key, value] of Object.entries(data)) {
+    if (value === null || value === undefined || value === "") continue;
+
+    if (!["string", "number", "boolean"].includes(typeof value)) {
+      throw new Error("XUNHUPAY_INVALID_RESPONSE");
+    }
+
+    fields[key] = String(value);
+  }
+
+  return fields;
+}
+
 async function postForm(url: string, fields: XunhuFields) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -314,7 +330,7 @@ export async function queryXunhuPayment(outTradeNo: string): Promise<XunhuQueryR
   };
   fields.hash = generateXunhuHash(fields);
   const payload = await postJsonPayload(XUNHUPAY_QUERY_URL, fields);
-  const data = isRecord(payload.data) ? signedDataFromEnvelope(payload) : simpleSignedFields(payload);
+  const data = isRecord(payload.data) ? simpleDataFields(payload.data) : simpleSignedFields(payload);
   if (data.appid && data.appid !== appid) throw new Error("XUNHUPAY_APPID_MISMATCH");
   if (!["OD", "WP", "CD"].includes(data.status)) throw new Error("XUNHUPAY_INVALID_STATUS");
   return {
