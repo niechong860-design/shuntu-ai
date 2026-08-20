@@ -4,10 +4,12 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useServerFn } from "@tanstack/react-start";
 import { listVisibleRechargePackages, redeemCoupon } from "@/lib/admin.functions";
+import { createXunhuPayOrder } from "@/lib/payment.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { Gift, Sparkles, Check, Zap, Crown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PaymentViewOrder, XunhuPayStatus } from "@/components/payment/XunhuPayStatus";
 
 type Plan = {
   id: string;
@@ -40,8 +42,8 @@ const PLANS: Plan[] = [
     title: "入门套餐",
     price: "29.9",
     subtitle: "轻量级创作者的首选",
-    credits: 3000,
-    features: ["3,000 积分", "所有基础模型", "标准排队速度"],
+    credits: 3180,
+    features: ["3,180 积分", "含180赠送积分", "所有基础模型", "标准排队速度"],
     purchaseUrl: "https://www.kufaka.com/item/661nyd",
     buttonText: "立即购买",
   },
@@ -50,8 +52,8 @@ const PLANS: Plan[] = [
     title: "主力套餐",
     price: "69.9",
     subtitle: "性价比之王，适合日常创作",
-    credits: 7000,
-    features: ["7,000 积分", "解锁高级模型 (Wan2.6/Pro)", "优先生成队列"],
+    credits: 7560,
+    features: ["7,560 积分", "含560赠送积分", "解锁高级模型 (Wan2.6/Pro)", "优先生成队列"],
     highlighted: true,
     isPopular: true,
     badgeText: "最受欢迎",
@@ -64,8 +66,8 @@ const PLANS: Plan[] = [
     title: "专业套餐",
     price: "129",
     subtitle: "为高频重度使用者打造",
-    credits: 13000,
-    features: ["13,000 积分", "全模型无限制访问", "极速极享队列", "专属客服支持"],
+    credits: 14170,
+    features: ["14,170 积分", "含1170赠送积分", "全模型无限制访问", "极速极享队列", "专属客服支持"],
     purchaseUrl: "https://www.kufaka.com/item/fk4jmd",
     buttonText: "立即购买",
   },
@@ -74,8 +76,8 @@ const PLANS: Plan[] = [
     title: "高端套餐",
     price: "199",
     subtitle: "工作室与商业变现必备",
-    credits: 20000,
-    features: ["20,000 积分", "最高优先级算力", "支持 API 批量调用", "客服24小时在线服务"],
+    credits: 22000,
+    features: ["22,000 积分", "含2000赠送积分", "最高优先级算力", "支持 API 批量调用", "客服24小时在线服务"],
     icon: <Crown className="h-4 w-4" />,
     purchaseUrl: "https://www.kufaka.com/item/9a7qf1",
     buttonText: "立即购买",
@@ -117,18 +119,29 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const [plans, setPlans] = useState<Plan[]>(PLANS);
+  const [creatingPlanId, setCreatingPlanId] = useState<string | null>(null);
+  const [paymentOrder, setPaymentOrder] = useState<PaymentViewOrder | null>(null);
   const fn = useServerFn(redeemCoupon);
   const listPackages = useServerFn(listVisibleRechargePackages);
+  const createPayment = useServerFn(createXunhuPayOrder);
   const { refreshProfile } = useAuth();
 
-  useEffect(() => { if (!open) setCode(""); }, [open]);
+  useEffect(() => {
+    if (!open) {
+      setCode("");
+      setPaymentOrder(null);
+      setCreatingPlanId(null);
+    }
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     listPackages({})
-      .then((rows: any) => {
-        const next = Array.isArray(rows) ? rows.map(toPlan).filter((plan) => plan.title.trim()) : [];
+      .then((rows) => {
+        const next = Array.isArray(rows)
+          ? rows.map((row) => toPlan(row as RechargePackageRow)).filter((plan) => plan.title.trim())
+          : [];
         if (!cancelled) setPlans(next.length > 0 ? next : PLANS);
       })
       .catch(() => {
@@ -147,11 +160,24 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     return () => clearTimeout(t);
   }, [cooldown]);
 
-  const handlePurchase = (_planId: string, url?: string) => {
-    if (url && /^https?:\/\//i.test(url)) {
-      window.open(url, "_blank", "noopener,noreferrer");
-    } else {
-      toast.info("暂未配置购买链接");
+  const handlePurchase = async (planId: string) => {
+    if (creatingPlanId) return;
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(planId)) {
+      toast.error("套餐配置暂不可用，请刷新后重试");
+      return;
+    }
+    setCreatingPlanId(planId);
+    try {
+      const result = await createPayment({ data: { packageId: planId } });
+      if (!result.urlQrcode && !result.mobileUrl) {
+        toast.error("支付二维码获取失败");
+        return;
+      }
+      setPaymentOrder(result);
+    } catch {
+      toast.error("创建支付失败，请稍后重试");
+    } finally {
+      setCreatingPlanId(null);
     }
   };
 
@@ -169,8 +195,8 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
       } else {
         toast.error(r.message || "兑换失败");
       }
-    } catch (e: any) {
-      toast.error(e.message || "兑换失败");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "兑换失败");
     } finally {
       setLoading(false);
     }
@@ -186,12 +212,23 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           <p className="text-xs text-muted-foreground">选择适合你的套餐，购买后积分立即到账</p>
         </DialogHeader>
 
-        {/* 价格套餐卡片区 */}
-        <div className="grid grid-cols-1 gap-3 pt-2 sm:grid-cols-2 md:gap-4 lg:grid-cols-5">
-          {plans.map((p) => (
-            <PlanCard key={p.id} plan={p} onBuy={handlePurchase} />
-          ))}
-        </div>
+        {paymentOrder ? (
+          <div className="rounded-lg border border-emerald-500/20 bg-zinc-950/40 p-4 md:p-6">
+            <XunhuPayStatus order={paymentOrder} onBack={() => setPaymentOrder(null)} />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 pt-2 sm:grid-cols-2 md:gap-4 lg:grid-cols-5">
+            {plans.map((p) => (
+              <PlanCard
+                key={p.id}
+                plan={p}
+                onBuy={handlePurchase}
+                loading={creatingPlanId === p.id}
+                disabled={creatingPlanId !== null}
+              />
+            ))}
+          </div>
+        )}
 
         {/* 兑换码区 */}
         <div className="mt-6 w-full rounded-2xl border border-emerald-500/30 bg-gray-900/50 p-4 shadow-[0_0_15px_rgba(16,185,129,0.15)] backdrop-blur-sm md:mt-8 md:p-5">
@@ -242,7 +279,17 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   );
 }
 
-function PlanCard({ plan, onBuy }: { plan: Plan; onBuy: (id: string, url?: string) => void }) {
+function PlanCard({
+  plan,
+  onBuy,
+  loading,
+  disabled,
+}: {
+  plan: Plan;
+  onBuy: (id: string) => void;
+  loading: boolean;
+  disabled: boolean;
+}) {
   const highlight = plan.highlighted || plan.isPopular;
   return (
     <div
@@ -311,7 +358,8 @@ function PlanCard({ plan, onBuy }: { plan: Plan; onBuy: (id: string, url?: strin
       </ul>
 
       <Button
-        onClick={() => onBuy(plan.id, plan.purchaseUrl)}
+        onClick={() => onBuy(plan.id)}
+        disabled={disabled}
         className={cn(
           "relative mt-5 w-full font-semibold",
           highlight
@@ -319,8 +367,18 @@ function PlanCard({ plan, onBuy }: { plan: Plan; onBuy: (id: string, url?: strin
             : "border border-zinc-700 bg-zinc-800/60 text-zinc-100 shadow-none hover:border-emerald-500/60 hover:bg-zinc-800",
         )}
       >
-        {plan.purchaseUrl ? plan.buttonText : "暂未配置购买链接"}
+        {loading ? "正在创建支付..." : plan.buttonText}
       </Button>
+      {plan.purchaseUrl && /^https?:\/\//i.test(plan.purchaseUrl) && (
+        <a
+          href={plan.purchaseUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="relative mt-2 text-center text-[11px] text-zinc-500 hover:text-emerald-400"
+        >
+          备用购买渠道
+        </a>
+      )}
     </div>
   );
 }
