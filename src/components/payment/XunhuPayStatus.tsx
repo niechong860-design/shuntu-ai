@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { CheckCircle2, CircleAlert, Clock3, ExternalLink, RefreshCw, Smartphone } from "lucide-react";
+import { CheckCircle2, CircleAlert, Clock3, Copy, ExternalLink, MessageCircle, RefreshCw, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { confirmXunhuPayOrder, getUserOrderStatus } from "@/lib/payment.functions";
 import { useAuth } from "@/hooks/use-auth";
+import { toast } from "sonner";
 
 export type PaymentViewOrder = {
   outTradeNo: string;
@@ -114,6 +115,15 @@ export function XunhuPayStatus({ order, onBack }: { order: PaymentViewOrder; onB
     );
   }
 
+
+  const copyWechat = async () => {
+    try {
+      await navigator.clipboard.writeText("MaPle_Alr");
+      toast.success("微信号已复制");
+    } catch {
+      toast.error("复制失败");
+    }
+  };
   if (status === "cancelled") {
     return (
       <div className="mx-auto flex max-w-lg flex-col items-center py-8 text-center">
@@ -127,54 +137,17 @@ export function XunhuPayStatus({ order, onBack }: { order: PaymentViewOrder; onB
 
   return (
     <div className="mx-auto w-full max-w-2xl">
-      <div className="flex flex-col gap-6 md:flex-row md:items-center">
-        <div className="flex min-h-[250px] flex-1 items-center justify-center rounded-lg border border-emerald-500/25 bg-white p-4">
-          {isMobile && order.mobileUrl ? (
-            <div className="flex flex-col items-center text-center text-zinc-900">
-              <Smartphone className="h-12 w-12 text-emerald-600" />
-              <p className="mt-3 text-sm font-medium">在手机上继续完成微信支付</p>
-              <Button className="mt-5" asChild>
-                <a href={order.mobileUrl}>打开微信支付</a>
-              </Button>
-            </div>
-          ) : order.urlQrcode ? (
-            <div className="text-center">
-              <img src={order.urlQrcode} alt="微信支付二维码" className="mx-auto h-[218px] w-[218px] object-contain" />
-              {isMobile && <p className="mt-2 text-xs text-zinc-600">可保存二维码后使用微信扫一扫识别</p>}
-            </div>
-          ) : (
-            <div className="text-center text-sm text-zinc-700">支付二维码获取失败</div>
-          )}
-        </div>
-
-        <div className="flex-1">
-          <div className="text-xs font-medium text-emerald-400">微信支付</div>
-          <h2 className="mt-1 text-lg font-semibold text-white">{order.packageTitle || "ShunTu AI 积分充值"}</h2>
-          {amount && <div className="mt-4 text-3xl font-bold tabular-nums text-white">¥{Number(amount).toFixed(2)}</div>}
-          {credits > 0 && <p className="mt-2 text-sm text-zinc-300">到账 {credits.toLocaleString("zh-CN")} 积分</p>}
-          <p className="mt-5 text-sm text-zinc-300">请使用微信扫码完成支付</p>
-          <div className="mt-3 flex items-center gap-2 text-sm text-amber-300">
-            <Clock3 className="h-4 w-4" /> 等待支付中...
+      <div className="flex flex-col gap-6 md:flex-row md:items-start">
+        <div className="flex-1 rounded-2xl border border-emerald-500/25 bg-zinc-950/70 p-5 shadow-[0_0_30px_rgba(16,185,129,0.08)] backdrop-blur-sm">
+          <div className="flex items-center justify-center gap-2 text-emerald-400"><MessageCircle className="h-6 w-6 fill-emerald-400/20" /><span className="text-base font-semibold tracking-wide">微信支付</span></div>
+          <div className="mt-5 text-center"><h2 className="text-lg font-semibold text-white">{order.packageTitle || "ShunTu AI 积分充值"}</h2>{amount && <div className="mt-2 text-3xl font-bold tabular-nums text-white">¥{Number(amount).toFixed(2)}</div>}{credits > 0 && <p className="mt-2 text-sm text-zinc-300">到账 {credits.toLocaleString("zh-CN")} 积分</p>}</div>
+          <div className="mt-5 flex min-h-[250px] items-center justify-center rounded-xl bg-white p-4">
+            {isMobile && order.mobileUrl ? <div className="flex flex-col items-center text-center text-zinc-900"><Smartphone className="h-12 w-12 text-emerald-600" /><p className="mt-3 text-sm font-medium">在手机上继续完成微信支付</p><Button className="mt-5" asChild><a href={order.mobileUrl}>打开微信支付</a></Button></div> : order.urlQrcode ? <img src={order.urlQrcode} alt="微信支付二维码" className="h-[218px] w-[218px] object-contain" /> : <div className="text-center text-sm text-zinc-700">支付二维码获取失败</div>}
           </div>
-          <Button className="mt-5 w-full" variant="secondary" onClick={confirm} disabled={confirming || cooldown > 0}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${confirming ? "animate-spin" : ""}`} />
-            {confirming ? "正在确认" : cooldown > 0 ? `请稍候 ${cooldown}s` : "我已付款"}
-          </Button>
-          <p className="mt-3 text-xs leading-relaxed text-zinc-500">
-            支付成功后通常会自动到账，如长时间未更新，可点击“我已付款”重新确认。
-          </p>
-          {message && <p className="mt-3 text-sm text-amber-300">{message}</p>}
-          {order.purchaseUrl && /^https?:\/\//i.test(order.purchaseUrl) && (
-            <a
-              href={order.purchaseUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-5 inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-emerald-400"
-            >
-              在线支付遇到问题？前往备用购买渠道 <ExternalLink className="h-3 w-3" />
-            </a>
-          )}
+          <p className="mt-4 text-center text-sm font-medium text-zinc-200">微信扫码完成支付</p>
+          <div className="mt-5 border-t border-white/10 pt-4 text-center"><p className="text-xs text-zinc-400">支付遇见问题联系客服</p><button type="button" onClick={copyWechat} className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-emerald-400 hover:text-emerald-300">WX：MaPle_Alr <Copy className="h-3.5 w-3.5" /></button><p className="mt-3 text-xs leading-relaxed text-zinc-500">微信不支持识别相册二维码<br />请打开微信扫一扫完成支付</p></div>
         </div>
+        <div className="flex-1"><div className="mt-3 flex items-center gap-2 text-sm text-amber-300"><Clock3 className="h-4 w-4" /> 等待支付中...</div><Button className="mt-5 w-full" variant="secondary" onClick={confirm} disabled={confirming || cooldown > 0}><RefreshCw className={`mr-2 h-4 w-4 ${confirming ? "animate-spin" : ""}`} />{confirming ? "正在确认" : cooldown > 0 ? `请稍候 ${cooldown}s` : "我已付款"}</Button><p className="mt-3 text-xs leading-relaxed text-zinc-500">支付成功后通常会自动到账，如长时间未更新，可点击“我已付款”重新确认。</p>{message && <p className="mt-3 text-sm text-amber-300">{message}</p>}{order.purchaseUrl && /^https?:\/\//i.test(order.purchaseUrl) && <a href={order.purchaseUrl} target="_blank" rel="noopener noreferrer" className="mt-5 inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-emerald-400">在线支付遇到问题？前往备用购买渠道 <ExternalLink className="h-3 w-3" /></a>}</div>
       </div>
       {onBack && <button type="button" onClick={onBack} className="mt-5 text-xs text-zinc-500 hover:text-zinc-300">返回套餐列表</button>}
     </div>
