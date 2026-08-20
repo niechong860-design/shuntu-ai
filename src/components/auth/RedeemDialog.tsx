@@ -236,7 +236,7 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             "mt-6 w-full rounded-2xl border border-emerald-500/30 bg-gray-900/50 p-4 shadow-[0_0_15px_rgba(16,185,129,0.15)] backdrop-blur-sm md:mt-8 md:p-5",
             paymentOrder && "hidden",
           )}
-        }>
+        >
           <div className="mb-3 flex items-center gap-2">
             <span className="text-base font-bold text-emerald-400">⚡ 极速兑换，秒速到账</span>
           </div>
