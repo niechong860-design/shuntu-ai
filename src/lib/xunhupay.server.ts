@@ -237,6 +237,30 @@ async function postJson(url: string, fields: XunhuFields) {
   } finally { clearTimeout(timeout); }
 }
 
+async function postJsonPayload(url: string, fields: XunhuFields) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json;charset=UTF-8", accept: "application/json, text/plain;q=0.9" },
+      body: JSON.stringify(fields),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error("XUNHUPAY_HTTP_ERROR");
+    let payload: unknown;
+    try { payload = JSON.parse(await response.text()); } catch { throw new Error("XUNHUPAY_INVALID_RESPONSE"); }
+    if (!isRecord(payload)) throw new Error("XUNHUPAY_INVALID_RESPONSE");
+    console.info("[XunhuPay] query response shape", {
+      status: response.status,
+      topLevelKeys: Object.keys(payload),
+      dataKeys: isRecord(payload.data) ? Object.keys(payload.data) : [],
+    });
+    if (payload.errcode !== 0) throw new Error("XUNHUPAY_PROVIDER_ERROR");
+    return payload;
+  } finally { clearTimeout(timeout); }
+}
+
 function assertProviderUrl(value: string, required: boolean) {
   if (!value) {
     if (required) throw new Error("XUNHUPAY_QRCODE_MISSING");
@@ -289,7 +313,7 @@ export async function queryXunhuPayment(outTradeNo: string): Promise<XunhuQueryR
     nonce_str: randomHex(16),
   };
   fields.hash = generateXunhuHash(fields);
-  const { payload } = await postForm(XUNHUPAY_QUERY_URL, fields);
+  const payload = await postJsonPayload(XUNHUPAY_QUERY_URL, fields);
   const data = isRecord(payload.data) ? signedDataFromEnvelope(payload) : simpleSignedFields(payload);
   if (data.appid && data.appid !== appid) throw new Error("XUNHUPAY_APPID_MISMATCH");
   if (!["OD", "WP", "CD"].includes(data.status)) throw new Error("XUNHUPAY_INVALID_STATUS");
