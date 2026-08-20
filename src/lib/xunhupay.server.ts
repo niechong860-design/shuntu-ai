@@ -248,7 +248,10 @@ async function postJson(url: string, fields: XunhuFields) {
     let payload: unknown;
     try { payload = JSON.parse(await response.text()); } catch { throw new Error("XUNHUPAY_INVALID_RESPONSE"); }
     if (!isRecord(payload)) throw new Error("XUNHUPAY_INVALID_RESPONSE");
-    if (Number(payload.errcode) !== 0) throw new Error("XUNHUPAY_PROVIDER_ERROR");
+    if (Number(payload.errcode) !== 0) {
+      console.error("[XunhuPay] raw provider response", payload);
+      throw new Error("XUNHUPAY_PROVIDER_ERROR");
+    }
     return { payload, data: simpleSignedFields(payload) };
   } finally { clearTimeout(timeout); }
 }
