@@ -318,7 +318,7 @@ export async function createXunhuPayment(input: {
   if (data.trade_order_id && data.trade_order_id !== input.outTradeNo) throw new Error("XUNHUPAY_ORDER_MISMATCH");
   return {
     urlQrcode: assertProviderUrl(data.url_qrcode, true),
-    mobileUrl: assertProviderUrl(data.mobile_url || data.mweb_url || data.url, false),
+    mobileUrl: assertProviderUrl(data.url, false),
     expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
   };
 }
