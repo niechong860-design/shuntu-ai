@@ -47,7 +47,7 @@ export function XunhuPayStatus({
   const [confirming, setConfirming] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const [message, setMessage] = useState("");
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile, setIsMobile] = useState<boolean | null>(null);
   const [qrRemaining, setQrRemaining] = useState(300);
   const refreshed = useRef(false);
 
@@ -196,16 +196,29 @@ export function XunhuPayStatus({
               </p>
             )}
           </div>
-          {isMobile && order.mobileUrl ? (
+          {isMobile === null ? (
+            <div className="mt-5 flex min-h-[250px] items-center justify-center rounded-xl border border-emerald-500/20 bg-zinc-900/60 p-6 text-center text-sm text-zinc-300">
+              正在准备支付环境...
+            </div>
+          ) : isMobile ? (
             <div className="mt-5 flex min-h-[250px] flex-col items-center justify-center rounded-xl border border-emerald-500/20 bg-zinc-900/60 p-6 text-center">
               <Smartphone className="h-12 w-12 text-emerald-400" />
               <p className="mt-4 text-sm text-zinc-300">微信支付</p>
-              <a
-                href={order.mobileUrl}
-                className="mt-5 inline-flex h-11 w-full max-w-xs items-center justify-center rounded-lg bg-emerald-500 px-5 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-400"
-              >
-                立即微信支付
-              </a>
+              {order.mobileUrl ? (
+                <>
+                  <a
+                    href={order.mobileUrl}
+                    className="mt-5 inline-flex h-11 w-full max-w-xs items-center justify-center rounded-lg bg-emerald-500 px-5 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-400"
+                  >
+                    进入手机支付页
+                  </a>
+                  <p className="mt-4 text-xs leading-5 text-zinc-400">
+                    进入支付页后，请按页面提示截图或保存二维码，再使用微信扫一扫从相册识别完成支付。
+                  </p>
+                </>
+              ) : (
+                <p className="mt-4 text-sm text-zinc-400">支付链接暂不可用，请重新生成支付订单</p>
+              )}
             </div>
           ) : (
             <>
