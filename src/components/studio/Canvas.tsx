@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { getMyGenerationHistory } from "@/lib/admin.functions";
 import { getCachedHistoryFirstPage, setCachedHistoryFirstPage } from "@/lib/history-metadata-cache";
-import { getGeneratedPreviewUrl } from "@/lib/generated-image-preview";
 import { supabase } from "@/integrations/supabase/client";
 import type { GenProgress } from "./ControlPanel";
 
@@ -272,8 +271,6 @@ export function Canvas({ userId, generating, generatedUrl, currentPrompt, curren
   const [loadingMore, setLoadingMore] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
-  const canvasPreviewUrl = generatedUrl ? getGeneratedPreviewUrl(generatedUrl, "canvas") : null;
-  const lightboxPreviewUrl = generatedUrl ? getGeneratedPreviewUrl(generatedUrl, "lightbox") : null;
   const fetchHistory = useServerFn(getMyGenerationHistory);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const inFlightRef = useRef(false);
@@ -408,7 +405,7 @@ export function Canvas({ userId, generating, generatedUrl, currentPrompt, curren
         ) : generatedUrl ? (
           <>
             <GeneratedPreviewImage
-              previewSrc={canvasPreviewUrl!}
+              previewSrc={generatedUrl}
               originalSrc={generatedUrl}
               alt="生成结果"
               className="absolute inset-0"
@@ -567,7 +564,7 @@ export function Canvas({ userId, generating, generatedUrl, currentPrompt, curren
       )}
       {heroLightbox && generatedUrl && (
         <Lightbox
-          src={lightboxPreviewUrl!}
+          src={generatedUrl}
           fallbackSrc={generatedUrl}
           downloadSrc={generatedUrl}
           prompt={heroPrompt}
