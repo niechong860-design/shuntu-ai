@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { getMyGenerationHistory } from "@/lib/admin.functions";
 import { getCachedHistoryFirstPage, setCachedHistoryFirstPage } from "@/lib/history-metadata-cache";
+import { getGeneratedPreviewUrl } from "@/lib/generated-image-preview";
 import { supabase } from "@/integrations/supabase/client";
 import type { GenProgress } from "./ControlPanel";
 
@@ -271,6 +272,8 @@ export function Canvas({ userId, generating, generatedUrl, currentPrompt, curren
   const [loadingMore, setLoadingMore] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
+  const canvasPreviewUrl = generatedUrl ? getGeneratedPreviewUrl(generatedUrl, "canvas") : null;
+  const lightboxPreviewUrl = generatedUrl ? getGeneratedPreviewUrl(generatedUrl, "lightbox") : null;
   const fetchHistory = useServerFn(getMyGenerationHistory);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const inFlightRef = useRef(false);
@@ -404,7 +407,12 @@ export function Canvas({ userId, generating, generatedUrl, currentPrompt, curren
           <QueueProgress progress={progress ?? null} />
         ) : generatedUrl ? (
           <>
-            <img src={generatedUrl} alt="生成结果" className="h-full w-full object-contain bg-black" />
+            <GeneratedPreviewImage
+              previewSrc={canvasPreviewUrl!}
+              originalSrc={generatedUrl}
+              alt="生成结果"
+              className="absolute inset-0"
+            />
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/30 opacity-0 transition-opacity group-hover:opacity-100" />
             <div className="absolute left-3 top-3 z-20 flex items-center gap-1.5 opacity-70 transition-opacity group-hover:opacity-100">
               <HeroAction label="查看大图" onClick={() => setHeroLightbox(true)}>
@@ -559,7 +567,9 @@ export function Canvas({ userId, generating, generatedUrl, currentPrompt, curren
       )}
       {heroLightbox && generatedUrl && (
         <Lightbox
-          src={generatedUrl}
+          src={lightboxPreviewUrl!}
+          fallbackSrc={generatedUrl}
+          downloadSrc={generatedUrl}
           prompt={heroPrompt}
           model={heroModel}
           filename={`lovable-${Date.now()}.png`}
@@ -836,7 +846,52 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
   );
 }
 
-function Lightbox({ src, prompt, model, filename, onClose }: { src: string; prompt: string; model: string; filename: string; onClose: () => void }) {
+function GeneratedPreviewImage({ previewSrc, originalSrc, alt, className }: { previewSrc: string; originalSrc: string; alt: string; className?: string }) {
+  const [src, setSrc] = useState(previewSrc);
+  const [loading, setLoading] = useState(true);
+  const [fellBack, setFellBack] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setSrc(previewSrc);
+    setLoading(true);
+    setFellBack(false);
+    setFailed(false);
+  }, [previewSrc]);
+
+  const handleError = () => {
+    if (!fellBack && src !== originalSrc) {
+      setSrc(originalSrc);
+      setFellBack(true);
+      setLoading(true);
+      return;
+    }
+    setLoading(false);
+    setFailed(true);
+  };
+
+  return (
+    <div className={`relative h-full w-full overflow-hidden bg-black ${className ?? ""}`}>
+      <img
+        key={src}
+        src={src}
+        alt={alt}
+        onLoad={() => setLoading(false)}
+        onError={handleError}
+        className={`h-full w-full object-contain transition-opacity duration-200 ${loading || failed ? "opacity-0" : "opacity-100"}`}
+      />
+      {loading && !failed && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-xs text-white/75">
+          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          <span>图片加载中...</span>
+        </div>
+      )}
+      {failed && <div className="absolute inset-0 flex items-center justify-center text-xs text-white/75">图片加载失败</div>}
+    </div>
+  );
+}
+
+function Lightbox({ src, fallbackSrc = src, downloadSrc = src, prompt, model, filename, onClose }: { src: string; fallbackSrc?: string; downloadSrc?: string; prompt: string; model: string; filename: string; onClose: () => void }) {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -863,9 +918,7 @@ function Lightbox({ src, prompt, model, filename, onClose }: { src: string; prom
       className="fixed inset-0 z-[1000] flex items-center justify-center bg-background/80 p-6 backdrop-blur-xl animate-[fade-in_0.2s_ease-out]"
     >
       <div onClick={(e) => e.stopPropagation()} className="glass-elevated relative flex max-h-[90vh] w-full max-w-5xl gap-4 overflow-hidden rounded-2xl p-2">
-        <div className="flex-1 overflow-hidden rounded-xl bg-black">
-          <img src={src} alt={prompt} className="h-full w-full object-contain" />
-        </div>
+        <GeneratedPreviewImage previewSrc={src} originalSrc={fallbackSrc} alt={prompt} className="min-h-[50vh] flex-1 rounded-xl" />
         <div className="flex w-72 flex-col p-4">
           <div className="flex items-center justify-between">
             <span className="self-start rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-semibold tracking-wider text-primary">{model}</span>
@@ -892,7 +945,7 @@ function Lightbox({ src, prompt, model, filename, onClose }: { src: string; prom
           <p className="mt-2 max-h-60 overflow-y-auto text-sm font-light leading-relaxed">{prompt || "（无提示词）"}</p>
           <div className="mt-auto flex flex-col gap-2 pt-4">
             <button
-              onClick={() => downloadImage(src, filename)}
+              onClick={() => downloadImage(downloadSrc, filename)}
               className="flex items-center justify-center gap-2 rounded-lg bg-gradient-aurora px-3 py-2.5 text-xs font-semibold text-primary-foreground shadow-glow"
             >
               <Download className="h-3.5 w-3.5" /> 下载
