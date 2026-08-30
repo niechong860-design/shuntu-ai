@@ -1005,7 +1005,6 @@ function GeneratedPreviewImage({ previewSrc, originalSrc, thumbnailSrc, thumbnai
       const requestVersion = requestVersionRef.current;
       void preloadOriginalImage(originalSrc).then((ready) => {
         if (ready && requestVersion === requestVersionRef.current) {
-          setLoading(true);
           setSrc(originalSrc);
         }
       });
