@@ -13,6 +13,22 @@ const FALLBACK_THUMB = "/style-previews/default.webp";
 const PAGE_SIZE = 20;
 const HISTORY_RESET_CACHE_MS = 60_000;
 
+function isArchivedGeneratedImageUrl(value: string | null | undefined): value is string {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      url.hostname === "img.shuntu.cc" &&
+      url.pathname.startsWith("/generated/") &&
+      !url.search &&
+      !url.hash
+    );
+  } catch {
+    return false;
+  }
+}
+
 const thumbnailQueue: Array<() => void> = [];
 let activeThumbnailLoads = 0;
 const MAX_THUMBNAIL_LOADS = 4;
@@ -198,6 +214,7 @@ type Props = {
   generating: boolean;
   heroIndex?: number;
   generatedUrl?: string | null;
+  currentHistoryId?: string | null;
   currentPrompt?: string;
   currentModel?: string;
   progress?: GenProgress | null;
@@ -259,7 +276,7 @@ async function copyToClipboard(text: string) {
   }
 }
 
-export function Canvas({ userId, generating, generatedUrl, currentPrompt, currentModel, progress, historyOpen, onHistoryOpenChange, onReuseCurrent, onSelectHistory }: Props) {
+export function Canvas({ userId, generating, generatedUrl, currentHistoryId, currentPrompt, currentModel, progress, historyOpen, onHistoryOpenChange, onReuseCurrent, onSelectHistory }: Props) {
   const [lightbox, setLightbox] = useState<HistoryItem | null>(null);
   const [heroLightbox, setHeroLightbox] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -271,6 +288,10 @@ export function Canvas({ userId, generating, generatedUrl, currentPrompt, curren
   const [loadingMore, setLoadingMore] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
+  const thumbnailUrl = currentHistoryId && isArchivedGeneratedImageUrl(generatedUrl)
+    ? `/api/history-thumbnail/${encodeURIComponent(String(currentHistoryId))}`
+    : null;
+  const { blobUrl: thumbnailBlobUrl, loading: thumbnailLoading } = useAuthenticatedThumbnail(thumbnailUrl);
   const fetchHistory = useServerFn(getMyGenerationHistory);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const inFlightRef = useRef(false);
@@ -407,6 +428,8 @@ export function Canvas({ userId, generating, generatedUrl, currentPrompt, curren
             <GeneratedPreviewImage
               previewSrc={generatedUrl}
               originalSrc={generatedUrl}
+              thumbnailSrc={thumbnailBlobUrl}
+              thumbnailLoading={thumbnailLoading}
               alt="生成结果"
               className="absolute inset-0"
             />
@@ -565,6 +588,8 @@ export function Canvas({ userId, generating, generatedUrl, currentPrompt, curren
       {heroLightbox && generatedUrl && (
         <Lightbox
           src={generatedUrl}
+          thumbnailSrc={thumbnailBlobUrl}
+          thumbnailLoading={thumbnailLoading}
           fallbackSrc={generatedUrl}
           downloadSrc={generatedUrl}
           prompt={heroPrompt}
@@ -843,20 +868,127 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
   );
 }
 
-function GeneratedPreviewImage({ previewSrc, originalSrc, alt, className }: { previewSrc: string; originalSrc: string; alt: string; className?: string }) {
-  const [src, setSrc] = useState(previewSrc);
-  const [loading, setLoading] = useState(true);
-  const [fellBack, setFellBack] = useState(false);
-  const [failed, setFailed] = useState(false);
+const originalPreloadCache = new Map<string, Promise<boolean>>();
+
+function useAuthenticatedThumbnail(url: string | null) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(!!url);
+  const blobUrlRef = useRef<string | null>(null);
+  const blobSourceUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
-    setSrc(previewSrc);
+    const controller = new AbortController();
+    let cancelled = false;
+    let timedOut = false;
+    const timeoutId = window.setTimeout(() => {
+      if (cancelled) return;
+      timedOut = true;
+      controller.abort();
+    }, 12_000);
+    setLoading(!!url);
+    setBlobUrl(null);
+    blobSourceUrlRef.current = null;
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = null;
+    }
+    if (!url) {
+      window.clearTimeout(timeoutId);
+      return () => controller.abort();
+    }
+
+    void (async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token;
+        if (!token) throw new Error("Missing session");
+        const response = await fetch(url, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(`Thumbnail request failed: ${response.status}`);
+        const nextBlobUrl = URL.createObjectURL(await response.blob());
+        if (cancelled || controller.signal.aborted) {
+          URL.revokeObjectURL(nextBlobUrl);
+          if (timedOut && !cancelled) {
+            setBlobUrl(null);
+            setLoading(false);
+          }
+          return;
+        }
+        blobUrlRef.current = nextBlobUrl;
+        blobSourceUrlRef.current = url;
+        setBlobUrl(nextBlobUrl);
+        setLoading(false);
+      } catch {
+        if (!cancelled && (!controller.signal.aborted || timedOut)) {
+          setBlobUrl(null);
+          setLoading(false);
+        }
+      }
+      finally {
+        window.clearTimeout(timeoutId);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [url]);
+
+  useEffect(() => () => {
+    if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+  }, []);
+
+  return {
+    blobUrl: blobSourceUrlRef.current === url ? blobUrl : null,
+    loading: !!url && (loading || blobSourceUrlRef.current !== url),
+  };
+}
+
+function preloadOriginalImage(url: string): Promise<boolean> {
+  const cached = originalPreloadCache.get(url);
+  if (cached) return cached;
+  const promise = new Promise<boolean>((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(true);
+    image.onerror = () => resolve(false);
+    image.src = url;
+  });
+  originalPreloadCache.set(url, promise);
+  void promise.then((ready) => {
+    if (!ready && originalPreloadCache.get(url) === promise) {
+      originalPreloadCache.delete(url);
+    }
+  });
+  return promise;
+}
+
+function GeneratedPreviewImage({ previewSrc, originalSrc, thumbnailSrc, thumbnailLoading = false, alt, className }: { previewSrc: string; originalSrc: string; thumbnailSrc?: string | null; thumbnailLoading?: boolean; alt: string; className?: string }) {
+  const initialSrc = thumbnailSrc || (thumbnailLoading ? null : previewSrc);
+  const [src, setSrc] = useState<string | null>(initialSrc);
+  const [loading, setLoading] = useState(true);
+  const [fellBack, setFellBack] = useState(!thumbnailSrc);
+  const [failed, setFailed] = useState(false);
+  const requestVersionRef = useRef(0);
+
+  useEffect(() => {
+    requestVersionRef.current += 1;
+    setSrc(initialSrc);
     setLoading(true);
-    setFellBack(false);
+    setFellBack(!thumbnailSrc);
     setFailed(false);
-  }, [previewSrc]);
+  }, [initialSrc, thumbnailSrc]);
 
   const handleError = () => {
+    if (thumbnailSrc && src === thumbnailSrc) {
+      setSrc(originalSrc);
+      setFellBack(true);
+      setLoading(true);
+      return;
+    }
     if (!fellBack && src !== originalSrc) {
       setSrc(originalSrc);
       setFellBack(true);
@@ -867,16 +999,29 @@ function GeneratedPreviewImage({ previewSrc, originalSrc, alt, className }: { pr
     setFailed(true);
   };
 
+  const handleLoad = () => {
+    setLoading(false);
+    if (thumbnailSrc && src === thumbnailSrc && originalSrc !== thumbnailSrc) {
+      const requestVersion = requestVersionRef.current;
+      void preloadOriginalImage(originalSrc).then((ready) => {
+        if (ready && requestVersion === requestVersionRef.current) {
+          setLoading(true);
+          setSrc(originalSrc);
+        }
+      });
+    }
+  };
+
   return (
     <div className={`relative h-full w-full overflow-hidden bg-black ${className ?? ""}`}>
-      <img
+      {src && <img
         key={src}
         src={src}
         alt={alt}
-        onLoad={() => setLoading(false)}
+        onLoad={handleLoad}
         onError={handleError}
         className={`h-full w-full object-contain transition-opacity duration-200 ${loading || failed ? "opacity-0" : "opacity-100"}`}
-      />
+      />}
       {loading && !failed && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-xs text-white/75">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
@@ -888,7 +1033,7 @@ function GeneratedPreviewImage({ previewSrc, originalSrc, alt, className }: { pr
   );
 }
 
-function Lightbox({ src, fallbackSrc = src, downloadSrc = src, prompt, model, filename, onClose }: { src: string; fallbackSrc?: string; downloadSrc?: string; prompt: string; model: string; filename: string; onClose: () => void }) {
+function Lightbox({ src, thumbnailSrc, thumbnailLoading = false, fallbackSrc = src, downloadSrc = src, prompt, model, filename, onClose }: { src: string; thumbnailSrc?: string; thumbnailLoading?: boolean; fallbackSrc?: string; downloadSrc?: string; prompt: string; model: string; filename: string; onClose: () => void }) {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -915,7 +1060,7 @@ function Lightbox({ src, fallbackSrc = src, downloadSrc = src, prompt, model, fi
       className="fixed inset-0 z-[1000] flex items-center justify-center bg-background/80 p-6 backdrop-blur-xl animate-[fade-in_0.2s_ease-out]"
     >
       <div onClick={(e) => e.stopPropagation()} className="glass-elevated relative flex max-h-[90vh] w-full max-w-5xl gap-4 overflow-hidden rounded-2xl p-2">
-        <GeneratedPreviewImage previewSrc={src} originalSrc={fallbackSrc} alt={prompt} className="min-h-[50vh] flex-1 rounded-xl" />
+        <GeneratedPreviewImage previewSrc={src} originalSrc={fallbackSrc} thumbnailSrc={thumbnailSrc} thumbnailLoading={thumbnailLoading} alt={prompt} className="min-h-[50vh] flex-1 rounded-xl" />
         <div className="flex w-72 flex-col p-4">
           <div className="flex items-center justify-between">
             <span className="self-start rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-semibold tracking-wider text-primary">{model}</span>

@@ -114,6 +114,7 @@ export function Studio() {
   const pollTask = useServerFn(pollGenerationTask);
   const [generating, setGenerating] = useState(false);
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
+  const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
   const [generatedUrlSource, setGeneratedUrlSource] = useState<"result" | "history" | null>(null);
   const [currentPrompt, setCurrentPrompt] = useState<string>("");
   const [currentModel, setCurrentModel] = useState<string>("");
@@ -199,6 +200,7 @@ export function Studio() {
     task?: Pick<FloatingTask, "id" | "title" | "status" | "prompt" | "modelName">,
     options: { clearCurrentResult?: boolean } = {},
   ) => {
+    setCurrentHistoryId(null);
     const shouldClearDisplay = options.clearCurrentResult ?? generatedUrlSource !== "result";
     if (!shouldClearDisplay) return;
 
@@ -224,6 +226,7 @@ export function Studio() {
 
   useEffect(() => {
     setGeneratedUrl(null);
+    setCurrentHistoryId(null);
     setGeneratedUrlSource(null);
     setCurrentPrompt("");
     setCurrentModel("");
@@ -291,6 +294,7 @@ export function Studio() {
         const activeTask = getActiveQueueTask(trimmed);
         if (activeTask) {
           setGeneratedUrl(null);
+          setCurrentHistoryId(null);
           setGeneratedUrlSource(null);
           setCurrentPrompt(activeTask.prompt ?? activeTask.title ?? "");
           setCurrentModel(activeTask.modelName ?? "");
@@ -340,6 +344,7 @@ export function Studio() {
               );
               if (task.resultImageUrl) {
                 setGeneratedUrl(task.resultImageUrl);
+                setCurrentHistoryId(task.historyId ?? null);
                 setGeneratedUrlSource("result");
                 const prompt = matchedTask?.prompt ?? matchedTask?.title ?? "";
                 const modelName = matchedTask?.modelName ?? "";
@@ -418,6 +423,7 @@ export function Studio() {
     setProgress(null);
     if (url) {
       setGeneratedUrl(url);
+      setCurrentHistoryId(null);
       setGeneratedUrlSource("result");
       rememberLatestResult(url, currentPrompt, currentModel);
     }
@@ -618,6 +624,7 @@ export function Studio() {
       if (finalized) {
         if (task.resultImageUrl) {
           setGeneratedUrl(task.resultImageUrl);
+          setCurrentHistoryId(task.historyId ?? null);
           setGeneratedUrlSource("result");
           const prompt = matchedTask?.prompt ?? matchedTask?.title ?? "";
           const modelName = matchedTask?.modelName ?? "";
@@ -727,6 +734,7 @@ export function Studio() {
             generating={generating || shouldShowQueueLoadingOnCanvas}
             heroIndex={0}
             generatedUrl={generatedUrl}
+            currentHistoryId={currentHistoryId}
             currentPrompt={currentPrompt}
             currentModel={currentModel}
             progress={shouldShowQueueLoadingOnCanvas ? queueProgress : progress}
@@ -735,6 +743,7 @@ export function Studio() {
             onReuseCurrent={handleReuseCurrentResult}
             onSelectHistory={(url, prompt, model, reuseSource) => {
               setGeneratedUrl(url);
+              setCurrentHistoryId(null);
               setGeneratedUrlSource("history");
               setCurrentPrompt(prompt);
               setCurrentModel(model);
