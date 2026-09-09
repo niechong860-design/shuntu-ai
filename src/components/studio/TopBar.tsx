@@ -45,6 +45,8 @@ export function TopBar({ credits, onOpenHistory, onOpenAnnouncements, onSwitchAc
         <NavLinkTo to="/">在线生成</NavLinkTo>
         <a
           href="https://prompt.shuntu.cc/"
+          target="_blank"
+          rel="noopener noreferrer"
           className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-white/[0.05] hover:text-foreground"
         >
           灵感广场
