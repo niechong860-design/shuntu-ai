@@ -43,7 +43,12 @@ export function TopBar({ credits, onOpenHistory, onOpenAnnouncements, onSwitchAc
       {/* Right: nav + actions */}
       <div className="hidden md:flex md:items-center md:gap-1 md:pr-3">
         <NavLinkTo to="/">在线生成</NavLinkTo>
-        <NavLinkTo to="/inspiration">灵感广场</NavLinkTo>
+        <a
+          href="https://prompt.shuntu.cc/"
+          className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-white/[0.05] hover:text-foreground"
+        >
+          灵感广场
+        </a>
         <NavLink onClick={() => setContactOpen(true)}>联系客服</NavLink>
       </div>
 
@@ -107,7 +112,7 @@ function NavLink({ children, ...rest }: React.ButtonHTMLAttributes<HTMLButtonEle
   );
 }
 
-function NavLinkTo({ to, children }: { to: "/" | "/inspiration"; children: React.ReactNode }) {
+function NavLinkTo({ to, children }: { to: "/"; children: React.ReactNode }) {
   return (
     <Link
       to={to}
