@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Wand2, Eraser, Sparkles, Plus, X, Dices, Zap,
   ChevronDown, Square, RectangleHorizontal, RectangleVertical, Monitor,
   Check, ImageIcon, Crown, Flame, Star,
+  Loader2,
 } from "lucide-react";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { useServerFn } from "@tanstack/react-start";
@@ -70,6 +72,32 @@ const BADGE_COLOR_CLASSES: Record<string, string> = {
   gray: "bg-muted text-muted-foreground border-border",
 };
 
+const MAX_REFERENCE_IMAGES = 5;
+const GENERATED_IMAGE_DRAG_MIME = "application/x-shuntu-generated-image";
+const REFERENCE_REORDER_DRAG_MIME = "application/x-shuntu-reference-reorder";
+
+type ReferenceImageItem = {
+  id: string;
+  sourceUrl: string | null;
+  previewUrl: string;
+  status: "uploading" | "ready" | "error";
+  ownsPreviewUrl: boolean;
+  generatedDragToken?: string;
+};
+
+function createReferenceImageId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `ref-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function revokeReferencePreview(item: ReferenceImageItem) {
+  if (item.ownsPreviewUrl && /^blob:/i.test(item.previewUrl)) {
+    URL.revokeObjectURL(item.previewUrl);
+  }
+}
+
 const pickDefaultModel = (list: ModelCfg[]): ModelCfg | undefined =>
   list.find((m) => m.extra_params?.ui_default_model === true);
 
@@ -130,6 +158,8 @@ function clearActive() {
 type Props = {
  onGenerateStart: (info: { prompt: string; modelName: string; modelKey?: string; inputParams?: Record<string, unknown> }) => void;
  onGenerateDone: (imageUrl: string | null) => void;
+  generatedImageUrl?: string | null;
+  generatedImageDragToken?: string | null;
   onProgress?: (p: GenProgress | null) => void;
   generating: boolean;
   retryPrefill?: {
@@ -161,6 +191,8 @@ type Props = {
 export function ControlPanel({
   onGenerateStart,
   onGenerateDone,
+  generatedImageUrl,
+  generatedImageDragToken,
   onProgress,
   generating,
   retryPrefill,
@@ -187,7 +219,13 @@ export function ControlPanel({
   const [modelOpen, setModelOpen] = useState(false);
   const [ratioOpen, setRatioOpen] = useState(false);
   const [sizeOpen, setSizeOpen] = useState(false);
-  const [refs, setRefs] = useState<string[]>([]);
+  const [refs, setRefs] = useState<ReferenceImageItem[]>([]);
+  const refsRef = useRef<ReferenceImageItem[]>([]);
+  const pendingGeneratedReferenceTokensRef = useRef<Set<string>>(new Set());
+  const dragDepthRef = useRef(0);
+  const draggedReferenceIdRef = useRef<string | null>(null);
+  const [referenceDropActive, setReferenceDropActive] = useState(false);
+  const [previewItem, setPreviewItem] = useState<ReferenceImageItem | null>(null);
   const [prompt, setPrompt] = useState("");
   const [styleId, setStyleId] = useState<string>("");
   const [styles] = useState<StyleTpl[]>(STYLE_TEMPLATES);
@@ -233,6 +271,32 @@ export function ControlPanel({
     toast.success("已载入案例参数，可直接生成");
   }, []);
 
+  const updateReferenceItems = (updater: (items: ReferenceImageItem[]) => ReferenceImageItem[]) => {
+    const next = updater(refsRef.current);
+    refsRef.current = next;
+    setRefs(next);
+    setPreviewItem((current) => current ? next.find((item) => item.id === current.id) ?? null : null);
+  };
+
+  const replaceReferenceItems = (next: ReferenceImageItem[]) => {
+    for (const item of refsRef.current) {
+      if (!next.some((candidate) => candidate.id === item.id)) revokeReferencePreview(item);
+    }
+    refsRef.current = next;
+    setRefs(next);
+    setPreviewItem((current) => current && next.some((item) => item.id === current.id) ? current : null);
+  };
+
+  const clearReferenceItems = () => replaceReferenceItems([]);
+
+  useEffect(() => {
+    refsRef.current = refs;
+  }, [refs]);
+
+  useEffect(() => () => {
+    for (const item of refsRef.current) revokeReferencePreview(item);
+  }, []);
+
   const applyPrefill = (prefill: { prompt: string; modelKey?: string; inputParams?: Record<string, unknown> }) => {
     setPrompt(prefill.prompt);
     if (prefill.modelKey) setModelKey(prefill.modelKey);
@@ -240,11 +304,17 @@ export function ControlPanel({
     const aspectRatio = typeof inputParams.aspectRatio === "string" ? inputParams.aspectRatio : null;
     const nextSize = typeof inputParams.size === "string" ? inputParams.size : null;
     const referenceImages = Array.isArray(inputParams.referenceImages)
-      ? inputParams.referenceImages.filter((url): url is string => typeof url === "string")
+      ? inputParams.referenceImages.filter((url): url is string => typeof url === "string").slice(0, MAX_REFERENCE_IMAGES)
       : [];
     if (aspectRatio && RATIOS.some((item) => item.id === aspectRatio)) setRatio(aspectRatio);
     if (nextSize === "1K" || nextSize === "2K" || nextSize === "4K") setSize(nextSize);
-    setRefs(referenceImages);
+    replaceReferenceItems(referenceImages.map((url) => ({
+      id: createReferenceImageId(),
+      sourceUrl: url,
+      previewUrl: url,
+      status: "ready" as const,
+      ownsPreviewUrl: false,
+    })));
     setStyleId("");
     setInspirationMode(false);
   };
@@ -262,7 +332,7 @@ export function ControlPanel({
 
   useEffect(() => {
     if (referenceResetToken <= 0) return;
-    setRefs([]);
+    clearReferenceItems();
   }, [referenceResetToken]);
 
 
@@ -274,84 +344,189 @@ export function ControlPanel({
   // 仅文生图的模型：禁止参考图（前端隐藏入口 + 提交时不带 refs）
   const TEXT_ONLY_MODELS = new Set(["wan26"]);
   const isTextOnly = activeModel ? TEXT_ONLY_MODELS.has(activeModel.model_key) : false;
-  const uploadedHttpRefs = refs.filter((u) => /^https?:\/\//i.test(u));
+  const uploadedHttpRefs = refs
+    .filter((item) => item.status === "ready" && !!item.sourceUrl && /^https?:\/\//i.test(item.sourceUrl))
+    .map((item) => item.sourceUrl!);
   // 切换到仅文生图模型时，自动清空已有参考图，避免残留
   useEffect(() => {
-    if (isTextOnly && refs.length > 0) setRefs([]);
+    if (isTextOnly && refs.length > 0) clearReferenceItems();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isTextOnly]);
 
-  const [uploadingRef, setUploadingRef] = useState(false);
+  const uploadingRef = refs.some((item) => item.status === "uploading");
 
-  const addRef = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    e.target.value = "";
-    if (!f) return;
-    if (refs.length >= 5) {
-      toast.error("最多上传 5 张参考图");
-      return;
+  const uploadReferenceFile = async (file: File, item: ReferenceImageItem, uid: string) => {
+    try {
+      const processed = await processImage(file, "ai-model");
+      if (processed.previewUrl !== item.previewUrl) URL.revokeObjectURL(processed.previewUrl);
+      const path = `${uid}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${processed.ext}`;
+      const { error: upErr } = await supabase.storage
+        .from("reference-images")
+        .upload(path, processed.blob, {
+          cacheControl: "3600",
+          contentType: processed.contentType,
+          upsert: false,
+        });
+      if (upErr) throw upErr;
+      const { data: signed, error: signErr } = await supabase.storage
+        .from("reference-images")
+        .createSignedUrl(path, 60 * 60 * 24 * 7); // 7 days, long enough for generation
+      if (signErr) throw signErr;
+      const url = signed.signedUrl;
+      console.log(
+        `[ref upload] ${(processed.originalSize / 1024).toFixed(0)}KB → ${(processed.processedSize / 1024).toFixed(0)}KB →`,
+        url,
+      );
+      updateReferenceItems((items) => {
+        const existing = items.find((candidate) => candidate.id === item.id);
+        if (!existing) {
+          revokeReferencePreview(item);
+          return items;
+        }
+        revokeReferencePreview(existing);
+        return items.map((candidate) => candidate.id === item.id
+          ? { ...candidate, sourceUrl: url, previewUrl: url, status: "ready", ownsPreviewUrl: false }
+          : candidate);
+      });
+    } catch (err) {
+      console.error("[ref upload] failed", err);
+      toast.error("参考图上传失败，请重试");
+      updateReferenceItems((items) => {
+        const existing = items.find((candidate) => candidate.id === item.id);
+        if (!existing) {
+          revokeReferencePreview(item);
+          return items;
+        }
+        return items.map((candidate) => candidate.id === item.id
+          ? { ...candidate, sourceUrl: null, status: "error" }
+          : candidate);
+      });
     }
+  };
+
+  const addReferenceFiles = (files: File[], options?: { generatedDragToken?: string }) => {
     const uid = session?.user?.id;
     if (!uid) {
       toast.error("请先登录后再上传参考图");
       return;
     }
-    const invalid = validateImageFile(f, { preset: "ai-model", maxMB: 15 });
-    if (invalid) {
-      toast.error(invalid);
+    const remainingSlots = MAX_REFERENCE_IMAGES - refsRef.current.length;
+    if (remainingSlots <= 0) {
+      toast.error("最多上传 5 张参考图");
       return;
     }
+    if (files.length > remainingSlots) toast.error("最多上传 5 张参考图，已忽略超出部分");
 
-    // Instant local preview — show immediately so the UI never feels blocked.
-    const previewUrl = URL.createObjectURL(f);
-    const placeholderIdx = refs.length;
-    setRefs((arr) => [...arr, previewUrl]);
-    setUploadingRef(true);
-
-    // Process + upload async — never blocks the UI thread for long.
-    (async () => {
-      try {
-        const processed = await processImage(f, "ai-model");
-        const path = `${uid}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${processed.ext}`;
-        const { error: upErr } = await supabase.storage
-          .from("reference-images")
-          .upload(path, processed.blob, {
-            cacheControl: "3600",
-            contentType: processed.contentType,
-            upsert: false,
-          });
-        if (upErr) throw upErr;
-        const { data: signed, error: signErr } = await supabase.storage
-          .from("reference-images")
-          .createSignedUrl(path, 60 * 60 * 24 * 7); // 7 days, long enough for generation
-        if (signErr) throw signErr;
-        const url = signed.signedUrl;
-        console.log(
-          `[ref upload] ${(processed.originalSize / 1024).toFixed(0)}KB → ${(processed.processedSize / 1024).toFixed(0)}KB →`,
-          url,
-        );
-        setRefs((arr) => {
-          const next = [...arr];
-          // Replace by index when possible; otherwise append.
-          if (next[placeholderIdx] === previewUrl) next[placeholderIdx] = url;
-          else {
-            const idx = next.indexOf(previewUrl);
-            if (idx >= 0) next[idx] = url;
-            else next.push(url);
-          }
-          return next;
-        });
-      } catch (err) {
-        console.error("[ref upload] failed", err);
-        toast.error("参考图上传失败，请重试");
-        setRefs((arr) => arr.filter((u) => u !== previewUrl));
-      } finally {
-        URL.revokeObjectURL(previewUrl);
-        setUploadingRef(false);
+    const accepted = files.slice(0, remainingSlots);
+    const pending = accepted.flatMap((file) => {
+      const invalid = validateImageFile(file, { preset: "ai-model", maxMB: 15 });
+      if (invalid) {
+        toast.error(invalid);
+        return [];
       }
-    })();
+      const item: ReferenceImageItem = {
+        id: createReferenceImageId(),
+        sourceUrl: null,
+        previewUrl: URL.createObjectURL(file),
+        status: "uploading",
+        ownsPreviewUrl: true,
+        generatedDragToken: options?.generatedDragToken,
+      };
+      return [{ file, item }];
+    });
+    if (pending.length === 0) return;
+
+    updateReferenceItems((items) => [...items, ...pending.map(({ item }) => item)]);
+    for (const { file, item } of pending) void uploadReferenceFile(file, item, uid);
   };
-  const removeRef = (i: number) => setRefs((arr) => arr.filter((_, idx) => idx !== i));
+
+  const addRef = (e: React.ChangeEvent<HTMLInputElement>) => {
+    addReferenceFiles(Array.from(e.target.files ?? []));
+    e.target.value = "";
+  };
+
+  const removeRef = (id: string) => {
+    const item = refsRef.current.find((candidate) => candidate.id === id);
+    if (item) revokeReferencePreview(item);
+    if (previewItem?.id === id) setPreviewItem(null);
+    updateReferenceItems((items) => items.filter((candidate) => candidate.id !== id));
+  };
+
+  const reorderReferences = (sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return;
+    updateReferenceItems((items) => {
+      const sourceIndex = items.findIndex((item) => item.id === sourceId);
+      const targetIndex = items.findIndex((item) => item.id === targetId);
+      if (sourceIndex < 0 || targetIndex < 0) return items;
+      const next = [...items];
+      const [moved] = next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
+  };
+
+  const addGeneratedReference = async () => {
+    const url = generatedImageUrl;
+    const generatedDragToken = generatedImageDragToken;
+    if (!url || !generatedDragToken) return;
+    if (refsRef.current.some((item) => item.generatedDragToken === generatedDragToken || (item.status === "ready" && item.sourceUrl === url))) {
+      toast.message("该生成图片已添加");
+      return;
+    }
+    if (pendingGeneratedReferenceTokensRef.current.has(generatedDragToken)) {
+      toast.message("该生成图片已添加");
+      return;
+    }
+    if (refsRef.current.length >= MAX_REFERENCE_IMAGES) {
+      toast.error("参考图最多 5 张");
+      return;
+    }
+    if (/^https?:\/\//i.test(url)) {
+      updateReferenceItems((items) => [...items, {
+        id: createReferenceImageId(),
+        sourceUrl: url,
+        previewUrl: url,
+        status: "ready",
+        ownsPreviewUrl: false,
+        generatedDragToken,
+      }]);
+      return;
+    }
+    if (!/^(data:image\/|blob:)/i.test(url)) {
+      toast.error("当前生成图片格式不支持作为参考图");
+      return;
+    }
+    pendingGeneratedReferenceTokensRef.current.add(generatedDragToken);
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      if (!blob.size || !/^image\//i.test(blob.type)) throw new Error("invalid generated image");
+      const extension = blob.type === "image/jpeg" ? "jpg" : blob.type.split("/")[1] || "bin";
+      const file = new File([blob], `generated-reference.${extension}`, { type: blob.type });
+      addReferenceFiles([file], { generatedDragToken });
+    } catch {
+      toast.error("生成图片读取失败，无法添加为参考图");
+    } finally {
+      pendingGeneratedReferenceTokensRef.current.delete(generatedDragToken);
+    }
+  };
+
+  const handleReferenceDrop = (event: React.DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    dragDepthRef.current = 0;
+    setReferenceDropActive(false);
+    const transfer = event.dataTransfer;
+    const generatedToken = transfer.getData(GENERATED_IMAGE_DRAG_MIME);
+    if (generatedToken) {
+      if (generatedToken === generatedImageDragToken) void addGeneratedReference();
+      return;
+    }
+    const reorderId = transfer.getData(REFERENCE_REORDER_DRAG_MIME);
+    if (reorderId) return;
+    const files = Array.from(transfer.files ?? []);
+    if (files.length > 0) addReferenceFiles(files);
+  };
 
   // 轮询任务到完成。tStart 是任务开始时间戳（毫秒），用于刷新后从持久化时间继续计算 elapsed
   const pollTask = async (args: {
@@ -489,7 +664,7 @@ export function ControlPanel({
       modelName: activeModel?.name ?? activeModel?.model_key ?? "当前模型",
     });
     setPrompt("");
-    setRefs([]);
+    clearReferenceItems();
     setStyleId("");
     setInspirationMode(false);
     toast.success("已加入任务面板，可以准备下一个提示词");
@@ -532,7 +707,7 @@ export function ControlPanel({
         });
         if (ok) {
           setPrompt("");
-          setRefs([]);
+          clearReferenceItems();
           setStyleId("");
           setInspirationMode(false);
           toast.success("任务已加入等待队列，可继续准备下一张。");
@@ -669,12 +844,32 @@ export function ControlPanel({
       <div className="flex shrink-0 flex-col">
         {/* 参考图 — 紧凑横向条 */}
         {!isTextOnly && (
-          <section className="bg-gradient-to-b from-primary/[0.02] via-transparent to-transparent px-4 py-4">
+          <section
+            onDragEnter={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              dragDepthRef.current += 1;
+              setReferenceDropActive(true);
+            }}
+            onDragOver={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              event.dataTransfer.dropEffect = event.dataTransfer.types.includes(GENERATED_IMAGE_DRAG_MIME) || event.dataTransfer.types.includes("Files") ? "copy" : "move";
+            }}
+            onDragLeave={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+              if (dragDepthRef.current === 0) setReferenceDropActive(false);
+            }}
+            onDrop={handleReferenceDrop}
+            className={`bg-gradient-to-b from-primary/[0.02] via-transparent to-transparent px-4 py-4 transition-colors ${referenceDropActive ? "bg-primary/[0.09]" : ""}`}
+          >
             <div className="mb-3 flex items-center justify-between">
               <Label>参考图 · 图生图 ({refs.length}/5)</Label>
               {refs.length > 0 && (
                 <button
-                  onClick={() => setRefs([])}
+                  onClick={clearReferenceItems}
                   className="text-[11px] text-muted-foreground transition-colors hover:text-primary"
                 >
                   清空
@@ -682,12 +877,62 @@ export function ControlPanel({
               )}
             </div>
             <div className="scrollbar-thin flex gap-3 overflow-x-auto pb-1">
-              {refs.map((url, i) => (
-                <div key={i} className="group relative h-24 w-24 shrink-0 overflow-hidden rounded-xl border border-primary/15 bg-surface">
-                  <img src={url} alt="ref" className="h-full w-full object-cover" />
+              {refs.map((item) => (
+                <div
+                  key={item.id}
+                  draggable
+                  onDragStart={(event) => {
+                    draggedReferenceIdRef.current = item.id;
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData(REFERENCE_REORDER_DRAG_MIME, item.id);
+                  }}
+                  onDragEnd={() => {
+                    draggedReferenceIdRef.current = null;
+                    dragDepthRef.current = 0;
+                    setReferenceDropActive(false);
+                  }}
+                  onDragOver={(event) => {
+                    if (event.dataTransfer.types.includes(REFERENCE_REORDER_DRAG_MIME)) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      event.dataTransfer.dropEffect = "move";
+                    }
+                  }}
+                  onDrop={(event) => {
+                    if (!event.dataTransfer.types.includes(REFERENCE_REORDER_DRAG_MIME)) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const sourceId = event.dataTransfer.getData(REFERENCE_REORDER_DRAG_MIME) || draggedReferenceIdRef.current;
+                    if (sourceId) reorderReferences(sourceId, item.id);
+                    draggedReferenceIdRef.current = null;
+                    dragDepthRef.current = 0;
+                    setReferenceDropActive(false);
+                  }}
+                  className="group relative h-24 w-24 shrink-0 cursor-grab overflow-hidden rounded-xl border border-primary/15 bg-surface active:cursor-grabbing"
+                >
                   <button
-                    onClick={() => removeRef(i)}
+                    type="button"
+                    className="h-full w-full"
+                    onClick={() => setPreviewItem(item)}
+                    aria-label="查看参考图大图"
+                  >
+                    <img src={item.previewUrl} alt="参考图" draggable={false} className="h-full w-full object-cover" />
+                  </button>
+                  {item.status === "uploading" && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/45 text-white">
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    </div>
+                  )}
+                  {item.status === "error" && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/60 px-2 text-center text-[10px] text-rose-100">
+                      上传失败
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={(event) => { event.stopPropagation(); removeRef(item.id); }}
                     className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/75 text-white opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 hover:bg-destructive"
+                    aria-label="删除参考图"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -703,7 +948,7 @@ export function ControlPanel({
                       <span className="text-[10px] text-muted-foreground/80">上传参考图</span>
                     </>
                   )}
-                  <input type="file" accept="image/*" className="hidden" onChange={addRef} disabled={uploadingRef} />
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={addRef} />
                 </label>
               )}
             </div>
@@ -868,6 +1113,14 @@ export function ControlPanel({
           </div>
         </section>
       </div>
+      <Dialog open={!!previewItem} onOpenChange={(open) => { if (!open) setPreviewItem(null); }}>
+        <DialogContent className="max-w-5xl border-border bg-black/90 p-3">
+          <DialogTitle className="sr-only">参考图预览</DialogTitle>
+          {previewItem && (
+            <img src={previewItem.sourceUrl ?? previewItem.previewUrl} alt="参考图大图" draggable={false} className="max-h-[82vh] w-full rounded-lg object-contain" />
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* 风格模板 — 自动填满剩余高度 */}
       <section className="flex min-h-0 flex-1 flex-col px-4 pt-2">

@@ -114,6 +114,7 @@ export function Studio() {
   const pollTask = useServerFn(pollGenerationTask);
   const [generating, setGenerating] = useState(false);
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
+  const [generatedImageDragToken, setGeneratedImageDragToken] = useState<string | null>(null);
   const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
   const [generatedUrlSource, setGeneratedUrlSource] = useState<"result" | "history" | null>(null);
   const [currentPrompt, setCurrentPrompt] = useState<string>("");
@@ -226,6 +227,7 @@ export function Studio() {
 
   useEffect(() => {
     setGeneratedUrl(null);
+    setGeneratedImageDragToken(null);
     setCurrentHistoryId(null);
     setGeneratedUrlSource(null);
     setCurrentPrompt("");
@@ -243,6 +245,18 @@ export function Studio() {
     setReferenceResetToken(0);
     pollingTaskIdsRef.current.clear();
   }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (!generatedUrl) {
+      setGeneratedImageDragToken(null);
+      return;
+    }
+    setGeneratedImageDragToken(
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `generated-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    );
+  }, [generatedUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -717,6 +731,8 @@ export function Studio() {
           <ControlPanel
             onGenerateStart={handleGenerateStart}
             onGenerateDone={handleGenerateDone}
+            generatedImageUrl={generatedUrl}
+            generatedImageDragToken={generatedImageDragToken}
             onProgress={setProgress}
             generating={generating}
             retryPrefill={retryPrefill}
@@ -734,6 +750,7 @@ export function Studio() {
             generating={generating || shouldShowQueueLoadingOnCanvas}
             heroIndex={0}
             generatedUrl={generatedUrl}
+            generatedImageDragToken={generatedImageDragToken}
             currentHistoryId={currentHistoryId}
             currentPrompt={currentPrompt}
             currentModel={currentModel}

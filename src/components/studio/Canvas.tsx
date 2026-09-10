@@ -214,6 +214,7 @@ type Props = {
   generating: boolean;
   heroIndex?: number;
   generatedUrl?: string | null;
+  generatedImageDragToken?: string | null;
   currentHistoryId?: string | null;
   currentPrompt?: string;
   currentModel?: string;
@@ -276,7 +277,7 @@ async function copyToClipboard(text: string) {
   }
 }
 
-export function Canvas({ userId, generating, generatedUrl, currentHistoryId, currentPrompt, currentModel, progress, historyOpen, onHistoryOpenChange, onReuseCurrent, onSelectHistory }: Props) {
+export function Canvas({ userId, generating, generatedUrl, generatedImageDragToken, currentHistoryId, currentPrompt, currentModel, progress, historyOpen, onHistoryOpenChange, onReuseCurrent, onSelectHistory }: Props) {
   const [lightbox, setLightbox] = useState<HistoryItem | null>(null);
   const [heroLightbox, setHeroLightbox] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -425,14 +426,27 @@ export function Canvas({ userId, generating, generatedUrl, currentHistoryId, cur
           <QueueProgress progress={progress ?? null} />
         ) : generatedUrl ? (
           <>
-            <GeneratedPreviewImage
-              previewSrc={generatedUrl}
-              originalSrc={generatedUrl}
-              thumbnailSrc={thumbnailBlobUrl}
-              thumbnailLoading={thumbnailLoading}
-              alt="生成结果"
+            <div
+              draggable={!!generatedImageDragToken}
+              onDragStart={(event) => {
+                if (!generatedImageDragToken) {
+                  event.preventDefault();
+                  return;
+                }
+                event.dataTransfer.effectAllowed = "copy";
+                event.dataTransfer.setData("application/x-shuntu-generated-image", generatedImageDragToken);
+              }}
               className="absolute inset-0"
-            />
+            >
+              <GeneratedPreviewImage
+                previewSrc={generatedUrl}
+                originalSrc={generatedUrl}
+                thumbnailSrc={thumbnailBlobUrl}
+                thumbnailLoading={thumbnailLoading}
+                alt="生成结果"
+                className="absolute inset-0"
+              />
+            </div>
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/30 opacity-0 transition-opacity group-hover:opacity-100" />
             <div className="absolute left-3 top-3 z-20 flex items-center gap-1.5 opacity-70 transition-opacity group-hover:opacity-100">
               <HeroAction label="查看大图" onClick={() => setHeroLightbox(true)}>
