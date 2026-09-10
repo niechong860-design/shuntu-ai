@@ -980,7 +980,7 @@ function preloadOriginalImage(url: string): Promise<boolean> {
   return promise;
 }
 
-function GeneratedPreviewImage({ previewSrc, originalSrc, thumbnailSrc, thumbnailLoading = false, alt, className }: { previewSrc: string; originalSrc: string; thumbnailSrc?: string | null; thumbnailLoading?: boolean; alt: string; className?: string }) {
+function GeneratedPreviewImage({ previewSrc, originalSrc, thumbnailSrc, thumbnailLoading = false, alt, className, imageClassName }: { previewSrc: string; originalSrc: string; thumbnailSrc?: string | null; thumbnailLoading?: boolean; alt: string; className?: string; imageClassName?: string }) {
   const initialSrc = thumbnailSrc || (thumbnailLoading ? null : previewSrc);
   const [src, setSrc] = useState<string | null>(initialSrc);
   const [loading, setLoading] = useState(true);
@@ -1033,7 +1033,7 @@ function GeneratedPreviewImage({ previewSrc, originalSrc, thumbnailSrc, thumbnai
         alt={alt}
         onLoad={handleLoad}
         onError={handleError}
-        className={`h-full w-full object-contain transition-opacity duration-200 ${loading || failed ? "opacity-0" : "opacity-100"}`}
+        className={`${imageClassName ?? "h-full w-full object-contain"} transition-opacity duration-200 ${loading || failed ? "opacity-0" : "opacity-100"}`}
       />}
       {loading && !failed && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-xs text-white/75">
@@ -1070,11 +1070,13 @@ function Lightbox({ src, thumbnailSrc, thumbnailLoading = false, fallbackSrc = s
         e.stopPropagation();
         onClose();
       }}
-      className="fixed inset-0 z-[1000] flex items-center justify-center bg-background/80 p-6 backdrop-blur-xl animate-[fade-in_0.2s_ease-out]"
+      className="fixed inset-0 z-[1000] flex items-center justify-center overflow-hidden bg-background/80 p-3 backdrop-blur-xl animate-[fade-in_0.2s_ease-out] sm:p-6"
     >
-      <div onClick={(e) => e.stopPropagation()} className="glass-elevated relative flex max-h-[90vh] w-full max-w-5xl gap-4 overflow-hidden rounded-2xl p-2">
-        <GeneratedPreviewImage previewSrc={src} originalSrc={fallbackSrc} thumbnailSrc={thumbnailSrc} thumbnailLoading={thumbnailLoading} alt={prompt} className="min-h-[50vh] flex-1 rounded-xl" />
-        <div className="flex w-72 flex-col p-4">
+      <div onClick={(e) => e.stopPropagation()} className="glass-elevated relative flex h-[92dvh] max-h-[calc(100dvh-3rem)] w-full max-w-[94vw] min-h-0 flex-col gap-4 overflow-hidden rounded-2xl p-2 sm:flex-row">
+        <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-xl bg-black">
+          <GeneratedPreviewImage previewSrc={src} originalSrc={fallbackSrc} thumbnailSrc={thumbnailSrc} thumbnailLoading={thumbnailLoading} alt={prompt} className="min-h-0 min-w-0 flex-1 rounded-xl" imageClassName="h-auto w-auto max-h-full max-w-full object-contain" />
+        </div>
+        <div className="flex max-h-[40%] min-h-0 w-full shrink-0 flex-col overflow-y-auto p-4 sm:max-h-none sm:w-72">
           <div className="flex items-center justify-between">
             <span className="self-start rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-semibold tracking-wider text-primary">{model}</span>
             <button
