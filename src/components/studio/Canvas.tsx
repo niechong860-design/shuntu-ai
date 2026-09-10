@@ -1074,7 +1074,7 @@ function Lightbox({ src, thumbnailSrc, thumbnailLoading = false, fallbackSrc = s
     >
       <div onClick={(e) => e.stopPropagation()} className="glass-elevated relative flex h-[92dvh] max-h-[calc(100dvh-3rem)] w-full max-w-[94vw] min-h-0 flex-col gap-4 overflow-hidden rounded-2xl p-2 sm:flex-row">
         <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-xl bg-black">
-          <GeneratedPreviewImage previewSrc={src} originalSrc={fallbackSrc} thumbnailSrc={thumbnailSrc} thumbnailLoading={thumbnailLoading} alt={prompt} className="min-h-0 min-w-0 flex-1 rounded-xl" imageClassName="h-auto w-auto max-h-full max-w-full object-contain" />
+          <GeneratedPreviewImage previewSrc={src} originalSrc={fallbackSrc} thumbnailSrc={thumbnailSrc} thumbnailLoading={thumbnailLoading} alt={prompt} className="flex min-h-0 min-w-0 flex-1 items-center justify-center rounded-xl" imageClassName="h-auto w-auto max-h-full max-w-full object-contain object-center" />
         </div>
         <div className="flex max-h-[40%] min-h-0 w-full shrink-0 flex-col overflow-y-auto p-4 sm:max-h-none sm:w-72">
           <div className="flex items-center justify-between">
