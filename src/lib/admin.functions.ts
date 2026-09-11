@@ -12,6 +12,9 @@ import {
   validateGptImageProProviderPayload,
 } from "@/lib/gpt-image-pro-provider-contract";
 import { archiveGeneratedImageToR2, deleteGeneratedImageFromR2Url } from "@/lib/r2-image-archive";
+import type { BusinessDatabase, GenerationTask, ModelConfig } from "@/lib/business-database";
+import { createBusinessDatabaseFromContext } from "@/lib/business-database-router";
+import { assertLovableOnlyLegacyWrite } from "@/lib/legacy-lovable-guard";
 
 const FOXAPI_BACKUP_MODEL_KEY = "gpt-image-2-backup";
 const GPT_IMAGE_2_BACKUP_MODEL_KEY = "gpt_image_2_backup";
@@ -32,6 +35,48 @@ type HistoryPruneRow = {
   image_url: string | null;
   generation_task_id: string | null;
 };
+
+function getBusinessDb(context: unknown): BusinessDatabase {
+  return createBusinessDatabaseFromContext(context as Parameters<typeof createBusinessDatabaseFromContext>[0]);
+}
+
+async function stableTextHash(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function asRecord(value: unknown): Record<string, any> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : {};
+}
+
+async function getBusinessModel(db: BusinessDatabase, modelKey: string, includeSecrets = false): Promise<ModelConfig | null> {
+  const models = await db.listModelsConfig({ includeSecrets, enabledOnly: false });
+  return models.find((model) => model.model_key === modelKey) ?? null;
+}
+
+async function attachImageToConsumedHistory(input: {
+  db: BusinessDatabase;
+  userId: string;
+  modelName: string;
+  imageUrl: string;
+  historyId: string | null;
+}) {
+  if (input.historyId) {
+    await input.db.setGenerationHistoryImageUrl({
+      historyId: input.historyId,
+      userId: input.userId,
+      imageUrl: input.imageUrl,
+    });
+    return;
+  }
+  if (input.db.primary === "d1") return;
+  await input.db.setLatestGenerationHistoryImageUrl({
+    userId: input.userId,
+    modelName: input.modelName,
+    imageUrl: input.imageUrl,
+  });
+}
 
 async function assertAdmin(userId: string) {
   const { data, error } = await supabaseAdmin
@@ -232,6 +277,7 @@ export const adminDeleteUser = createServerFn({ method: "POST" })
     if ((roles ?? []).some((r: any) => r.role === "founder")) {
       throw new Error("不能删除创始人账号");
     }
+    assertLovableOnlyLegacyWrite(context, "adminDeleteUser");
     await supabaseAdmin.from("user_roles").delete().eq("user_id", data.userId);
     await supabaseAdmin.from("generation_history").delete().eq("user_id", data.userId);
     await supabaseAdmin.from("profiles").delete().eq("id", data.userId);
@@ -261,6 +307,7 @@ export const adminAdjustCredits = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminAdjustCredits");
     const { data: row, error: e1 } = await supabaseAdmin
       .from("profiles")
       .select("credits")
@@ -332,6 +379,7 @@ export const adminDeleteCoupon = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ couponId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminDeleteCoupon");
     const { data: row, error: e1 } = await supabaseAdmin
       .from("coupons").select("is_used").eq("id", data.couponId).maybeSingle();
     if (e1) throw new Error(e1.message);
@@ -349,6 +397,7 @@ export const adminGenerateCoupons = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminGenerateCoupons");
     const rows = Array.from({ length: data.count }, () => ({
       code: makeCode(),
       amount: data.amount,
@@ -370,29 +419,21 @@ export const redeemCoupon = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ code: z.string().min(3).max(64).regex(/^[A-Za-z0-9_-]+$/) }).parse(d))
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
-    const { data: res, error } = await supabase.rpc("redeem_gift_card", { input_code: data.code.trim() });
-    if (error) {
-      // The RPC raises on every failure path; surface the human-readable message.
-      return { success: false, message: error.message || "兑换失败", amount: 0 };
-    }
-    const row = Array.isArray(res) ? res[0] : res;
-    return row as { success: boolean; message: string; amount: number };
+    const db = getBusinessDb(context);
+    const res = await db.redeemCoupon({
+      userId: context.userId,
+      userEmail: (context.claims as { email?: string } | undefined)?.email ?? null,
+      code: data.code.trim(),
+    });
+    return { success: res.success, message: res.message, amount: res.amount };
   });
 
 // --- Models config (PUBLIC: safe columns only, no api_key) ---
 export const listModelsConfig = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async () => {
-    // Use supabaseAdmin with explicit safe-column projection so the public RLS
-    // policy can be removed (api_key / api_url / fetch_url are never returned).
-    const { data, error } = await supabaseAdmin
-      .from("models_config")
-      .select("id, model_key, name, description, cost, extra_params, sort_order, updated_at")
-      .eq("is_enabled", true)
-      .order("sort_order", { ascending: true });
-    if (error) throw new Error(error.message);
-    return data ?? [];
+  .handler(async ({ context }) => {
+    const db = getBusinessDb(context);
+    return await db.listModelsConfig({ enabledOnly: true, includeSecrets: false });
   });
 
 // Admin variant: includes api_url & api_key + dynamic adapter fields
@@ -415,6 +456,7 @@ export const adminUpdateModelPrice = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminUpdateModelPrice");
     const { error } = await supabaseAdmin
       .from("models_config")
       .update({ cost: data.cost, updated_at: new Date().toISOString() })
@@ -444,6 +486,7 @@ export const adminUpdateModel = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminUpdateModel");
     const { id, ...rest } = data;
     const patch = { ...rest, updated_at: new Date().toISOString() };
     const { error } = await supabaseAdmin.from("models_config").update(patch as never).eq("id", id);
@@ -470,6 +513,7 @@ export const adminCreateModel = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminCreateModel");
     const { data: row, error } = await supabaseAdmin
       .from("models_config")
       .insert({
@@ -496,6 +540,7 @@ export const adminDeleteModel = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminDeleteModel");
     const { error } = await supabaseAdmin.from("models_config").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
@@ -508,14 +553,13 @@ export const consumeGeneration = createServerFn({ method: "POST" })
     z.object({ modelKey: z.string().min(1).max(64), prompt: z.string().max(4000).optional() }).parse(d),
   )
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
-    const { data: res, error } = await supabase.rpc("consume_credits_for_generation", {
-      _model_key: data.modelKey,
-      _prompt: data.prompt ?? "",
+    const db = getBusinessDb(context);
+    const row = await db.consumeCreditsForGeneration({
+      userId: context.userId,
+      modelKey: data.modelKey,
+      prompt: data.prompt ?? "",
     });
-    if (error) throw new Error(error.message);
-    const row = Array.isArray(res) ? res[0] : res;
-    return row as { success: boolean; message: string; credits: number; cost: number };
+    return { success: row.success, message: row.message, credits: row.credits, cost: row.cost };
   });
 
 // --- 获取当前用户生成历史（分页 + 缩略图）---
@@ -590,6 +634,7 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
   }))
   .handler(async ({ context, data }) => {
     const { userId } = context;
+    const db = getBusinessDb(context);
     const { limit, offset } = data;
 
     // 判断是否管理员（admin / founder）
@@ -603,90 +648,82 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
     const maxDays = 15;
     const cutoff = new Date(Date.now() - maxDays * 24 * 60 * 60 * 1000).toISOString();
 
-    // 自动清理：超过 15 天 或 超过 maxKeep 张，删除最旧的
-    try {
-      const { data: expiredRows, error: expiredLookupError } = await supabaseAdmin
-        .from("generation_history")
-        .select("id, image_url, generation_task_id")
-        .eq("user_id", userId)
-        .lt("created_at", cutoff);
-      if (expiredLookupError) {
-        console.warn("[history] prune expired lookup failed", { errorName: getErrorName(expiredLookupError) });
-      }
-
-      const { error: expiredDeleteError } = await supabaseAdmin
-        .from("generation_history")
-        .delete()
-        .eq("user_id", userId)
-        .lt("created_at", cutoff);
-      if (expiredDeleteError) {
-        console.warn("[history] prune expired delete failed", { errorName: getErrorName(expiredDeleteError) });
-      } else {
-        await deletePrunedHistoryR2Images((expiredRows ?? []) as HistoryPruneRow[]);
-      }
-
-      const { data: keepIds } = await supabaseAdmin
-        .from("generation_history")
-        .select("id")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .range(0, maxKeep - 1);
-      const keepSet = (keepIds ?? []).map((r: any) => r.id);
-      if (keepSet.length >= maxKeep) {
-        const keepClause = `(${keepSet.map((id: string) => `"${id}"`).join(",")})`;
-        const { data: overflowRows, error: overflowLookupError } = await supabaseAdmin
+    // 自动清理：超过 15 天 或 超过 maxKeep 张，删除最旧的。
+    // D1 主库阶段先不复制这类隐式 delete/R2 delete 行为，避免读路径触发跨存储副作用。
+    if (db.primary === "lovable") {
+      try {
+        const { data: expiredRows, error: expiredLookupError } = await supabaseAdmin
           .from("generation_history")
           .select("id, image_url, generation_task_id")
           .eq("user_id", userId)
-          .not("id", "in", keepClause);
-        if (overflowLookupError) {
-          console.warn("[history] prune overflow lookup failed", { errorName: getErrorName(overflowLookupError) });
+          .lt("created_at", cutoff);
+        if (expiredLookupError) {
+          console.warn("[history] prune expired lookup failed", { errorName: getErrorName(expiredLookupError) });
         }
 
-        const { error: overflowDeleteError } = await supabaseAdmin
+        const { error: expiredDeleteError } = await supabaseAdmin
           .from("generation_history")
           .delete()
           .eq("user_id", userId)
-          .not("id", "in", keepClause);
-        if (overflowDeleteError) {
-          console.warn("[history] prune overflow delete failed", { errorName: getErrorName(overflowDeleteError) });
+          .lt("created_at", cutoff);
+        if (expiredDeleteError) {
+          console.warn("[history] prune expired delete failed", { errorName: getErrorName(expiredDeleteError) });
         } else {
-          await deletePrunedHistoryR2Images((overflowRows ?? []) as HistoryPruneRow[]);
+          await deletePrunedHistoryR2Images((expiredRows ?? []) as HistoryPruneRow[]);
         }
+
+        const { data: keepIds } = await supabaseAdmin
+          .from("generation_history")
+          .select("id")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false })
+          .range(0, maxKeep - 1);
+        const keepSet = (keepIds ?? []).map((r: any) => r.id);
+        if (keepSet.length >= maxKeep) {
+          const keepClause = `(${keepSet.map((id: string) => `"${id}"`).join(",")})`;
+          const { data: overflowRows, error: overflowLookupError } = await supabaseAdmin
+            .from("generation_history")
+            .select("id, image_url, generation_task_id")
+            .eq("user_id", userId)
+            .not("id", "in", keepClause);
+          if (overflowLookupError) {
+            console.warn("[history] prune overflow lookup failed", { errorName: getErrorName(overflowLookupError) });
+          }
+
+          const { error: overflowDeleteError } = await supabaseAdmin
+            .from("generation_history")
+            .delete()
+            .eq("user_id", userId)
+            .not("id", "in", keepClause);
+          if (overflowDeleteError) {
+            console.warn("[history] prune overflow delete failed", { errorName: getErrorName(overflowDeleteError) });
+          } else {
+            await deletePrunedHistoryR2Images((overflowRows ?? []) as HistoryPruneRow[]);
+          }
+        }
+      } catch (e) {
+        console.warn("[history] prune failed", { errorName: getErrorName(e) });
       }
-    } catch (e) {
-      console.warn("[history] prune failed", { errorName: getErrorName(e) });
     }
 
     // 管理员可以查看所有用户的历史（用于核查违规）；普通用户只能看自己的
     if (offset >= maxKeep) {
       return { items: [], total: maxKeep, limit, offset, maxKeep, maxDays, isAdmin };
     }
-    const endIdx = Math.min(offset + limit, maxKeep) - 1;
-    let query = supabaseAdmin
-      .from("generation_history")
-      .select("id, user_id, model, prompt, image_url, generation_task_id, created_at, cost", { count: "exact" })
-      .not("image_url", "is", null)
-      .order("created_at", { ascending: false })
-      .range(offset, endIdx);
-    if (!isAdmin) {
-      query = query
-        .eq("user_id", userId)
-        .gte("created_at", cutoff);
-    }
-    const { data: rows, error, count } = await query;
-    if (error) throw new Error(error.message);
+    const { rows, total: rawTotal } = await db.listGenerationHistory({
+      userId: isAdmin ? undefined : userId,
+      since: isAdmin ? undefined : cutoff,
+      imageOnly: true,
+      limit: Math.min(limit, maxKeep - offset),
+      offset,
+    });
 
     const taskIds = Array.from(new Set((rows ?? [])
       .map((r: any) => r.generation_task_id)
       .filter((value: unknown): value is string => typeof value === "string" && value.length > 0)));
     const taskReuseMap = new Map<string, { modelKey: string | null; inputParams: Record<string, any> | null }>();
     if (taskIds.length > 0) {
-      const { data: taskRows, error: taskError } = await (supabaseAdmin as any)
-        .from("generation_tasks")
-        .select("id, model_id, input_params")
-        .in("id", taskIds);
-      if (taskError) throw new Error(taskError.message);
+      const taskRows = await db.getGenerationTasksByIds(taskIds);
       for (const task of taskRows ?? []) {
         taskReuseMap.set(task.id, {
           modelKey: (task.model_id ?? null) as string | null,
@@ -699,10 +736,7 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
     let authorEmailMap = new Map<string, string | null>();
     if (isAdmin && rows && rows.length > 0) {
       const uids = Array.from(new Set(rows.map((r: any) => r.user_id)));
-      const { data: profs } = await supabaseAdmin
-        .from("profiles")
-        .select("id, email")
-        .in("id", uids);
+      const profs = await db.getProfilesByIds(uids);
       const profileEmailMap = new Map((profs ?? []).map((p: any) => [p.id, p.email ?? null]));
       authorEmailMap = new Map(uids.map((uid) => [uid, profileEmailMap.get(uid) ?? null]));
       await Promise.all(uids.map(async (uid) => {
@@ -742,7 +776,7 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
         created_at: r.created_at as string,
       };
     });
-    const total = Math.min(count ?? items.length, maxKeep);
+    const total = Math.min(rawTotal ?? items.length, maxKeep);
     return { items, total, limit, offset, maxKeep, maxDays, isAdmin };
   });
 
@@ -750,16 +784,13 @@ export const getMyGenerationTasks = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { userId } = context;
-    const { data: activeRows, error: activeError } = await (supabaseAdmin as any)
-      .from("generation_tasks")
-      .select("id, request_id, user_id, status, model_id, prompt, input_params, created_at, updated_at, started_at, completed_at, result_image_url, error_code, error_message, deduction_status, deduction_id")
-      .eq("user_id", userId)
-      .in("status", ["queued", "running"])
-      .order("created_at", { ascending: true })
-      .limit(3);
-    if (activeError) throw new Error(activeError.message);
-
-    const rows = activeRows ?? [];
+    const db = getBusinessDb(context);
+    const rows = await db.listUserGenerationTasks({
+      userId,
+      statuses: ["queued", "running"],
+      limit: 3,
+      order: "asc",
+    });
 
     const items = (rows ?? []).map((r: any) => ({
       id: r.id as string,
@@ -768,7 +799,7 @@ export const getMyGenerationTasks = createServerFn({ method: "POST" })
       status: r.status as "queued" | "running" | "succeeded" | "failed",
       modelId: r.model_id as string,
       prompt: (r.prompt ?? null) as string | null,
-      inputParams: (r.input_params ?? {}) as Record<string, unknown>,
+      inputParams: asRecord(r.input_params),
       createdAt: r.created_at as string,
       updatedAt: r.updated_at as string,
       startedAt: (r.started_at ?? null) as string | null,
@@ -794,75 +825,41 @@ export const createGenerationTask = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const { userId } = context;
+    const db = getBusinessDb(context);
 
-    const { count: activeCount, error: countError } = await (supabaseAdmin as any)
-      .from("generation_tasks")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .in("status", ["queued", "running"]);
-    if (countError) {
-      if (countError.message?.includes("generation_tasks")) {
-        throw new Error("任务表尚未启用，暂不能创建多任务。");
-      }
-      throw new Error(countError.message);
-    }
-    if ((activeCount ?? 0) >= 3) {
+    const activeCount = await db.countUserGenerationTasks({ userId, statuses: ["queued", "running"] });
+    if (activeCount >= 3) {
       throw new Error("当前已有 3 个进行中任务，请等待任务完成后再提交。");
     }
 
-    const { data: model, error: modelError } = await supabaseAdmin
-      .from("models_config")
-      .select("model_key, cost, is_enabled")
-      .eq("model_key", data.modelKey)
-      .maybeSingle();
-    if (modelError) throw new Error(modelError.message);
+    const model = await getBusinessModel(db, data.modelKey, false);
     if (!model) throw new Error("模型不存在或已不可用。");
     if ((model as any).is_enabled === false) throw new Error("模型不存在或已不可用。");
 
     const creditsRequired = Math.max(0, Number((model as any).cost ?? 0));
-    const { data: activeTasks, error: activeTasksError } = await (supabaseAdmin as any)
-      .from("generation_tasks")
-      .select("credits_required")
-      .eq("user_id", userId)
-      .eq("deduction_status", "not_charged")
-      .in("status", ["queued", "running"]);
-    if (activeTasksError) throw new Error(activeTasksError.message);
-    const reservedCredits = (activeTasks ?? []).reduce(
-      (sum: number, task: any) => sum + Number(task.credits_required ?? 0),
+    const activeTasks = await db.listUserGenerationTasks({
+      userId,
+      statuses: ["queued", "running"],
+      deductionStatus: "not_charged",
+    });
+    const reservedCredits = activeTasks.reduce(
+      (sum: number, task) => sum + Number(task.credits_required ?? 0),
       0,
     );
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from("profiles")
-      .select("credits")
-      .eq("id", userId)
-      .maybeSingle();
-    if (profileError) throw new Error(profileError.message);
-    const availableCredits = Number((profile as any)?.credits ?? 0) - reservedCredits;
+    const availableCredits = await db.getCredits(userId) - reservedCredits;
     if (availableCredits < creditsRequired) {
       throw new Error("余额不足，无法创建多任务。");
     }
 
     const requestId = `task_${crypto.randomUUID()}`;
-    const { data: task, error: insertError } = await (supabaseAdmin as any)
-      .from("generation_tasks")
-      .insert({
-        request_id: requestId,
-        user_id: userId,
-        status: "queued",
-        model_id: data.modelKey,
-        prompt: data.prompt,
-        input_params: { ...(data.inputParams ?? {}), queueVersion: "userQueue" },
-        credits_required: creditsRequired,
-        deduction_status: "not_charged",
-      })
-      .select("id, request_id, status, prompt, model_id, credits_required")
-      .single();
-    if (insertError) {
-      if (insertError.message?.includes("generation_tasks")) {
-        throw new Error("任务表尚未启用，暂不能创建多任务。");
-      }
-      throw new Error(insertError.message);
-    }
+    const task = await db.createGenerationTask({
+      requestId,
+      userId,
+      modelId: data.modelKey,
+      prompt: data.prompt,
+      inputParams: { ...(data.inputParams ?? {}), queueVersion: "userQueue" },
+      creditsRequired,
+    });
 
     return {
       taskId: task.id as string,
@@ -878,22 +875,9 @@ export const cancelMyQueuedGenerationTasks = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { userId } = context;
-
-    const now = new Date().toISOString();
-    const { data, error } = await (supabaseAdmin as any)
-      .from("generation_tasks")
-      .update({
-        status: "canceled",
-        completed_at: now,
-        updated_at: now,
-      })
-      .eq("user_id", userId)
-      .eq("deduction_status", "not_charged")
-      .in("status", ["queued", "running"])
-      .select("id");
-    if (error) throw new Error(error.message);
-
-    return { canceledCount: (data ?? []).length };
+    const db = getBusinessDb(context);
+    const canceledCount = await db.cancelUserQueuedGenerationTasks({ userId });
+    return { canceledCount };
   });
 
 export const cancelGenerationTask = createServerFn({ method: "POST" })
@@ -903,22 +887,8 @@ export const cancelGenerationTask = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const { userId } = context;
-
-    const now = new Date().toISOString();
-    const { data: task, error } = await (supabaseAdmin as any)
-      .from("generation_tasks")
-      .update({
-        status: "canceled",
-        completed_at: now,
-        updated_at: now,
-      })
-      .eq("id", data.taskId)
-      .eq("user_id", userId)
-      .eq("status", "queued")
-      .eq("deduction_status", "not_charged")
-      .select("id, status")
-      .maybeSingle();
-    if (error) throw new Error(error.message);
+    const db = getBusinessDb(context);
+    const task = await db.cancelQueuedGenerationTask({ taskId: data.taskId, userId });
     if (!task) throw new Error("任务已开始、已完成、已取消，或不属于当前任务。");
 
     return {
@@ -936,17 +906,18 @@ type AdminPreviewFinalizeResult = {
 };
 
 async function finalizeUserGenerationTaskOnce(
-  supabase: any,
+  db: BusinessDatabase,
+  userId: string,
   taskId: string,
   imageUrl: string,
+  resultPayload?: Record<string, any> | null,
 ): Promise<AdminPreviewFinalizeResult> {
-  const { data, error } = await supabase.rpc("finalize_user_generation_task_once", {
-    p_task_id: taskId,
-    p_image_url: imageUrl,
+  const row = await db.finalizeUserGenerationTaskOnce({
+    taskId,
+    userId,
+    imageUrl,
+    resultPayload: resultPayload ?? null,
   });
-  if (error) throw new Error(error.message);
-
-  const row: any = Array.isArray(data) ? data[0] : data;
   if (!row?.success) {
     throw new Error(row?.message ?? "Finalize task failed");
   }
@@ -987,63 +958,43 @@ export const startGenerationTask = createServerFn({ method: "POST" })
     z.object({ taskId: z.string().uuid() }).parse(d),
   )
   .handler(async ({ context, data }) => {
-    const { userId, supabase } = context;
+    const { userId } = context;
+    const db = getBusinessDb(context);
     const cloudflareEnv = getCloudflareEnvFromServerContext(context);
 
-    const { count: runningCount, error: runningCountError } = await (supabaseAdmin as any)
-      .from("generation_tasks")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .eq("status", "running")
-      .eq("deduction_status", "not_charged");
-    if (runningCountError) throw new Error(runningCountError.message);
-    if ((runningCount ?? 0) > 0) {
+    const runningCount = await db.countUserGenerationTasks({
+      userId,
+      statuses: ["running"],
+      deductionStatus: "not_charged",
+    });
+    if (runningCount > 0) {
       throw new Error("已有任务正在生成，请等待当前任务完成。");
     }
 
     const now = new Date().toISOString();
-    const { data: task, error } = await (supabaseAdmin as any)
-      .from("generation_tasks")
-      .update({
-        status: "running",
-        started_at: now,
-        updated_at: now,
-      })
-      .eq("id", data.taskId)
-      .eq("user_id", userId)
-      .eq("status", "queued")
-      .eq("deduction_status", "not_charged")
-      .select("id, request_id, status, model_id, prompt, input_params, started_at")
-      .maybeSingle();
-    if (error) throw new Error(error.message);
+    const task = await db.claimQueuedGenerationTask({ taskId: data.taskId, userId, now });
     if (!task) {
       throw new Error("任务已被处理、取消，或不属于当前任务。");
     }
 
     try {
-      const { count: runningCountAfterClaim, error: runningAfterClaimError } = await (supabaseAdmin as any)
-        .from("generation_tasks")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", userId)
-        .eq("status", "running")
-        .eq("deduction_status", "not_charged");
-      if (runningAfterClaimError) throw new Error(runningAfterClaimError.message);
-      if ((runningCountAfterClaim ?? 0) > 1) {
-        await (supabaseAdmin as any)
-          .from("generation_tasks")
-          .update({
-            status: "queued",
-            started_at: null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", task.id)
-          .eq("user_id", userId)
-          .eq("status", "running")
-          .eq("deduction_status", "not_charged");
+      const runningCountAfterClaim = await db.countUserGenerationTasks({
+        userId,
+        statuses: ["running"],
+        deductionStatus: "not_charged",
+      });
+      if (runningCountAfterClaim > 1) {
+        await db.updateGenerationTaskLifecycle({
+          taskId: task.id,
+          userId,
+          status: "queued",
+          startedAt: null,
+          now: new Date().toISOString(),
+        });
         throw new Error("已有任务正在生成，请等待当前任务完成。");
       }
 
-      const result = await submitAdminPreviewGenerationTask(task);
+      const result = await submitAdminPreviewGenerationTask(task, db);
       const finishedAt = new Date().toISOString();
 
       if (result.status === "succeeded") {
@@ -1055,18 +1006,7 @@ export const startGenerationTask = createServerFn({ method: "POST" })
             modelKey: (task.model_id ?? null) as string | null,
             cloudflareEnv,
           });
-          const finalizeResult = await finalizeUserGenerationTaskOnce(supabase, task.id as string, finalImageUrl);
-          const { error: payloadUpdateError } = await (supabaseAdmin as any)
-            .from("generation_tasks")
-            .update({
-              result_payload: result.resultPayload,
-              updated_at: finishedAt,
-            })
-            .eq("id", task.id)
-            .eq("user_id", userId);
-          if (payloadUpdateError) {
-            console.warn("[startGenerationTask] result_payload update failed after finalize", payloadUpdateError);
-          }
+          const finalizeResult = await finalizeUserGenerationTaskOnce(db, userId, task.id as string, finalImageUrl, result.resultPayload);
           return {
             taskId: task.id as string,
             status: "succeeded" as const,
@@ -1078,20 +1018,16 @@ export const startGenerationTask = createServerFn({ method: "POST" })
           };
         } catch (e) {
           const message = e instanceof Error ? e.message : "Finalize task failed";
-          await (supabaseAdmin as any)
-            .from("generation_tasks")
-            .update({
-              status: "failed",
-              error_message: message,
-              result_image_url: finalImageUrl,
-              result_payload: result.resultPayload,
-              completed_at: finishedAt,
-              updated_at: finishedAt,
-            })
-            .eq("id", task.id)
-            .eq("user_id", userId)
-            .eq("status", "running")
-            .eq("deduction_status", "not_charged");
+          await db.updateGenerationTaskLifecycle({
+            taskId: task.id,
+            userId,
+            status: "failed",
+            errorMessage: message,
+            resultImageUrl: finalImageUrl,
+            resultPayload: result.resultPayload,
+            completedAt: finishedAt,
+            now: finishedAt,
+          });
           return {
             taskId: task.id as string,
             status: "failed" as const,
@@ -1103,18 +1039,13 @@ export const startGenerationTask = createServerFn({ method: "POST" })
         }
       }
 
-      const { error: updateError } = await (supabaseAdmin as any)
-        .from("generation_tasks")
-        .update({
-          status: "running",
-          result_payload: result.resultPayload,
-          updated_at: finishedAt,
-        })
-        .eq("id", task.id)
-        .eq("user_id", userId)
-        .eq("status", "running")
-        .eq("deduction_status", "not_charged");
-      if (updateError) throw new Error(updateError.message);
+      await db.updateGenerationTaskLifecycle({
+        taskId: task.id,
+        userId,
+        status: "running",
+        resultPayload: result.resultPayload,
+        now: finishedAt,
+      });
       return {
         taskId: task.id as string,
         status: "running" as const,
@@ -1126,18 +1057,14 @@ export const startGenerationTask = createServerFn({ method: "POST" })
     } catch (e) {
       const message = e instanceof Error ? e.message : "上游提交失败";
       const failedAt = new Date().toISOString();
-      await (supabaseAdmin as any)
-        .from("generation_tasks")
-        .update({
-          status: "failed",
-          error_message: message,
-          completed_at: failedAt,
-          updated_at: failedAt,
-        })
-        .eq("id", task.id)
-        .eq("user_id", userId)
-        .eq("status", "running")
-        .eq("deduction_status", "not_charged");
+      await db.updateGenerationTaskLifecycle({
+        taskId: task.id,
+        userId,
+        status: "failed",
+        errorMessage: message,
+        completedAt: failedAt,
+        now: failedAt,
+      });
       return {
         taskId: task.id as string,
         status: "failed" as const,
@@ -1155,16 +1082,11 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
     z.object({ taskId: z.string().uuid() }).parse(d),
   )
   .handler(async ({ context, data }) => {
-    const { userId, supabase } = context;
+    const { userId } = context;
+    const db = getBusinessDb(context);
     const cloudflareEnv = getCloudflareEnvFromServerContext(context);
 
-    const { data: task, error } = await (supabaseAdmin as any)
-      .from("generation_tasks")
-      .select("id, status, model_id, result_payload, result_image_url, error_message, deduction_status, deduction_id")
-      .eq("id", data.taskId)
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
+    const task = await db.getUserGenerationTask({ taskId: data.taskId, userId });
     if (!task) throw new Error("任务不存在，或不属于当前任务。");
     if (task.status !== "running") {
       const finalized = task.status === "succeeded" && task.deduction_status === "charged" && !!task.deduction_id;
@@ -1179,19 +1101,11 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
             cloudflareEnv,
           });
           if (resultImageUrl !== originalImageUrl) {
-            const { error: archiveUrlUpdateError } = await (supabaseAdmin as any)
-              .from("generation_tasks")
-              .update({
-                result_image_url: resultImageUrl,
-                updated_at: new Date().toISOString(),
-              })
-              .eq("id", task.id)
-              .eq("user_id", userId)
-              .eq("status", "succeeded")
-              .eq("deduction_status", "charged");
-            if (archiveUrlUpdateError) {
-              console.warn("[pollGenerationTask] archived result_image_url update failed", archiveUrlUpdateError);
-            }
+            await db.updateGenerationTaskLifecycle({
+              taskId: task.id,
+              userId,
+              resultImageUrl,
+            });
           }
         } catch (e) {
           console.warn("[pollGenerationTask] archived completed task image failed", e);
@@ -1209,7 +1123,8 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
       };
     }
 
-    const providerTaskId = task.result_payload?.providerTaskId;
+    const taskResultPayload = asRecord(task.result_payload);
+    const providerTaskId = taskResultPayload.providerTaskId;
     if (!providerTaskId) {
       return {
         taskId: task.id as string,
@@ -1220,10 +1135,10 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
       };
     }
 
-    const pollResult = await pollAdminPreviewProviderTask(String(providerTaskId), (task.model_id ?? null) as string | null);
+    const pollResult = await pollAdminPreviewProviderTask(db, String(providerTaskId), (task.model_id ?? null) as string | null);
     const now = new Date().toISOString();
     if (pollResult.status === "succeeded") {
-      const resultPayload = { ...(task.result_payload ?? {}), ...pollResult.resultPayload, providerStatus: "succeeded" };
+      const resultPayload = { ...taskResultPayload, ...pollResult.resultPayload, providerStatus: "succeeded" };
       let finalImageUrl = pollResult.resultImageUrl;
       try {
         finalImageUrl = await archiveSuccessfulImageUrl(pollResult.resultImageUrl, {
@@ -1232,18 +1147,7 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
           modelKey: (task.model_id ?? null) as string | null,
           cloudflareEnv,
         });
-        const finalizeResult = await finalizeUserGenerationTaskOnce(supabase, task.id as string, finalImageUrl);
-        const { error: payloadUpdateError } = await (supabaseAdmin as any)
-          .from("generation_tasks")
-          .update({
-            result_payload: resultPayload,
-            updated_at: now,
-          })
-          .eq("id", task.id)
-          .eq("user_id", userId);
-        if (payloadUpdateError) {
-          console.warn("[pollGenerationTask] result_payload update failed after finalize", payloadUpdateError);
-        }
+        const finalizeResult = await finalizeUserGenerationTaskOnce(db, userId, task.id as string, finalImageUrl, resultPayload);
         return {
           taskId: task.id as string,
           status: "succeeded" as const,
@@ -1254,19 +1158,15 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
         };
       } catch (e) {
         const message = e instanceof Error ? e.message : "Finalize task failed";
-        await (supabaseAdmin as any)
-          .from("generation_tasks")
-          .update({
-            status: "failed",
-            error_message: message,
-            result_payload: resultPayload,
-            completed_at: now,
-            updated_at: now,
-          })
-          .eq("id", task.id)
-          .eq("user_id", userId)
-          .eq("status", "running")
-          .eq("deduction_status", "not_charged");
+        await db.updateGenerationTaskLifecycle({
+          taskId: task.id,
+          userId,
+          status: "failed",
+          errorMessage: message,
+          resultPayload,
+          completedAt: now,
+          now,
+        });
         return {
           taskId: task.id as string,
           status: "failed" as const,
@@ -1278,21 +1178,16 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
     }
 
     if (pollResult.status === "failed") {
-      const resultPayload = { ...(task.result_payload ?? {}), ...pollResult.resultPayload, providerStatus: "failed" };
-      const { error: updateError } = await (supabaseAdmin as any)
-        .from("generation_tasks")
-        .update({
-          status: "failed",
-          error_message: pollResult.errorMessage,
-          result_payload: resultPayload,
-          completed_at: now,
-          updated_at: now,
-        })
-        .eq("id", task.id)
-        .eq("user_id", userId)
-        .eq("status", "running")
-        .eq("deduction_status", "not_charged");
-      if (updateError) throw new Error(updateError.message);
+      const resultPayload = { ...taskResultPayload, ...pollResult.resultPayload, providerStatus: "failed" };
+      await db.updateGenerationTaskLifecycle({
+        taskId: task.id,
+        userId,
+        status: "failed",
+        errorMessage: pollResult.errorMessage,
+        resultPayload,
+        completedAt: now,
+        now,
+      });
       return {
         taskId: task.id as string,
         status: "failed" as const,
@@ -1307,22 +1202,17 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
       status: "running" as const,
       resultImageUrl: null as string | null,
       errorMessage: null as string | null,
-      resultPayload: { ...(task.result_payload ?? {}), ...pollResult.resultPayload, providerStatus: "running" },
+      resultPayload: { ...taskResultPayload, ...pollResult.resultPayload, providerStatus: "running" },
     };
   });
 
-async function submitAdminPreviewGenerationTask(task: any): Promise<
+async function submitAdminPreviewGenerationTask(task: any, db: BusinessDatabase): Promise<
   | { status: "succeeded"; resultImageUrl: string; resultPayload: Record<string, any> }
   | { status: "running"; resultImageUrl: null; resultPayload: Record<string, any> }
 > {
   const inputParams = (task.input_params ?? {}) as Record<string, any>;
-  const { base_url, global_api_key } = await loadGlobalConfig();
-  const { data: model, error: modelError } = await supabaseAdmin
-    .from("models_config")
-    .select("id, model_key, name, api_url, api_key, request_format, prompt_key, extra_params, is_enabled")
-    .eq("model_key", task.model_id)
-    .maybeSingle();
-  if (modelError) throw new Error(modelError.message);
+  const { base_url, global_api_key } = await loadGlobalConfig(db);
+  const model = await getBusinessModel(db, String(task.model_id), true);
   if (!model) throw new Error("模型不存在或已不可用。");
   if ((model as any).is_enabled === false) throw new Error("模型不存在或已不可用。");
   if (!(model as any).api_url && (model as any).model_key !== FOXAPI_BACKUP_MODEL_KEY) throw new Error("该模型尚未配置 API 接口地址。");
@@ -1709,7 +1599,7 @@ function buildAdminPreviewUpstreamBody(params: {
   return body;
 }
 
-async function pollAdminPreviewProviderTask(providerTaskId: string, modelKey?: string | null): Promise<
+async function pollAdminPreviewProviderTask(db: BusinessDatabase, providerTaskId: string, modelKey?: string | null): Promise<
   | { status: "running"; resultImageUrl: null; errorMessage: null; resultPayload: Record<string, any> }
   | { status: "succeeded"; resultImageUrl: string; errorMessage: null; resultPayload: Record<string, any> }
   | { status: "failed"; resultImageUrl: null; errorMessage: string; resultPayload: Record<string, any> }
@@ -1731,7 +1621,7 @@ async function pollAdminPreviewProviderTask(providerTaskId: string, modelKey?: s
     return { status: "running", resultImageUrl: null, errorMessage: null, resultPayload };
   }
 
-  const { global_api_key } = await loadGlobalConfig();
+  const { global_api_key } = await loadGlobalConfig(db);
   const pureApiKey = normalizeUpstreamApiKey(global_api_key);
   if (!pureApiKey) throw new Error("尚未配置全局 API Key，请联系管理员");
 
@@ -1900,15 +1790,11 @@ function extractImageUrl(payload: any): string | null {
   const VALID_SIZES = new Set(["auto","1:1","2:3","16:9","9:16","4:3","3:4","21:9","9:21","1:3","3:1","1:2"]);
 
  // --- Global upstream config (Base URL + global API key) ---
- async function loadGlobalConfig(): Promise<{ base_url: string; global_api_key: string | null }> {
-   const { data } = await supabaseAdmin
-     .from("global_config")
-     .select("base_url, global_api_key")
-     .eq("id", 1)
-     .maybeSingle();
+ async function loadGlobalConfig(db?: BusinessDatabase): Promise<{ base_url: string; global_api_key: string | null }> {
+   const data = await (db ?? getBusinessDb(undefined)).getGlobalConfig();
     return {
-      base_url: (data?.base_url || "https://api.wuyinkeji.com").replace(/\/+$/, ""),
-      global_api_key: data?.global_api_key ?? process.env.WUYIN_API_KEY ?? null,
+      base_url: String((data?.base_url as string | undefined) || "https://api.wuyinkeji.com").replace(/\/+$/, ""),
+      global_api_key: (data?.global_api_key as string | undefined) ?? process.env.WUYIN_API_KEY ?? null,
     };
  }
 
@@ -1916,7 +1802,7 @@ function extractImageUrl(payload: any): string | null {
    .middleware([requireSupabaseAuth])
    .handler(async ({ context }) => {
      await assertAdmin(context.userId);
-     return await loadGlobalConfig();
+     return await loadGlobalConfig(getBusinessDb(context));
    });
 
  export const adminUpdateGlobalConfig = createServerFn({ method: "POST" })
@@ -1929,6 +1815,7 @@ function extractImageUrl(payload: any): string | null {
    )
    .handler(async ({ data, context }) => {
      await assertAdmin(context.userId);
+     assertLovableOnlyLegacyWrite(context, "adminUpdateGlobalConfig");
      const { error } = await supabaseAdmin
        .from("global_config")
        .upsert({
@@ -2021,7 +1908,8 @@ export const generateImage = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
+    const { userId } = context;
+    const db = getBusinessDb(context);
     const cloudflareEnv = getCloudflareEnvFromServerContext(context);
 
     // 服务端违规词二次校验，防止绕过前端
@@ -2035,25 +1923,17 @@ export const generateImage = createServerFn({ method: "POST" })
       throw new Error(SAFETY_SERVER_BLOCK_MESSAGE);
     }
 
-    const { base_url, global_api_key } = await loadGlobalConfig();
+    const { base_url, global_api_key } = await loadGlobalConfig(db);
 
-    const { data: model, error: mErr } = await supabaseAdmin
-      .from("models_config")
-      .select("id, model_key, name, cost, api_url, api_key, request_format, prompt_key, fetch_url, extra_params, is_enabled")
-      .eq("model_key", data.modelKey)
-      .maybeSingle();
-    if (mErr) throw new Error(mErr.message);
+    const model = await getBusinessModel(db, data.modelKey, true);
     if (!model) throw new Error("模型不存在");
     if (model.is_enabled === false) throw new Error("该模型已被管理员停用");
     if (!model.api_url && model.model_key !== FOXAPI_BACKUP_MODEL_KEY) throw new Error("该模型尚未配置 API 接口地址，请联系管理员");
 
-    const { data: prof, error: pErr } = await supabase
-      .from("profiles").select("credits").eq("id", userId).maybeSingle();
-    if (pErr) throw new Error(pErr.message);
-    if (!prof || Number(prof.credits) < Number(model.cost)) {
+    const currentCredits = await db.getCredits(userId);
+    if (currentCredits < Number(model.cost)) {
       throw new Error("您的算力余额不足，请联系老板兑换充值卡密");
     }
-    const currentCredits = Number(prof.credits ?? 0) || 0;
     const failGeneration = (message: string) => ({
       success: false,
       imageUrl: null,
@@ -2273,15 +2153,15 @@ export const generateImage = createServerFn({ method: "POST" })
     let safeCost = 0;
     let safeCredits = currentCredits;
     if (imageUrl) {
-      const { data: rpcRes, error: rpcErr } = await supabase.rpc("consume_credits_for_generation", {
-        _model_key: data.modelKey,
-        _prompt: data.prompt,
+      const charge = await db.consumeCreditsForGeneration({
+        userId,
+        modelKey: data.modelKey,
+        prompt: data.prompt,
+        idempotencyKey: `legacy-sync:${userId}:${data.modelKey}:${await stableTextHash(`${finalPrompt}\n${imageUrl}`)}`,
       });
-      if (rpcErr) throw new Error(rpcErr.message);
-      const row: any = Array.isArray(rpcRes) ? rpcRes?.[0] : rpcRes;
-      if (!row?.success) throw new Error(row?.message ?? "扣费失败");
-      safeCost = Number(row?.cost ?? 0) || 0;
-      safeCredits = Number(row?.credits ?? 0) || 0;
+      if (!charge.success) throw new Error(charge.message || "扣费失败");
+      safeCost = Number(charge.cost ?? 0) || 0;
+      safeCredits = Number(charge.credits ?? 0) || 0;
 
       imageUrl = await archiveSuccessfulImageUrl(imageUrl, {
         taskId: `legacy_${crypto.randomUUID()}`,
@@ -2289,9 +2169,12 @@ export const generateImage = createServerFn({ method: "POST" })
         modelKey: data.modelKey,
         cloudflareEnv,
       });
-      await supabase.rpc("set_latest_history_image", {
-        _model: model.name,
-        _image_url: imageUrl,
+      await attachImageToConsumedHistory({
+        db,
+        userId,
+        modelName: model.name,
+        imageUrl,
+        historyId: charge.history_id,
       });
     }
 
@@ -2318,7 +2201,8 @@ export const checkImageStatus = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
+    const { userId } = context;
+    const db = getBusinessDb(context);
     const cloudflareEnv = getCloudflareEnvFromServerContext(context);
     if (data.modelKey === FOXAPI_BACKUP_MODEL_KEY) {
       const result = await pollFoxApiTask(data.taskId);
@@ -2333,19 +2217,19 @@ export const checkImageStatus = createServerFn({ method: "POST" })
       }
       const url = result.imageUrl;
       // 上游成功返回图片后再扣费记账，避免失败也扣点
+      let chargeHistoryId: string | null = null;
       if (data.modelKey && data.prompt) {
         try {
-          const { data: rpcRes, error: rpcErr } = await supabase.rpc("consume_credits_for_generation", {
-            _model_key: data.modelKey,
-            _prompt: data.prompt,
+          const charge = await db.consumeCreditsForGeneration({
+            userId,
+            modelKey: data.modelKey,
+            prompt: data.prompt,
+            idempotencyKey: `legacy-provider:${userId}:${data.modelKey}:${data.taskId}`,
           });
-          if (rpcErr) {
-            console.error("[foxapi-backup]", { modelKey: data.modelKey, stage: "deduction_rpc_error", taskId: data.taskId, providerStatus: result.providerStatus, elapsedMs: result.elapsedMs });
+          if (charge.success) {
+            chargeHistoryId = charge.history_id;
           } else {
-            const row: any = Array.isArray(rpcRes) ? rpcRes?.[0] : rpcRes;
-            if (!row?.success) {
-              console.error("[foxapi-backup]", { modelKey: data.modelKey, stage: "deduction_not_charged", taskId: data.taskId, providerStatus: result.providerStatus, elapsedMs: result.elapsedMs });
-            }
+            console.error("[foxapi-backup]", { modelKey: data.modelKey, stage: "deduction_not_charged", taskId: data.taskId, providerStatus: result.providerStatus, elapsedMs: result.elapsedMs });
           }
         } catch {
           console.error("[foxapi-backup]", { modelKey: data.modelKey, stage: "deduction_exception", taskId: data.taskId, providerStatus: result.providerStatus, elapsedMs: result.elapsedMs });
@@ -2358,15 +2242,18 @@ export const checkImageStatus = createServerFn({ method: "POST" })
         cloudflareEnv,
       });
       if (data.modelName) {
-        await supabase.rpc("set_latest_history_image", {
-          _model: data.modelName,
-          _image_url: archivedUrl,
+        await attachImageToConsumedHistory({
+          db,
+          userId,
+          modelName: data.modelName,
+          imageUrl: archivedUrl,
+          historyId: chargeHistoryId,
         });
       }
       return { status: "success" as const, reason: null as null, imageUrl: archivedUrl, message: null as string | null, code: null as number | null, taskStatus: result.providerStatus, rawMsg: null as string | null, debug: null as null };
     }
 
-    const { global_api_key } = await loadGlobalConfig();
+    const { global_api_key } = await loadGlobalConfig(db);
     const pureApiKey = normalizeUpstreamApiKey(global_api_key);
     if (!pureApiKey) throw new Error("尚未配置全局 API Key，请联系管理员");
 
@@ -2406,19 +2293,19 @@ export const checkImageStatus = createServerFn({ method: "POST" })
       const url = extractImageUrl(j?.data) ?? extractImageUrl(j);
       if (url) {
         // 上游成功返回图片后再扣费记账，避免失败也扣点
+        let chargeHistoryId: string | null = null;
         if (data.modelKey && data.prompt) {
           try {
-            const { data: rpcRes, error: rpcErr } = await supabase.rpc("consume_credits_for_generation", {
-              _model_key: data.modelKey,
-              _prompt: data.prompt,
+            const charge = await db.consumeCreditsForGeneration({
+              userId,
+              modelKey: data.modelKey,
+              prompt: data.prompt,
+              idempotencyKey: `legacy-provider:${userId}:${data.modelKey}:${data.taskId}`,
             });
-            if (rpcErr) {
-              console.error("[checkImageStatus] 扣费失败", rpcErr);
+            if (charge.success) {
+              chargeHistoryId = charge.history_id;
             } else {
-              const row: any = Array.isArray(rpcRes) ? rpcRes?.[0] : rpcRes;
-              if (!row?.success) {
-                console.error("[checkImageStatus] 扣费返回失败", row);
-              }
+              console.error("[checkImageStatus] 扣费返回失败", { message: charge.message });
             }
           } catch (e) {
             console.error("[checkImageStatus] 扣费异常", e);
@@ -2431,9 +2318,12 @@ export const checkImageStatus = createServerFn({ method: "POST" })
           cloudflareEnv,
         });
         if (data.modelName) {
-          await supabase.rpc("set_latest_history_image", {
-            _model: data.modelName,
-            _image_url: archivedUrl,
+          await attachImageToConsumedHistory({
+            db,
+            userId,
+            modelName: data.modelName,
+            imageUrl: archivedUrl,
+            historyId: chargeHistoryId,
           });
         }
         return { status: "success" as const, reason: null as null, imageUrl: archivedUrl, message: null as string | null, code, taskStatus, rawMsg, debug: rawDebug };
@@ -2586,15 +2476,10 @@ const rechargePackageInput = z.object({
 });
 
 export const listVisibleRechargePackages = createServerFn({ method: "GET" })
-  .handler(async () => {
-    const { data, error } = await (supabaseAdmin as any)
-      .from("recharge_packages")
-      .select("id, title, subtitle, price, credits, features, badge_text, is_popular, highlighted, is_visible, sort_order, button_text, purchase_url, created_at, updated_at")
-      .eq("is_visible", true)
-      .order("sort_order", { ascending: true })
-      .order("created_at", { ascending: true });
-    if (error) throw new Error(error.message);
-    return (data ?? []).map(mapRechargePackage);
+  .handler(async ({ context }) => {
+    const db = getBusinessDb(context);
+    const rows = await db.listRechargePackages();
+    return rows.map(mapRechargePackage);
   });
 
 export const listAdminRechargePackages = createServerFn({ method: "POST" })
@@ -2615,6 +2500,7 @@ export const upsertAdminRechargePackage = createServerFn({ method: "POST" })
   .inputValidator((d) => rechargePackageInput.parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "upsertAdminRechargePackage");
     const title = data.title.trim();
     const price = data.price.trim();
     if (!title) throw new Error("套餐名称不能为空");
@@ -2660,6 +2546,7 @@ export const hideAdminRechargePackage = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "hideAdminRechargePackage");
     const { error } = await (supabaseAdmin as any)
       .from("recharge_packages")
       .update({ is_visible: false })
@@ -2673,6 +2560,7 @@ export const deleteAdminRechargePackage = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "deleteAdminRechargePackage");
     const { error } = await (supabaseAdmin as any)
       .from("recharge_packages")
       .delete()
@@ -2683,15 +2571,17 @@ export const deleteAdminRechargePackage = createServerFn({ method: "POST" })
 
 // --- Ads ---
 export const listActiveAds = createServerFn({ method: "GET" })
-  .handler(async () => {
-    const { data, error } = await supabaseAdmin
-      .from("ads")
-      .select("id, title, link_url, sort_order")
-      .eq("is_active", true)
-      .order("sort_order", { ascending: true })
-      .order("created_at", { ascending: false });
-    if (error) throw new Error(error.message);
-    return data ?? [];
+  .handler(async ({ context }) => {
+    const db = getBusinessDb(context);
+    const rows = await db.listAds();
+    return rows
+      .filter((row) => Boolean(row.is_active))
+      .map((row) => ({
+        id: String(row.id ?? ""),
+        title: String(row.title ?? ""),
+        link_url: (row.link_url ?? null) as string | null,
+        sort_order: Number(row.sort_order ?? 0),
+      }));
   });
 
 export const adminListAds = createServerFn({ method: "POST" })
@@ -2720,6 +2610,7 @@ export const adminUpsertAd = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminUpsertAd");
     if (data.id) {
       const { error } = await supabaseAdmin.from("ads").update({
         title: data.title, link_url: data.link_url ?? null,
@@ -2741,6 +2632,7 @@ export const adminDeleteAd = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminDeleteAd");
     const { error } = await supabaseAdmin.from("ads").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
@@ -2749,16 +2641,23 @@ export const adminDeleteAd = createServerFn({ method: "POST" })
 // --- Announcements / 公告通知 ---
 export const listAnnouncements = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async () => {
-    const { data, error } = await supabaseAdmin
-      .from("announcements")
-      .select("id, title, content, type, image_url, link_url, link_label, is_pinned, created_at")
-      .eq("is_published", true)
-      .order("is_pinned", { ascending: false })
-      .order("created_at", { ascending: false })
-      .limit(50);
-    if (error) throw new Error(error.message);
-    return data ?? [];
+  .handler(async ({ context }) => {
+    const db = getBusinessDb(context);
+    return (await db.listAnnouncements())
+      .filter((row) => Boolean(row.is_published))
+      .sort((a, b) => Number(Boolean(b.is_pinned)) - Number(Boolean(a.is_pinned)) || String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))
+      .slice(0, 50)
+      .map((row) => ({
+        id: String(row.id ?? ""),
+        title: String(row.title ?? ""),
+        content: String(row.content ?? ""),
+        type: String(row.type ?? "info"),
+        image_url: (row.image_url ?? null) as string | null,
+        link_url: (row.link_url ?? null) as string | null,
+        link_label: (row.link_label ?? null) as string | null,
+        is_pinned: Boolean(row.is_pinned),
+        created_at: String(row.created_at ?? ""),
+      }));
   });
 
 export const adminListAnnouncements = createServerFn({ method: "POST" })
@@ -2791,6 +2690,7 @@ export const adminUpsertAnnouncement = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminUpsertAnnouncement");
     const payload = {
       title: data.title,
       content: data.content ?? "",
@@ -2816,6 +2716,7 @@ export const adminDeleteAnnouncement = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminDeleteAnnouncement");
     const { error } = await supabaseAdmin.from("announcements").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
@@ -2886,13 +2787,8 @@ export const verifyAdminAccessPassword = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ password: z.string().min(1).max(200) }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    const { data: row, error } = await supabaseAdmin
-      .from("admin_settings")
-      .select("access_password")
-      .eq("id", 1)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    const current = (row?.access_password ?? "888888").trim();
+    const row = await getBusinessDb(context).getAdminSettings();
+    const current = String(row?.access_password ?? "888888").trim();
     if (data.password.trim() !== current) throw new Error("访问密码错误");
     return { ok: true };
   });
@@ -2901,12 +2797,7 @@ export const founderGetAccessPassword = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await assertFounder(context.userId);
-    const { data, error } = await supabaseAdmin
-      .from("admin_settings")
-      .select("access_password, updated_at")
-      .eq("id", 1)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
+    const data = await getBusinessDb(context).getAdminSettings();
     return { password: data?.access_password ?? "888888", updated_at: data?.updated_at ?? null };
   });
 
@@ -2915,6 +2806,7 @@ export const founderSetAccessPassword = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ password: z.string().min(1).max(200) }).parse(d))
   .handler(async ({ data, context }) => {
     await assertFounder(context.userId);
+    assertLovableOnlyLegacyWrite(context, "founderSetAccessPassword");
     const { error } = await supabaseAdmin
       .from("admin_settings")
       .upsert({ id: 1, access_password: data.password.trim(), updated_at: new Date().toISOString() });
@@ -2926,13 +2818,13 @@ export const founderSetAccessPassword = createServerFn({ method: "POST" })
 export const listStyleTemplates = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { supabase } = context;
-    const { data, error } = await supabase
-      .from("style_templates")
-      .select("id, name, image_url, sort_order")
-      .order("sort_order", { ascending: true });
-    if (error) throw new Error(error.message);
-    return data ?? [];
+    const db = getBusinessDb(context);
+    return (await db.listStyleTemplates()).map((row) => ({
+      id: String(row.id ?? ""),
+      name: String(row.name ?? ""),
+      image_url: (row.image_url ?? null) as string | null,
+      sort_order: Number(row.sort_order ?? 0),
+    }));
   });
 
 export const adminListStyleTemplates = createServerFn({ method: "POST" })
@@ -2959,6 +2851,7 @@ export const adminUpdateStyleTemplate = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminUpdateStyleTemplate");
     const { id, ...rest } = data;
     const patch: Record<string, unknown> = { ...rest, updated_at: new Date().toISOString() };
     const { error } = await supabaseAdmin.from("style_templates").update(patch as never).eq("id", id);
@@ -2977,6 +2870,7 @@ export const adminCreateStyleTemplate = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminCreateStyleTemplate");
     const id = `tpl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
     const { data: maxRow } = await supabaseAdmin
       .from("style_templates")
@@ -3001,6 +2895,7 @@ export const adminDeleteStyleTemplate = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ id: z.string().min(1).max(64) }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminDeleteStyleTemplate");
     const { error } = await supabaseAdmin.from("style_templates").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
@@ -3010,12 +2905,7 @@ export const adminGetSystemPrompt = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
-    const { data, error } = await supabaseAdmin
-      .from("admin_settings")
-      .select("system_prompt, updated_at")
-      .eq("id", 1)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
+    const data = await getBusinessDb(context).getAdminSettings();
     return { system_prompt: data?.system_prompt ?? "", updated_at: data?.updated_at ?? null };
   });
 
@@ -3024,6 +2914,7 @@ export const adminSetSystemPrompt = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ system_prompt: z.string().max(4000) }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminSetSystemPrompt");
     const { error } = await supabaseAdmin
       .from("admin_settings")
       .upsert({ id: 1, system_prompt: data.system_prompt, updated_at: new Date().toISOString() });
@@ -3033,12 +2924,8 @@ export const adminSetSystemPrompt = createServerFn({ method: "POST" })
 
 // Public: anyone (including unauthenticated) can fetch contact info to display
 export const getContactInfo = createServerFn({ method: "GET" })
-  .handler(async () => {
-    const { data } = await supabaseAdmin
-      .from("admin_settings")
-      .select("contact_wechat, contact_qq")
-      .eq("id", 1)
-      .maybeSingle();
+  .handler(async ({ context }) => {
+    const data = await getBusinessDb(context).getAdminSettings();
     return {
       wechat: ((data as any)?.contact_wechat ?? "") as string,
       qq: ((data as any)?.contact_qq ?? "") as string,
@@ -3049,12 +2936,7 @@ export const adminGetContactInfo = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
-    const { data, error } = await supabaseAdmin
-      .from("admin_settings")
-      .select("contact_wechat, contact_qq, updated_at")
-      .eq("id", 1)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
+    const data = await getBusinessDb(context).getAdminSettings();
     return {
       wechat: ((data as any)?.contact_wechat ?? "") as string,
       qq: ((data as any)?.contact_qq ?? "") as string,
@@ -3072,6 +2954,7 @@ export const adminSetContactInfo = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminSetContactInfo");
     const { error } = await supabaseAdmin
       .from("admin_settings")
       .upsert({
@@ -3167,14 +3050,10 @@ export const adminTestModel = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const startedAt = Date.now();
     await assertAdmin(context.userId);
+    const db = getBusinessDb(context);
 
-    const { base_url, global_api_key } = await loadGlobalConfig();
-    const { data: model, error: mErr } = await supabaseAdmin
-      .from("models_config")
-      .select("model_key, name, api_url, api_key, request_format, prompt_key, extra_params, is_enabled")
-      .eq("model_key", data.modelKey)
-      .maybeSingle();
-    if (mErr) throw new Error(mErr.message);
+    const { base_url, global_api_key } = await loadGlobalConfig(db);
+    const model = await getBusinessModel(db, data.modelKey, true);
     if (!model) throw new Error("模型不存在");
     if ((model as any).model_key === FOXAPI_BACKUP_MODEL_KEY) {
       const extraParams = sanitizeUpstreamExtraParams((model as any).extra_params) as Record<string, unknown>;

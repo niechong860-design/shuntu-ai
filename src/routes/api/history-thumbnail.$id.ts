@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { authenticateSupabaseRequest } from "@/lib/supabase-request-auth";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { createBusinessDatabaseFromContext } from "@/lib/business-database-router";
 
 const IMAGE_ORIGIN = "https://img.shuntu.cc";
 const GENERATED_PREFIX = "/generated/";
@@ -36,7 +37,7 @@ function getEdgeCache(): WorkerCache | undefined {
 export const Route = createFileRoute("/api/history-thumbnail/$id")({
   server: {
     handlers: {
-      GET: async ({ request, params }) => {
+      GET: async ({ request, params, context }) => {
         let auth: Awaited<ReturnType<typeof authenticateSupabaseRequest>>;
         try {
           auth = await authenticateSupabaseRequest(request);
@@ -44,12 +45,9 @@ export const Route = createFileRoute("/api/history-thumbnail/$id")({
           return new Response("Unauthorized", { status: 401 });
         }
 
-        const { data: row, error } = await supabaseAdmin
-          .from("generation_history")
-          .select("image_url, user_id")
-          .eq("id", params.id)
-          .maybeSingle();
-        if (error || !row) return new Response("Not found", { status: 404 });
+        const db = createBusinessDatabaseFromContext(context as Parameters<typeof createBusinessDatabaseFromContext>[0]);
+        const row = await db.getGenerationHistory({ historyId: params.id });
+        if (!row) return new Response("Not found", { status: 404 });
 
         if (row.user_id !== auth.userId) {
           const { data: roles } = await supabaseAdmin

@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { createBusinessDatabaseFromContext } from "@/lib/business-database-router";
 
 const MAX_NOTIFY_BODY_LENGTH = 32 * 1024;
 
@@ -15,7 +16,7 @@ function textResponse(body: string, status = 200) {
 export const Route = createFileRoute("/api/xunhupay/notify")({
   server: {
     handlers: {
-      POST: async ({ request }) => {
+      POST: async ({ request, context }) => {
         const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
         if (!contentType.startsWith("application/x-www-form-urlencoded")) {
           return textResponse("invalid content type", 415);
@@ -41,13 +42,9 @@ export const Route = createFileRoute("/api/xunhupay/notify")({
         const transactionId = fields.transaction_id ?? "";
         if (!/^[0-9A-Za-z_-]{1,128}$/.test(transactionId)) return textResponse("invalid transaction", 400);
 
-        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const { data: order, error: orderError } = await supabaseAdmin
-          .from("user_orders")
-          .select("amount, status, trade_no")
-          .eq("out_trade_no", outTradeNo)
-          .maybeSingle();
-        if (orderError || !order) return textResponse("order not found", 404);
+        const db = createBusinessDatabaseFromContext(context as Parameters<typeof createBusinessDatabaseFromContext>[0]);
+        const order = await db.getOrderByOutTradeNo(outTradeNo);
+        if (!order) return textResponse("order not found", 404);
 
         let expectedCents: number;
         let receivedCents: number;
@@ -69,20 +66,13 @@ export const Route = createFileRoute("/api/xunhupay/notify")({
         }
         if (order.status !== "pending") return textResponse("invalid order status", 409);
 
-        const { error: completeError } = await supabaseAdmin.rpc("complete_paid_order", {
-          _out_trade_no: outTradeNo,
-          _trade_no: transactionId,
-        });
-        if (completeError) {
+        const completedResult = await db.completePaidOrder({ outTradeNo, tradeNo: transactionId });
+        if (!completedResult.success) {
           console.error("[XunhuPay] complete order failed", { outTradeNo });
           return textResponse("temporary failure", 500);
         }
 
-        const { data: completed } = await supabaseAdmin
-          .from("user_orders")
-          .select("status, trade_no")
-          .eq("out_trade_no", outTradeNo)
-          .maybeSingle();
+        const completed = await db.getOrderByOutTradeNo(outTradeNo);
         if (completed?.status !== "paid" || completed.trade_no !== transactionId) {
           console.error("[XunhuPay] completed order verification failed", { outTradeNo });
           return textResponse("temporary failure", 500);

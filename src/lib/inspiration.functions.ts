@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { assertLovableOnlyLegacyWrite } from "@/lib/legacy-lovable-guard";
 
 export type CaseRow = {
   id: string;
@@ -162,7 +163,8 @@ export const getCaseDetail = createServerFn({ method: "POST" })
 export const incrementCaseView = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ caseId: z.string().uuid() }).parse(d))
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    assertLovableOnlyLegacyWrite(context, "incrementCaseView");
     await supabaseAdmin.rpc("increment_case_view", { _case_id: data.caseId });
     return { ok: true };
   });
@@ -172,6 +174,7 @@ export const toggleCaseLike = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ caseId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const uid = context.userId;
+    assertLovableOnlyLegacyWrite(context, "toggleCaseLike");
     const { data: existing } = await supabaseAdmin
       .from("case_likes")
       .select("case_id")
@@ -199,6 +202,7 @@ export const toggleCaseFavorite = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ caseId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const uid = context.userId;
+    assertLovableOnlyLegacyWrite(context, "toggleCaseFavorite");
     const { data: existing } = await supabaseAdmin
       .from("case_favorites")
       .select("case_id")
@@ -227,6 +231,7 @@ export const addCaseComment = createServerFn({ method: "POST" })
     z.object({ caseId: z.string().uuid(), content: z.string().min(1).max(500) }).parse(d),
   )
   .handler(async ({ data, context }) => {
+    assertLovableOnlyLegacyWrite(context, "addCaseComment");
     const { error } = await supabaseAdmin
       .from("case_comments")
       .insert({ case_id: data.caseId, user_id: context.userId, content: data.content });
@@ -252,6 +257,7 @@ export const publishCase = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    assertLovableOnlyLegacyWrite(context, "publishCase");
     const { data: row, error } = await supabaseAdmin
       .from("inspiration_cases")
       .insert({

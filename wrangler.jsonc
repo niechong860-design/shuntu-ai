@@ -17,5 +17,12 @@
       "binding": "SHUNTU_GENERATED_IMAGES",
       "bucket_name": "shuntu-generated-images"
     }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "shuntu-d1-local",
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
   ]
 }

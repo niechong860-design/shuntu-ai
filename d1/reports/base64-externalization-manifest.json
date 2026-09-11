@@ -1,0 +1,163 @@
+{
+  "version": 1,
+  "created_at": "2026-09-10T19:30:19.001Z",
+  "source_backup": "C:\\Users\\21972\\Desktop\\shuntu-db-backup\\2026-09-11_01-55-13",
+  "r2_namespace": "migration/legacy-generation-task-images/v1",
+  "r2_public_base_url": "https://img.shuntu.cc",
+  "records": [
+    {
+      "task_id": "085c3b79-9b1e-4f3e-b4be-18bca102d4d3",
+      "request_id": "task_20c1bb1e-e584-4ec9-a181-5bed37f9b90b",
+      "mime_type": "image/png",
+      "encoded_bytes": 7717108,
+      "decoded_bytes": 5787829,
+      "sha256": "aa26311804a79b73442700a230900b509edfdf5c3b8adb063c91f64e9626be58",
+      "staging_filename": "085c3b79-9b1e-4f3e-b4be-18bca102d4d3.png",
+      "proposed_r2_key": "migration/legacy-generation-task-images/v1/085c3b79-9b1e-4f3e-b4be-18bca102d4d3.png",
+      "proposed_public_url": "https://img.shuntu.cc/migration/legacy-generation-task-images/v1/085c3b79-9b1e-4f3e-b4be-18bca102d4d3.png"
+    },
+    {
+      "task_id": "11655210-ab45-48f5-80d7-f366d55fc165",
+      "request_id": "task_760924df-ef40-4610-a72f-297fd10985e2",
+      "mime_type": "image/png",
+      "encoded_bytes": 3203432,
+      "decoded_bytes": 2402572,
+      "sha256": "f0b2422a82669ee0960d81f9364bb11dd373a0088e6dbe3e4dc878414937d182",
+      "staging_filename": "11655210-ab45-48f5-80d7-f366d55fc165.png",
+      "proposed_r2_key": "migration/legacy-generation-task-images/v1/11655210-ab45-48f5-80d7-f366d55fc165.png",
+      "proposed_public_url": "https://img.shuntu.cc/migration/legacy-generation-task-images/v1/11655210-ab45-48f5-80d7-f366d55fc165.png"
+    },
+    {
+      "task_id": "1b251dbd-a6f9-4501-b1c1-e94cc9bb5b55",
+      "request_id": "task_588ff5c9-b954-4060-b74b-f24fe50491b1",
+      "mime_type": "image/png",
+      "encoded_bytes": 25858524,
+      "decoded_bytes": 19393892,
+      "sha256": "07d81c10403e031912b8b55e477494a76e890035a9c7d96fc822076aa5478fa5",
+      "staging_filename": "1b251dbd-a6f9-4501-b1c1-e94cc9bb5b55.png",
+      "proposed_r2_key": "migration/legacy-generation-task-images/v1/1b251dbd-a6f9-4501-b1c1-e94cc9bb5b55.png",
+      "proposed_public_url": "https://img.shuntu.cc/migration/legacy-generation-task-images/v1/1b251dbd-a6f9-4501-b1c1-e94cc9bb5b55.png"
+    },
+    {
+      "task_id": "279e0794-09a0-4f71-9a1f-ece3dd931f32",
+      "request_id": "task_4b464955-42ee-4d74-8ed4-1e9a5f8751d5",
+      "mime_type": "image/png",
+      "encoded_bytes": 8059200,
+      "decoded_bytes": 6044398,
+      "sha256": "2a970821254f14b9ca9e56add3b2afb75db71bd6d0cde7b7d084cc9b4f74e2fa",
+      "staging_filename": "279e0794-09a0-4f71-9a1f-ece3dd931f32.png",
+      "proposed_r2_key": "migration/legacy-generation-task-images/v1/279e0794-09a0-4f71-9a1f-ece3dd931f32.png",
+      "proposed_public_url": "https://img.shuntu.cc/migration/legacy-generation-task-images/v1/279e0794-09a0-4f71-9a1f-ece3dd931f32.png"
+    },
+    {
+      "task_id": "2a3a45d0-5442-4792-bc11-83fde7457d59",
+      "request_id": "task_aaa069e8-aaa3-4467-af5d-eded9b24c673",
+      "mime_type": "image/png",
+      "encoded_bytes": 9247404,
+      "decoded_bytes": 6935551,
+      "sha256": "9a3c4ceb5273726afc686fe90d55804b2d558d5f3076333ae8ce52dcd498d430",
+      "staging_filename": "2a3a45d0-5442-4792-bc11-83fde7457d59.png",
+      "proposed_r2_key": "migration/legacy-generation-task-images/v1/2a3a45d0-5442-4792-bc11-83fde7457d59.png",
+      "proposed_public_url": "https://img.shuntu.cc/migration/legacy-generation-task-images/v1/2a3a45d0-5442-4792-bc11-83fde7457d59.png"
+    },
+    {
+      "task_id": "76e54da6-931c-40fc-b3d5-7c163becea34",
+      "request_id": "task_b79a95a2-4af0-41ee-a216-a99449be49a8",
+      "mime_type": "image/png",
+      "encoded_bytes": 8224120,
+      "decoded_bytes": 6168088,
+      "sha256": "f9b1d9cde58c52630a92428511b5f20bc393cf776561f1fd4c9f0483ae2a322f",
+      "staging_filename": "76e54da6-931c-40fc-b3d5-7c163becea34.png",
+      "proposed_r2_key": "migration/legacy-generation-task-images/v1/76e54da6-931c-40fc-b3d5-7c163becea34.png",
+      "proposed_public_url": "https://img.shuntu.cc/migration/legacy-generation-task-images/v1/76e54da6-931c-40fc-b3d5-7c163becea34.png"
+    },
+    {
+      "task_id": "7a8057cf-6718-494c-a8d0-65defa0ede64",
+      "request_id": "task_8dc6174c-dde0-4e31-af53-a8fc87391ab7",
+      "mime_type": "image/png",
+      "encoded_bytes": 9976696,
+      "decoded_bytes": 7482520,
+      "sha256": "8fa858e149c8bb187b69b3b700c0ffe5fb00a2352da8b7c3f699f3c5671a9594",
+      "staging_filename": "7a8057cf-6718-494c-a8d0-65defa0ede64.png",
+      "proposed_r2_key": "migration/legacy-generation-task-images/v1/7a8057cf-6718-494c-a8d0-65defa0ede64.png",
+      "proposed_public_url": "https://img.shuntu.cc/migration/legacy-generation-task-images/v1/7a8057cf-6718-494c-a8d0-65defa0ede64.png"
+    },
+    {
+      "task_id": "8e244dbe-8551-457b-b74a-f3c6e9b1f820",
+      "request_id": "task_32eafe28-8b50-4c8b-9425-255c2d3c040b",
+      "mime_type": "image/png",
+      "encoded_bytes": 24541368,
+      "decoded_bytes": 18406025,
+      "sha256": "00e2456f1ee4ea3eadbba488e70981aeee049995099dffb568d3806b0402c5ba",
+      "staging_filename": "8e244dbe-8551-457b-b74a-f3c6e9b1f820.png",
+      "proposed_r2_key": "migration/legacy-generation-task-images/v1/8e244dbe-8551-457b-b74a-f3c6e9b1f820.png",
+      "proposed_public_url": "https://img.shuntu.cc/migration/legacy-generation-task-images/v1/8e244dbe-8551-457b-b74a-f3c6e9b1f820.png"
+    },
+    {
+      "task_id": "a16027d8-bfb3-4d16-b447-704ef9a1fd3d",
+      "request_id": "task_b2019ab6-9896-4b78-af4d-b8a3dbbb46d2",
+      "mime_type": "image/png",
+      "encoded_bytes": 2419056,
+      "decoded_bytes": 1814291,
+      "sha256": "6768cef594025ad30632f015771ca6614a43457be48386c8154a96066ef007c7",
+      "staging_filename": "a16027d8-bfb3-4d16-b447-704ef9a1fd3d.png",
+      "proposed_r2_key": "migration/legacy-generation-task-images/v1/a16027d8-bfb3-4d16-b447-704ef9a1fd3d.png",
+      "proposed_public_url": "https://img.shuntu.cc/migration/legacy-generation-task-images/v1/a16027d8-bfb3-4d16-b447-704ef9a1fd3d.png"
+    },
+    {
+      "task_id": "bcc91149-0a55-416c-91d8-c1dc0aefadcb",
+      "request_id": "task_85599b62-5374-487b-9d1c-e9b100b1cf6f",
+      "mime_type": "image/png",
+      "encoded_bytes": 2407164,
+      "decoded_bytes": 1805372,
+      "sha256": "3a669a5b1cf0380eb1ebde72540bf2e205da6dc87cc16bce05255664cc9fc85d",
+      "staging_filename": "bcc91149-0a55-416c-91d8-c1dc0aefadcb.png",
+      "proposed_r2_key": "migration/legacy-generation-task-images/v1/bcc91149-0a55-416c-91d8-c1dc0aefadcb.png",
+      "proposed_public_url": "https://img.shuntu.cc/migration/legacy-generation-task-images/v1/bcc91149-0a55-416c-91d8-c1dc0aefadcb.png"
+    },
+    {
+      "task_id": "bdc6266a-f2ae-4538-b43f-d95eb677b297",
+      "request_id": "task_a350bc1e-7c5b-4fb9-8bb2-77c34ef81fe1",
+      "mime_type": "image/png",
+      "encoded_bytes": 9736744,
+      "decoded_bytes": 7302558,
+      "sha256": "640d6632c3ba3a477162a1c2993f883baf9d4456de778398d4be1aa589d8f128",
+      "staging_filename": "bdc6266a-f2ae-4538-b43f-d95eb677b297.png",
+      "proposed_r2_key": "migration/legacy-generation-task-images/v1/bdc6266a-f2ae-4538-b43f-d95eb677b297.png",
+      "proposed_public_url": "https://img.shuntu.cc/migration/legacy-generation-task-images/v1/bdc6266a-f2ae-4538-b43f-d95eb677b297.png"
+    },
+    {
+      "task_id": "bf4c89d3-8469-444b-a49a-0da3827dbfa9",
+      "request_id": "task_1a2572e9-45fb-4984-9f1f-4af55b43f17b",
+      "mime_type": "image/png",
+      "encoded_bytes": 3288084,
+      "decoded_bytes": 2466061,
+      "sha256": "22bce34adb90cf9103860fc663150a671993850e863a4780949e8b6096d7feea",
+      "staging_filename": "bf4c89d3-8469-444b-a49a-0da3827dbfa9.png",
+      "proposed_r2_key": "migration/legacy-generation-task-images/v1/bf4c89d3-8469-444b-a49a-0da3827dbfa9.png",
+      "proposed_public_url": "https://img.shuntu.cc/migration/legacy-generation-task-images/v1/bf4c89d3-8469-444b-a49a-0da3827dbfa9.png"
+    },
+    {
+      "task_id": "d5ccf7dd-deb7-498b-b16d-0cffa147fc20",
+      "request_id": "task_de369dd6-638f-4fc8-854d-e41634201f39",
+      "mime_type": "image/png",
+      "encoded_bytes": 2280732,
+      "decoded_bytes": 1710548,
+      "sha256": "75f23f7c09c6ffce8612796a65072c16f64d5e966424eb969ca01a7e0de83ed6",
+      "staging_filename": "d5ccf7dd-deb7-498b-b16d-0cffa147fc20.png",
+      "proposed_r2_key": "migration/legacy-generation-task-images/v1/d5ccf7dd-deb7-498b-b16d-0cffa147fc20.png",
+      "proposed_public_url": "https://img.shuntu.cc/migration/legacy-generation-task-images/v1/d5ccf7dd-deb7-498b-b16d-0cffa147fc20.png"
+    },
+    {
+      "task_id": "ea504908-6dd2-425c-a955-9914e9554340",
+      "request_id": "task_5f496d80-b7b6-4d75-b903-e304e63b41e3",
+      "mime_type": "image/png",
+      "encoded_bytes": 10743512,
+      "decoded_bytes": 8057633,
+      "sha256": "852fb959293322a2763fb6f7637c4f4a51c86c6f6b17296b23796d7b21f08461",
+      "staging_filename": "ea504908-6dd2-425c-a955-9914e9554340.png",
+      "proposed_r2_key": "migration/legacy-generation-task-images/v1/ea504908-6dd2-425c-a955-9914e9554340.png",
+      "proposed_public_url": "https://img.shuntu.cc/migration/legacy-generation-task-images/v1/ea504908-6dd2-425c-a955-9914e9554340.png"
+    }
+  ]
+}

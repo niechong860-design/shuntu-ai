@@ -1,0 +1,1441 @@
+{
+  "generated_at": "2026-09-10T20:01:38.749Z",
+  "repo_root": "C:\\Users\\21972\\Desktop\\ai-shuntu-d1",
+  "source_backup": "C:\\Users\\21972\\Desktop\\shuntu-db-backup\\2026-09-11_01-55-13",
+  "recharge_packages": {
+    "frozen_source_present": false,
+    "code_reference_count": 23,
+    "code_references": [
+      {
+        "file": "src/components/admin/RechargePackagesPanel.tsx",
+        "line": 93
+      },
+      {
+        "file": "src/components/admin/RechargePackagesPanel.tsx",
+        "line": 94
+      },
+      {
+        "file": "src/integrations/supabase/types.ts",
+        "line": 545
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 2591
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 2605
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 2642
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 2650
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 2664
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 2677
+      },
+      {
+        "file": "src/lib/payment.functions.ts",
+        "line": 52
+      },
+      {
+        "file": "supabase/migrations/20260613090000_create_recharge_packages.sql",
+        "line": 5
+      },
+      {
+        "file": "supabase/migrations/20260613090000_create_recharge_packages.sql",
+        "line": 21
+      },
+      {
+        "file": "supabase/migrations/20260613090000_create_recharge_packages.sql",
+        "line": 22
+      },
+      {
+        "file": "supabase/migrations/20260613090000_create_recharge_packages.sql",
+        "line": 23
+      },
+      {
+        "file": "supabase/migrations/20260613090000_create_recharge_packages.sql",
+        "line": 30
+      },
+      {
+        "file": "supabase/migrations/20260613090000_create_recharge_packages.sql",
+        "line": 32
+      },
+      {
+        "file": "supabase/migrations/20260613090000_create_recharge_packages.sql",
+        "line": 36
+      },
+      {
+        "file": "supabase/migrations/20260613090000_create_recharge_packages.sql",
+        "line": 41
+      },
+      {
+        "file": "supabase/migrations/20260613090000_create_recharge_packages.sql",
+        "line": 42
+      },
+      {
+        "file": "supabase/migrations/20260613090000_create_recharge_packages.sql",
+        "line": 45
+      },
+      {
+        "file": "supabase/migrations/20260821090000_sync_recharge_package_credits.sql",
+        "line": 2
+      }
+    ],
+    "service_role_env_available": true,
+    "status": "SUPPLEMENTAL READ-ONLY SNAPSHOT",
+    "imported": false,
+    "row_count": 5,
+    "sha256": "2d5e0363da2dc4c2ba5ab707f75e1788238a600dfadfd06d440428a90f30bd03",
+    "field_overview": [
+      {
+        "column": "id",
+        "non_null_count": 5,
+        "max_length": 36,
+        "observed_types": [
+          "string"
+        ]
+      },
+      {
+        "column": "title",
+        "non_null_count": 5,
+        "max_length": 12,
+        "observed_types": [
+          "string"
+        ]
+      },
+      {
+        "column": "subtitle",
+        "non_null_count": 5,
+        "max_length": 36,
+        "observed_types": [
+          "string"
+        ]
+      },
+      {
+        "column": "price",
+        "non_null_count": 5,
+        "max_length": 4,
+        "observed_types": [
+          "string"
+        ]
+      },
+      {
+        "column": "credits",
+        "non_null_count": 5,
+        "max_length": 5,
+        "observed_types": [
+          "number"
+        ]
+      },
+      {
+        "column": "features",
+        "non_null_count": 5,
+        "max_length": 125,
+        "observed_types": [
+          "array"
+        ]
+      },
+      {
+        "column": "badge_text",
+        "non_null_count": 1,
+        "max_length": 12,
+        "observed_types": [
+          "string"
+        ]
+      },
+      {
+        "column": "is_popular",
+        "non_null_count": 5,
+        "max_length": 5,
+        "observed_types": [
+          "boolean"
+        ]
+      },
+      {
+        "column": "highlighted",
+        "non_null_count": 5,
+        "max_length": 5,
+        "observed_types": [
+          "boolean"
+        ]
+      },
+      {
+        "column": "is_visible",
+        "non_null_count": 5,
+        "max_length": 4,
+        "observed_types": [
+          "boolean"
+        ]
+      },
+      {
+        "column": "sort_order",
+        "non_null_count": 5,
+        "max_length": 2,
+        "observed_types": [
+          "number"
+        ]
+      },
+      {
+        "column": "button_text",
+        "non_null_count": 5,
+        "max_length": 12,
+        "observed_types": [
+          "string"
+        ]
+      },
+      {
+        "column": "purchase_url",
+        "non_null_count": 5,
+        "max_length": 34,
+        "observed_types": [
+          "string"
+        ]
+      },
+      {
+        "column": "created_at",
+        "non_null_count": 5,
+        "max_length": 32,
+        "observed_types": [
+          "string"
+        ]
+      },
+      {
+        "column": "updated_at",
+        "non_null_count": 5,
+        "max_length": 32,
+        "observed_types": [
+          "string"
+        ]
+      }
+    ],
+    "supplement_path": "C:\\Users\\21972\\Desktop\\ai-shuntu-d1\\d1\\staging\\source-supplements\\recharge_packages.json"
+  },
+  "sensitive_fields": [
+    {
+      "table": "admin_settings",
+      "column": "access_password",
+      "rows": 1,
+      "non_null_count": 1,
+      "max_length": 6
+    },
+    {
+      "table": "global_config",
+      "column": "global_api_key",
+      "rows": 1,
+      "non_null_count": 1,
+      "max_length": 26
+    },
+    {
+      "table": "models_config",
+      "column": "api_key",
+      "rows": 7,
+      "non_null_count": 5,
+      "max_length": 51
+    }
+  ],
+  "secrets_code_references": {
+    "reference_count": 138,
+    "references": [
+      {
+        "file": "src/components/admin/ModelsPanel.tsx",
+        "line": 23
+      },
+      {
+        "file": "src/components/admin/ModelsPanel.tsx",
+        "line": 39
+      },
+      {
+        "file": "src/components/admin/ModelsPanel.tsx",
+        "line": 52
+      },
+      {
+        "file": "src/components/admin/ModelsPanel.tsx",
+        "line": 102
+      },
+      {
+        "file": "src/components/admin/ModelsPanel.tsx",
+        "line": 150
+      },
+      {
+        "file": "src/components/admin/ModelsPanel.tsx",
+        "line": 180
+      },
+      {
+        "file": "src/components/admin/ModelsPanel.tsx",
+        "line": 270
+      },
+      {
+        "file": "src/components/admin/ModelsPanel.tsx",
+        "line": 271
+      },
+      {
+        "file": "src/components/admin/ModelsPanel.tsx",
+        "line": 425
+      },
+      {
+        "file": "src/components/admin/ModelsPanel.tsx",
+        "line": 547
+      },
+      {
+        "file": "src/components/admin/ModelsPanel.tsx",
+        "line": 549
+      },
+      {
+        "file": "src/components/admin/ModelsPanel.tsx",
+        "line": 559
+      },
+      {
+        "file": "src/integrations/supabase/types.ts",
+        "line": 17
+      },
+      {
+        "file": "src/integrations/supabase/types.ts",
+        "line": 19
+      },
+      {
+        "file": "src/integrations/supabase/types.ts",
+        "line": 27
+      },
+      {
+        "file": "src/integrations/supabase/types.ts",
+        "line": 35
+      },
+      {
+        "file": "src/integrations/supabase/types.ts",
+        "line": 380
+      },
+      {
+        "file": "src/integrations/supabase/types.ts",
+        "line": 383
+      },
+      {
+        "file": "src/integrations/supabase/types.ts",
+        "line": 389
+      },
+      {
+        "file": "src/integrations/supabase/types.ts",
+        "line": 395
+      },
+      {
+        "file": "src/integrations/supabase/types.ts",
+        "line": 461
+      },
+      {
+        "file": "src/integrations/supabase/types.ts",
+        "line": 463
+      },
+      {
+        "file": "src/integrations/supabase/types.ts",
+        "line": 480
+      },
+      {
+        "file": "src/integrations/supabase/types.ts",
+        "line": 497
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 383
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 388
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 390
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 398
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 404
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 405
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 419
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 436
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 449
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 463
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 474
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 481
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 499
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 814
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 1319
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 1321
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 1322
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 1332
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 1734
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 1735
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 1903
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 1905
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 1906
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 1911
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 1927
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 1933
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 1937
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 2038
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 2041
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 2042
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 2074
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 2369
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 2370
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 2890
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 2891
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 2895
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 2905
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 2906
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 2910
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 2919
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 2920
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 3014
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 3028
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 3038
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 3053
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 3076
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 3171
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 3173
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 3174
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 3207
+      },
+      {
+        "file": "src/lib/xunhupay.server.ts",
+        "line": 19
+      },
+      {
+        "file": "src/lib/xunhupay.server.ts",
+        "line": 20
+      },
+      {
+        "file": "src/lib/xunhupay.server.ts",
+        "line": 317
+      },
+      {
+        "file": "src/lib/xunhupay.server.ts",
+        "line": 337
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 182
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 190
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 198
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 201
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 203
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 208
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 209
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 212
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 244
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 271
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 274
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 276
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 279
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 282
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 284
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 312
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 314
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 319
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 322
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 325
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 327
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 340
+      },
+      {
+        "file": "supabase/migrations/20260524155938_b0073e9b-cafd-4004-983d-527d5fcde278.sql",
+        "line": 2
+      },
+      {
+        "file": "supabase/migrations/20260524155938_b0073e9b-cafd-4004-983d-527d5fcde278.sql",
+        "line": 5
+      },
+      {
+        "file": "supabase/migrations/20260524155938_b0073e9b-cafd-4004-983d-527d5fcde278.sql",
+        "line": 7
+      },
+      {
+        "file": "supabase/migrations/20260524155938_b0073e9b-cafd-4004-983d-527d5fcde278.sql",
+        "line": 25
+      },
+      {
+        "file": "supabase/migrations/20260524155938_b0073e9b-cafd-4004-983d-527d5fcde278.sql",
+        "line": 27
+      },
+      {
+        "file": "supabase/migrations/20260525040649_a1187710-4472-4005-97c0-26f4f5d5b5b9.sql",
+        "line": 1
+      },
+      {
+        "file": "supabase/migrations/20260525040649_a1187710-4472-4005-97c0-26f4f5d5b5b9.sql",
+        "line": 2
+      },
+      {
+        "file": "supabase/migrations/20260525040649_a1187710-4472-4005-97c0-26f4f5d5b5b9.sql",
+        "line": 3
+      },
+      {
+        "file": "supabase/migrations/20260525040649_a1187710-4472-4005-97c0-26f4f5d5b5b9.sql",
+        "line": 8
+      },
+      {
+        "file": "supabase/migrations/20260525040649_a1187710-4472-4005-97c0-26f4f5d5b5b9.sql",
+        "line": 9
+      },
+      {
+        "file": "supabase/migrations/20260527233738_c160a42b-9af3-4af9-94e0-86abbf90c668.sql",
+        "line": 1
+      },
+      {
+        "file": "supabase/migrations/20260605093000_finalize_generation_task_once.sql",
+        "line": 112
+      },
+      {
+        "file": "supabase/migrations/20260606090000_create_credit_usage_logs.sql",
+        "line": 94
+      },
+      {
+        "file": "supabase/migrations/20260606090000_create_credit_usage_logs.sql",
+        "line": 248
+      },
+      {
+        "file": "supabase/migrations/20260606110000_finalize_user_generation_task_once.sql",
+        "line": 65
+      },
+      {
+        "file": "scripts/backup-shuntu-db.mjs",
+        "line": 16
+      },
+      {
+        "file": "scripts/backup-shuntu-db.mjs",
+        "line": 22
+      },
+      {
+        "file": "scripts/backup-shuntu-db.mjs",
+        "line": 24
+      }
+    ]
+  },
+  "auth_dependency": {
+    "still_depends_on_supabase": true,
+    "counts": {
+      "supabase.auth": 13,
+      "getUser": 0,
+      "getSession": 4,
+      "onAuthStateChange": 1,
+      "getClaims": 1,
+      "auth.uid": 102
+    },
+    "reference_count": 121,
+    "references": [
+      {
+        "file": "src/components/auth/AuthModal.tsx",
+        "line": 280
+      },
+      {
+        "file": "src/components/auth/AuthModal.tsx",
+        "line": 288
+      },
+      {
+        "file": "src/components/auth/AuthModal.tsx",
+        "line": 298
+      },
+      {
+        "file": "src/components/auth/AuthModal.tsx",
+        "line": 316
+      },
+      {
+        "file": "src/components/auth/SettingsDialog.tsx",
+        "line": 33
+      },
+      {
+        "file": "src/components/auth/SettingsDialog.tsx",
+        "line": 38
+      },
+      {
+        "file": "src/components/studio/Canvas.tsx",
+        "line": 107
+      },
+      {
+        "file": "src/components/studio/Canvas.tsx",
+        "line": 916
+      },
+      {
+        "file": "src/hooks/use-auth.tsx",
+        "line": 35
+      },
+      {
+        "file": "src/hooks/use-auth.tsx",
+        "line": 43
+      },
+      {
+        "file": "src/hooks/use-auth.tsx",
+        "line": 56
+      },
+      {
+        "file": "src/integrations/supabase/auth-attacher.ts",
+        "line": 9
+      },
+      {
+        "file": "src/lib/supabase-request-auth.ts",
+        "line": 27
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 30
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 32
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 34
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 79
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 80
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 84
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 87
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 89
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 107
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 108
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 117
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 174
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 176
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 179
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 180
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 205
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 206
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 228
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 286
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 287
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 305
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 306
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 329
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 330
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 358
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 359
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 408
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 410
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 413
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 414
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 417
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 433
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 435
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 437
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 449
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 451
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 453
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 470
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 473
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 549
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 576
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 579
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 582
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 583
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 586
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 590
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 593
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 597
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 600
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 601
+      },
+      {
+        "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+        "line": 604
+      },
+      {
+        "file": "supabase/migrations/20260524190713_c199bbdc-2e48-4157-b649-40cbcc682304.sql",
+        "line": 23
+      },
+      {
+        "file": "supabase/migrations/20260524190713_c199bbdc-2e48-4157-b649-40cbcc682304.sql",
+        "line": 28
+      },
+      {
+        "file": "supabase/migrations/20260524190713_c199bbdc-2e48-4157-b649-40cbcc682304.sql",
+        "line": 33
+      },
+      {
+        "file": "supabase/migrations/20260524190713_c199bbdc-2e48-4157-b649-40cbcc682304.sql",
+        "line": 34
+      },
+      {
+        "file": "supabase/migrations/20260524231043_3c34c12a-b4e5-4f9d-8cca-09c8c59b2fe5.sql",
+        "line": 21
+      },
+      {
+        "file": "supabase/migrations/20260524231043_3c34c12a-b4e5-4f9d-8cca-09c8c59b2fe5.sql",
+        "line": 26
+      },
+      {
+        "file": "supabase/migrations/20260524231043_3c34c12a-b4e5-4f9d-8cca-09c8c59b2fe5.sql",
+        "line": 27
+      },
+      {
+        "file": "supabase/migrations/20260524231043_3c34c12a-b4e5-4f9d-8cca-09c8c59b2fe5.sql",
+        "line": 34
+      },
+      {
+        "file": "supabase/migrations/20260524231043_3c34c12a-b4e5-4f9d-8cca-09c8c59b2fe5.sql",
+        "line": 44
+      },
+      {
+        "file": "supabase/migrations/20260524235749_5bf7dbc6-a2fa-468d-b20f-e9cbd3eac1db.sql",
+        "line": 10
+      },
+      {
+        "file": "supabase/migrations/20260524235749_5bf7dbc6-a2fa-468d-b20f-e9cbd3eac1db.sql",
+        "line": 28
+      },
+      {
+        "file": "supabase/migrations/20260524235749_5bf7dbc6-a2fa-468d-b20f-e9cbd3eac1db.sql",
+        "line": 32
+      },
+      {
+        "file": "supabase/migrations/20260524235749_5bf7dbc6-a2fa-468d-b20f-e9cbd3eac1db.sql",
+        "line": 36
+      },
+      {
+        "file": "supabase/migrations/20260525031740_b74e5f31-f43d-4c60-8f5b-c42aebefa3f1.sql",
+        "line": 9
+      },
+      {
+        "file": "supabase/migrations/20260525031740_b74e5f31-f43d-4c60-8f5b-c42aebefa3f1.sql",
+        "line": 13
+      },
+      {
+        "file": "supabase/migrations/20260525031740_b74e5f31-f43d-4c60-8f5b-c42aebefa3f1.sql",
+        "line": 14
+      }
+    ],
+    "conclusion": "YES - D1 data migration alone still depends on Supabase Auth for sessions, client auth flows, bearer claims, and legacy auth.uid SQL/RLS/RPC logic."
+  },
+  "storage_dependency": {
+    "buckets": [
+      {
+        "bucket": "reference-images",
+        "reference_count": 13,
+        "still_production_read": true,
+        "still_production_write": true,
+        "already_replaced_by_r2": false,
+        "references": [
+          {
+            "file": "src/components/studio/ControlPanel.tsx",
+            "line": 364
+          },
+          {
+            "file": "src/components/studio/ControlPanel.tsx",
+            "line": 372
+          },
+          {
+            "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+            "line": 570
+          },
+          {
+            "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+            "line": 590
+          },
+          {
+            "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+            "line": 593
+          },
+          {
+            "file": "supabase/migrations/20260524235749_5bf7dbc6-a2fa-468d-b20f-e9cbd3eac1db.sql",
+            "line": 1
+          },
+          {
+            "file": "supabase/migrations/20260524235749_5bf7dbc6-a2fa-468d-b20f-e9cbd3eac1db.sql",
+            "line": 2
+          },
+          {
+            "file": "supabase/migrations/20260524235749_5bf7dbc6-a2fa-468d-b20f-e9cbd3eac1db.sql",
+            "line": 4
+          },
+          {
+            "file": "supabase/migrations/20260524235749_5bf7dbc6-a2fa-468d-b20f-e9cbd3eac1db.sql",
+            "line": 7
+          },
+          {
+            "file": "supabase/migrations/20260524235749_5bf7dbc6-a2fa-468d-b20f-e9cbd3eac1db.sql",
+            "line": 10
+          },
+          {
+            "file": "supabase/migrations/20260525031740_b74e5f31-f43d-4c60-8f5b-c42aebefa3f1.sql",
+            "line": 20
+          },
+          {
+            "file": "supabase/migrations/20260525031740_b74e5f31-f43d-4c60-8f5b-c42aebefa3f1.sql",
+            "line": 25
+          }
+        ]
+      },
+      {
+        "bucket": "avatars",
+        "reference_count": 13,
+        "still_production_read": true,
+        "still_production_write": true,
+        "already_replaced_by_r2": false,
+        "references": [
+          {
+            "file": "src/components/auth/SettingsDialog.tsx",
+            "line": 53
+          },
+          {
+            "file": "src/components/auth/SettingsDialog.tsx",
+            "line": 55
+          },
+          {
+            "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+            "line": 569
+          },
+          {
+            "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+            "line": 574
+          },
+          {
+            "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+            "line": 576
+          },
+          {
+            "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+            "line": 577
+          },
+          {
+            "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+            "line": 579
+          },
+          {
+            "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+            "line": 580
+          },
+          {
+            "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+            "line": 582
+          },
+          {
+            "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+            "line": 583
+          },
+          {
+            "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+            "line": 584
+          },
+          {
+            "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+            "line": 586
+          }
+        ]
+      },
+      {
+        "bucket": "admin-assets",
+        "reference_count": 17,
+        "still_production_read": true,
+        "still_production_write": true,
+        "already_replaced_by_r2": false,
+        "references": [
+          {
+            "file": "src/components/admin/AnnouncementsPanel.tsx",
+            "line": 54
+          },
+          {
+            "file": "src/components/admin/AnnouncementsPanel.tsx",
+            "line": 59
+          },
+          {
+            "file": "src/components/admin/StyleTemplatesPanel.tsx",
+            "line": 280
+          },
+          {
+            "file": "src/components/admin/StyleTemplatesPanel.tsx",
+            "line": 283
+          },
+          {
+            "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+            "line": 571
+          },
+          {
+            "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+            "line": 597
+          },
+          {
+            "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+            "line": 600
+          },
+          {
+            "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+            "line": 601
+          },
+          {
+            "file": "supabase/migrations/20260524145741_15d17e93-4401-4e7c-9ef3-30b90581c56b.sql",
+            "line": 604
+          },
+          {
+            "file": "supabase/migrations/20260524235749_5bf7dbc6-a2fa-468d-b20f-e9cbd3eac1db.sql",
+            "line": 12
+          },
+          {
+            "file": "supabase/migrations/20260524235749_5bf7dbc6-a2fa-468d-b20f-e9cbd3eac1db.sql",
+            "line": 15
+          },
+          {
+            "file": "supabase/migrations/20260525043855_ebc36bb5-b794-4d12-9e31-66517338e91e.sql",
+            "line": 1
+          },
+          {
+            "file": "supabase/migrations/20260525043855_ebc36bb5-b794-4d12-9e31-66517338e91e.sql",
+            "line": 14
+          },
+          {
+            "file": "supabase/migrations/20260525043855_ebc36bb5-b794-4d12-9e31-66517338e91e.sql",
+            "line": 21
+          },
+          {
+            "file": "supabase/migrations/20260525043855_ebc36bb5-b794-4d12-9e31-66517338e91e.sql",
+            "line": 28
+          },
+          {
+            "file": "supabase/migrations/20260525043855_ebc36bb5-b794-4d12-9e31-66517338e91e.sql",
+            "line": 34
+          }
+        ]
+      },
+      {
+        "bucket": "case-images",
+        "reference_count": 14,
+        "still_production_read": true,
+        "still_production_write": true,
+        "already_replaced_by_r2": false,
+        "references": [
+          {
+            "file": "src/components/inspiration/InspirationPage.tsx",
+            "line": 539
+          },
+          {
+            "file": "src/components/inspiration/InspirationPage.tsx",
+            "line": 546
+          },
+          {
+            "file": "src/lib/foxapi-backup.ts",
+            "line": 24
+          },
+          {
+            "file": "supabase/migrations/20260524235749_5bf7dbc6-a2fa-468d-b20f-e9cbd3eac1db.sql",
+            "line": 19
+          },
+          {
+            "file": "supabase/migrations/20260524235749_5bf7dbc6-a2fa-468d-b20f-e9cbd3eac1db.sql",
+            "line": 24
+          },
+          {
+            "file": "supabase/migrations/20260524235749_5bf7dbc6-a2fa-468d-b20f-e9cbd3eac1db.sql",
+            "line": 28
+          },
+          {
+            "file": "supabase/migrations/20260524235749_5bf7dbc6-a2fa-468d-b20f-e9cbd3eac1db.sql",
+            "line": 32
+          },
+          {
+            "file": "supabase/migrations/20260524235749_5bf7dbc6-a2fa-468d-b20f-e9cbd3eac1db.sql",
+            "line": 36
+          },
+          {
+            "file": "supabase/migrations/20260525031740_b74e5f31-f43d-4c60-8f5b-c42aebefa3f1.sql",
+            "line": 2
+          },
+          {
+            "file": "supabase/migrations/20260525031740_b74e5f31-f43d-4c60-8f5b-c42aebefa3f1.sql",
+            "line": 9
+          },
+          {
+            "file": "supabase/migrations/20260525031740_b74e5f31-f43d-4c60-8f5b-c42aebefa3f1.sql",
+            "line": 13
+          },
+          {
+            "file": "supabase/migrations/20260525031740_b74e5f31-f43d-4c60-8f5b-c42aebefa3f1.sql",
+            "line": 14
+          },
+          {
+            "file": "supabase/migrations/20260525031740_b74e5f31-f43d-4c60-8f5b-c42aebefa3f1.sql",
+            "line": 18
+          }
+        ]
+      }
+    ],
+    "storage_reference_count": 8,
+    "storage_references": [
+      {
+        "file": "src/components/admin/AnnouncementsPanel.tsx",
+        "line": 54
+      },
+      {
+        "file": "src/components/admin/AnnouncementsPanel.tsx",
+        "line": 59
+      },
+      {
+        "file": "src/components/admin/StyleTemplatesPanel.tsx",
+        "line": 283
+      },
+      {
+        "file": "src/components/auth/SettingsDialog.tsx",
+        "line": 53
+      },
+      {
+        "file": "src/components/auth/SettingsDialog.tsx",
+        "line": 55
+      },
+      {
+        "file": "src/components/inspiration/InspirationPage.tsx",
+        "line": 546
+      },
+      {
+        "file": "src/lib/foxapi-backup.ts",
+        "line": 220
+      },
+      {
+        "file": "src/lib/foxapi-backup.ts",
+        "line": 229
+      }
+    ],
+    "r2_reference_count": 21,
+    "r2_references": [
+      {
+        "file": "src/components/studio/Canvas.tsx",
+        "line": 23
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 14
+      },
+      {
+        "file": "src/lib/admin.functions.ts",
+        "line": 528
+      },
+      {
+        "file": "src/lib/generated-image-preview.ts",
+        "line": 4
+      },
+      {
+        "file": "src/lib/r2-image-archive.ts",
+        "line": 13
+      },
+      {
+        "file": "src/lib/r2-image-archive.ts",
+        "line": 14
+      },
+      {
+        "file": "src/lib/r2-image-archive.ts",
+        "line": 27
+      },
+      {
+        "file": "src/lib/r2-image-archive.ts",
+        "line": 54
+      },
+      {
+        "file": "src/lib/r2-image-archive.ts",
+        "line": 55
+      },
+      {
+        "file": "src/lib/r2-image-archive.ts",
+        "line": 56
+      },
+      {
+        "file": "src/lib/r2-image-archive.ts",
+        "line": 57
+      },
+      {
+        "file": "src/lib/r2-image-archive.ts",
+        "line": 58
+      },
+      {
+        "file": "src/lib/r2-image-archive.ts",
+        "line": 80
+      },
+      {
+        "file": "src/lib/r2-image-archive.ts",
+        "line": 134
+      },
+      {
+        "file": "src/lib/r2-image-archive.ts",
+        "line": 165
+      },
+      {
+        "file": "src/lib/r2-image-archive.ts",
+        "line": 166
+      },
+      {
+        "file": "src/routes/api/download-image.ts",
+        "line": 4
+      },
+      {
+        "file": "src/routes/api/generated-preview.ts",
+        "line": 4
+      },
+      {
+        "file": "src/routes/api/history-thumbnail.$id.ts",
+        "line": 6
+      },
+      {
+        "file": "wrangler.jsonc",
+        "line": 13
+      },
+      {
+        "file": "wrangler.jsonc",
+        "line": 17
+      }
+    ],
+    "generated_images_replaced_by_r2": true
+  },
+  "prohibited_operations": {
+    "remote_d1_created_or_written": false,
+    "production_r2_written": false,
+    "supabase_written": false,
+    "lovable_written": false,
+    "auth_migrated": false,
+    "provider_modified": false
+  }
+}
