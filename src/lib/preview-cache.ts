@@ -12,6 +12,7 @@ type PreviewCacheEntry = {
 
 const entries = new Map<string, PreviewCacheEntry>();
 const inFlight = new Map<string, Promise<string>>();
+const listeners = new Map<string, Set<(blobUrl: string) => void>>();
 const userGenerations = new Map<string, number>();
 let touchCounter = 0;
 let cacheEpoch = 0;
@@ -44,6 +45,19 @@ export function getCachedPreview(userId: string, historyId: string): string | nu
   return entry.blobUrl;
 }
 
+export function subscribePreview(userId: string, historyId: string, listener: (blobUrl: string) => void): () => void {
+  const key = getKey(userId, historyId);
+  const cached = entries.get(key)?.blobUrl;
+  if (cached) listener(cached);
+  const keyListeners = listeners.get(key) ?? new Set<(blobUrl: string) => void>();
+  keyListeners.add(listener);
+  listeners.set(key, keyListeners);
+  return () => {
+    keyListeners.delete(listener);
+    if (keyListeners.size === 0) listeners.delete(key);
+  };
+}
+
 export async function loadHistoryPreview(userId: string, historyId: string): Promise<string> {
   const cached = getCachedPreview(userId, historyId);
   if (cached) return cached;
@@ -74,6 +88,7 @@ export async function loadHistoryPreview(userId: string, historyId: string): Pro
 
     entries.set(key, { userId, historyId, blobUrl, touchedAt: ++touchCounter });
     evictIfNeeded();
+    listeners.get(key)?.forEach((listener) => listener(blobUrl));
     return blobUrl;
   })();
   inFlight.set(key, request);
@@ -91,6 +106,7 @@ export function clearPreviewCacheForUser(userId: string) {
     if (entry.userId !== userId) continue;
     entries.delete(key);
     URL.revokeObjectURL(entry.blobUrl);
+    listeners.delete(key);
   }
   for (const key of inFlight.keys()) {
     if (key.startsWith(`${userId}:`)) inFlight.delete(key);
@@ -102,5 +118,6 @@ export function clearAllPreviewCache() {
   for (const entry of entries.values()) URL.revokeObjectURL(entry.blobUrl);
   entries.clear();
   inFlight.clear();
+  listeners.clear();
   userGenerations.clear();
 }
