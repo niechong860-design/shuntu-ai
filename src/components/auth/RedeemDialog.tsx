@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Gift, Sparkles, Check, Zap, Crown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PaymentViewOrder, XunhuPayStatus } from "@/components/payment/XunhuPayStatus";
+import { PREVIEW_RECHARGE_PACKAGES } from "@/lib/recharge-packages";
 
 type Plan = {
   id: string;
@@ -24,65 +25,14 @@ type Plan = {
   badgeText?: string;
   buttonText: string;
   icon?: React.ReactNode;
+  doubleCredits?: boolean;
+  note?: string;
 };
 
-const PLANS: Plan[] = [
-  {
-    id: "trial",
-    title: "试用套餐",
-    price: "9.9",
-    subtitle: "适合偶尔体验的尝鲜用户",
-    credits: 1000,
-    features: ["1,000 积分", "基础图像模型", "标准排队速度"],
-    purchaseUrl: "https://www.kufaka.com/item/dhmljk",
-    buttonText: "立即购买",
-  },
-  {
-    id: "starter",
-    title: "入门套餐",
-    price: "29.9",
-    subtitle: "轻量级创作者的首选",
-    credits: 3180,
-    features: ["3,180 积分", "含180赠送积分", "所有基础模型", "标准排队速度"],
-    purchaseUrl: "https://www.kufaka.com/item/661nyd",
-    buttonText: "立即购买",
-  },
-  {
-    id: "core",
-    title: "主力套餐",
-    price: "69.9",
-    subtitle: "性价比之王，适合日常创作",
-    credits: 7560,
-    features: ["7,560 积分", "含560赠送积分", "解锁高级模型 (Wan2.6/Pro)", "优先生成队列"],
-    highlighted: true,
-    isPopular: true,
-    badgeText: "最受欢迎",
-    icon: <Zap className="h-4 w-4" />,
-    purchaseUrl: "https://www.kufaka.com/item/2tig9e",
-    buttonText: "立即购买",
-  },
-  {
-    id: "pro",
-    title: "专业套餐",
-    price: "129",
-    subtitle: "为高频重度使用者打造",
-    credits: 14170,
-    features: ["14,170 积分", "含1170赠送积分", "全模型无限制访问", "极速极享队列", "专属客服支持"],
-    purchaseUrl: "https://www.kufaka.com/item/fk4jmd",
-    buttonText: "立即购买",
-  },
-  {
-    id: "premium",
-    title: "高端套餐",
-    price: "199",
-    subtitle: "工作室与商业变现必备",
-    credits: 22000,
-    features: ["22,000 积分", "含2000赠送积分", "最高优先级算力", "支持 API 批量调用", "客服24小时在线服务"],
-    icon: <Crown className="h-4 w-4" />,
-    purchaseUrl: "https://www.kufaka.com/item/9a7qf1",
-    buttonText: "立即购买",
-  },
-];
+const PLANS: Plan[] = PREVIEW_RECHARGE_PACKAGES.map((plan) => ({
+  ...plan,
+  icon: plan.doubleCredits ? <Crown className="h-4 w-4" /> : plan.highlighted ? <Zap className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />,
+}));
 
 type RechargePackageRow = {
   id: string;
@@ -96,6 +46,8 @@ type RechargePackageRow = {
   highlighted?: boolean;
   buttonText?: string;
   purchaseUrl?: string;
+  doubleCredits?: boolean;
+  note?: string;
 };
 
 function toPlan(row: RechargePackageRow): Plan {
@@ -111,6 +63,9 @@ function toPlan(row: RechargePackageRow): Plan {
     highlighted: Boolean(row.highlighted),
     buttonText: row.buttonText || "立即购买",
     purchaseUrl: row.purchaseUrl ?? "",
+    doubleCredits: Boolean(row.doubleCredits),
+    note: row.note,
+    icon: row.doubleCredits ? <Crown className="h-4 w-4" /> : row.highlighted ? <Zap className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />,
   };
 }
 
@@ -174,8 +129,8 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         return;
       }
       setPaymentOrder(result);
-    } catch {
-      toast.error("创建支付失败，请稍后重试");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "创建支付失败，请稍后重试");
     } finally {
       setCreatingPlanId(null);
     }
@@ -217,7 +172,7 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             <XunhuPayStatus order={paymentOrder} onBack={() => setPaymentOrder(null)} />
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-3 pt-2 sm:grid-cols-2 md:gap-4 lg:grid-cols-5">
+          <div className="grid grid-cols-1 gap-3 pt-2 sm:grid-cols-2 md:gap-3 lg:grid-cols-3 xl:grid-cols-6">
             {plans.map((p) => (
               <PlanCard
                 key={p.id}
@@ -296,28 +251,31 @@ function PlanCard({
   disabled: boolean;
 }) {
   const highlight = plan.highlighted || plan.isPopular;
+  const enterprise = plan.doubleCredits;
   return (
     <div
       className={cn(
-        "group relative flex flex-col rounded-2xl p-4 transition-all duration-300 md:p-5",
+        "group relative flex min-w-0 flex-col rounded-xl border p-3 transition-all duration-300 md:p-4",
         "hover:-translate-y-1",
         highlight
-          ? "bg-zinc-900 shadow-[0_0_28px_rgba(16,185,129,0.28)] md:scale-[1.03] lg:scale-[1.06]"
-          : "border border-zinc-800 bg-zinc-900/50 hover:border-zinc-600 hover:shadow-lg hover:shadow-black/30",
+          ? "border-emerald-400/80 bg-zinc-900 shadow-[0_0_28px_rgba(16,185,129,0.28)]"
+          : enterprise
+            ? "border-amber-400/50 bg-zinc-900/80 shadow-[0_0_20px_rgba(251,191,36,0.12)] hover:border-amber-300/80"
+            : "border-zinc-800 bg-zinc-900/50 hover:border-zinc-600 hover:shadow-lg hover:shadow-black/30",
       )}
     >
       {/* 高亮卡片：径向翡翠光晕 + 2px 渐变描边 */}
       {highlight && (
         <>
           <div
-            className="pointer-events-none absolute inset-0 rounded-2xl"
+            className="pointer-events-none absolute inset-0 rounded-xl"
             style={{
               background:
                 "radial-gradient(120% 80% at 50% 0%, rgba(16,185,129,0.18) 0%, rgba(16,185,129,0.06) 35%, rgba(0,0,0,0) 70%)",
             }}
           />
           <div
-            className="pointer-events-none absolute inset-0 rounded-2xl p-[2px] bg-gradient-to-br from-emerald-400 to-cyan-500"
+            className="pointer-events-none absolute inset-0 rounded-xl p-[2px] bg-gradient-to-br from-emerald-400 to-cyan-500"
             style={{
               WebkitMask:
                 "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
@@ -330,8 +288,17 @@ function PlanCard({
 
       {/* 角标：右上角 */}
       {(plan.isPopular || plan.badgeText) && (
-        <div className="absolute -top-2.5 right-2 z-10 rounded-full bg-gradient-to-r from-emerald-400 to-cyan-500 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-[0_4px_14px_rgba(16,185,129,0.45)] md:-right-2">
+        <div className={cn(
+          "absolute -top-2.5 right-2 z-10 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wider shadow-[0_4px_14px_rgba(16,185,129,0.35)] md:-right-2",
+          enterprise ? "bg-amber-400 text-zinc-950 shadow-[0_4px_14px_rgba(251,191,36,0.25)]" : "bg-gradient-to-r from-emerald-400 to-cyan-500 text-white",
+        )}>
           {plan.badgeText || "最受欢迎"}
+        </div>
+      )}
+
+      {enterprise && (
+        <div className="relative mt-2 inline-flex w-fit items-center gap-1 rounded-md border border-amber-400/30 bg-amber-400/10 px-2 py-1 text-[10px] font-semibold text-amber-200">
+          <Crown className="h-3 w-3" />积分加倍
         </div>
       )}
 
@@ -341,12 +308,12 @@ function PlanCard({
       </div>
       <p className="relative mt-1 text-xs text-zinc-400">{plan.subtitle}</p>
 
-      <div className="relative mt-4 flex items-baseline gap-1">
+      <div className={cn("relative flex items-baseline gap-1", enterprise ? "mt-3" : "mt-4")}>
         <span className={cn("text-sm", highlight ? "text-zinc-300" : "text-zinc-500")}>¥</span>
         <span
           className={cn(
-            "font-bold tabular-nums leading-none",
-            highlight ? "text-4xl text-white drop-shadow-[0_2px_8px_rgba(16,185,129,0.35)] md:text-5xl" : "text-4xl text-zinc-100",
+            "text-3xl font-bold tabular-nums leading-none",
+            highlight ? "text-white drop-shadow-[0_2px_8px_rgba(16,185,129,0.35)] md:text-4xl" : enterprise ? "text-amber-100" : "text-zinc-100",
           )}
         >
           {plan.price}
@@ -362,6 +329,8 @@ function PlanCard({
         ))}
       </ul>
 
+      {plan.note && <p className="relative mt-3 text-[11px] leading-4 text-emerald-300">{plan.note}</p>}
+
       <Button
         onClick={() => onBuy(plan.id)}
         disabled={disabled}
@@ -369,7 +338,9 @@ function PlanCard({
           "relative mt-5 w-full font-semibold",
           highlight
             ? "bg-emerald-500 text-white shadow-[0_0_18px_rgba(16,185,129,0.45)] hover:bg-emerald-400"
-            : "border border-zinc-700 bg-zinc-800/60 text-zinc-100 shadow-none hover:border-emerald-500/60 hover:bg-zinc-800",
+            : enterprise
+              ? "border border-amber-400/40 bg-amber-400/10 text-amber-100 shadow-none hover:border-amber-300/80 hover:bg-amber-400/20"
+              : "border border-zinc-700 bg-zinc-800/60 text-zinc-100 shadow-none hover:border-emerald-500/60 hover:bg-zinc-800",
         )}
       >
         {loading ? "正在创建支付..." : plan.buttonText}

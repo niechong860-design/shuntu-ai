@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { PREVIEW_RECHARGE_PACKAGES } from "@/lib/recharge-packages";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { checkPromptSafety, SAFETY_SERVER_BLOCK_MESSAGE } from "@/lib/promptSafety";
 import { pollFoxApiTask, submitFoxApiImageEdit, submitFoxApiImageGenerationTask } from "@/lib/foxapi-backup";
@@ -2482,9 +2483,9 @@ const rechargePackageInput = z.object({
 
 export const listVisibleRechargePackages = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
-    const db = getBusinessDb(context);
-    const rows = await db.listRechargePackages();
-    return rows.map(mapRechargePackage);
+    // This branch is the candidate source for the 0% Version Preview. It does
+    // not read or write production D1 package rows.
+    return PREVIEW_RECHARGE_PACKAGES;
   });
 
 export const listAdminRechargePackages = createServerFn({ method: "POST" })
