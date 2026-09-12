@@ -1,5 +1,3 @@
-BEGIN;
-
 UPDATE recharge_packages
 SET title = '轻享体验版', subtitle = '适合首次体验与偶尔创作', price = '19.9', credits = 200000,
     features = '["2,000 积分","低门槛体验","适合首次尝试"]', badge_text = '新客体验',
@@ -45,5 +43,3 @@ INSERT INTO recharge_packages (
 WHERE NOT EXISTS (
   SELECT 1 FROM recharge_packages WHERE id = '41bec294-6d11-4593-94d3-07181afb69e6'
 );
-
-COMMIT;
