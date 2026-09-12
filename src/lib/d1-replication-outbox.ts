@@ -31,14 +31,84 @@ export type ReplicationOutboxEvent = {
   createdAt?: string;
 };
 
-const forbiddenPayloadKeyPattern = /api[_-]?key|secret|token|jwt|authorization|service[_-]?role|provider[_-]?secret|private[_-]?key/i;
+const forbiddenPayloadKeyPattern = /api[_-]?key|secret|token|jwt|authorization|service[_-]?role|provider[_-]?secret|private[_-]?key|credential|signature|^sig$/i;
 const bearerLikeValuePattern = /\bBearer\s+[A-Za-z0-9._~+/=-]+|eyJ[A-Za-z0-9_-]{20,}/i;
+const inputParamSecretKeyPattern = /api[_-]?key|access[_-]?token|secret|token|jwt|authorization|service[_-]?role|provider[_-]?secret|private[_-]?key|credential|signature|^sig$/i;
+const signedUrlQueryKeyPattern = /^(?:x-amz-(?:algorithm|credential|date|expires|security-token|signature|signedheaders)|x-goog-(?:algorithm|credential|date|expires|signedheaders|signature)|awsaccesskeyid|signature|sig|token|access[_-]?token|sv|st|se|spr|sp|sr|skoid|sktid|skt|ske|sks|skv)$/i;
+
+function sanitizeSignedUrl(value: string): string {
+  if (!/^https?:\/\//i.test(value)) return value;
+
+  try {
+    const url = new URL(value);
+    const retainedParams = Array.from(url.searchParams.entries()).filter(([key]) => !signedUrlQueryKeyPattern.test(key));
+    url.search = "";
+    for (const [key, paramValue] of retainedParams) url.searchParams.append(key, paramValue);
+    return url.toString();
+  } catch {
+    return value;
+  }
+}
+
+function sanitizeInputParamString(value: string): string {
+  return sanitizeSignedUrl(
+    value
+      .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
+      .replace(/eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "[JWT_REDACTED]"),
+  );
+}
+
+function sanitizeInputParamsValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => sanitizeInputParamsValue(item));
+
+  if (value && typeof value === "object") {
+    const sanitized: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value)) {
+      if (inputParamSecretKeyPattern.test(key)) continue;
+      sanitized[key] = sanitizeInputParamsValue(child);
+    }
+    return sanitized;
+  }
+
+  return typeof value === "string" ? sanitizeInputParamString(value) : value;
+}
+
+function sanitizeInputParamsField(value: unknown): unknown {
+  if (typeof value !== "string") return sanitizeInputParamsValue(value);
+
+  try {
+    return JSON.stringify(sanitizeInputParamsValue(JSON.parse(value)));
+  } catch {
+    return "[REDACTED_INPUT_PARAMS]";
+  }
+}
+
+function cloneAndSanitizeReplicationPayload(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => cloneAndSanitizeReplicationPayload(item));
+
+  if (value && typeof value === "object") {
+    const cloned: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value)) {
+      cloned[key] = key === "input_params"
+        ? sanitizeInputParamsField(child)
+        : cloneAndSanitizeReplicationPayload(child);
+    }
+    return cloned;
+  }
+
+  return value;
+}
+
+export function sanitizeReplicationPayload(value: unknown): unknown {
+  return cloneAndSanitizeReplicationPayload(value);
+}
 
 export function buildReplicationOutboxStatement(db: D1DatabaseLike, event: ReplicationOutboxEvent): D1PreparedStatementLike {
-  assertSafeReplicationPayload(event.payload);
+  const sanitizedPayload = sanitizeReplicationPayload(event.payload);
+  assertSafeReplicationPayload(sanitizedPayload);
   const createdAt = event.createdAt ?? new Date().toISOString();
   const id = event.id ?? crypto.randomUUID();
-  const payloadJson = JSON.stringify(event.payload);
+  const payloadJson = JSON.stringify(sanitizedPayload);
   if (payloadJson == null) throw new Error("Replication payload is not JSON serializable");
 
   return db.prepare(`
