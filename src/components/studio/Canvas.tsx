@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { getMyGenerationHistory } from "@/lib/admin.functions";
 import { getCachedHistoryFirstPage, setCachedHistoryFirstPage } from "@/lib/history-metadata-cache";
-import { getCachedPreview, loadHistoryPreview } from "@/lib/preview-cache";
+import { getCachedPreview, loadHistoryPreview, subscribePreview } from "@/lib/preview-cache";
 import type { GenProgress } from "./ControlPanel";
 
 const PAGE_SIZE = 20;
@@ -44,6 +44,7 @@ function isArchivedGeneratedImageUrl(value: string | null | undefined): value is
 const thumbnailQueue: Array<() => void> = [];
 let activeThumbnailLoads = 0;
 const MAX_THUMBNAIL_LOADS = 4;
+const PREWARM_PREVIEW_CONCURRENCY = 4;
 
 function pumpThumbnailQueue() {
   while (activeThumbnailLoads < MAX_THUMBNAIL_LOADS && thumbnailQueue.length > 0) {
@@ -74,6 +75,7 @@ function HistoryThumbnail({ historyId, userId }: { historyId: string; userId: st
   const [load, setLoad] = useState(!!cachedSrc);
   const [started, setStarted] = useState(!!cachedSrc);
   const [failed, setFailed] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const [resolvedSrc, setResolvedSrc] = useState<string | null>(cachedSrc);
   const finishedRef = useRef(false);
   const finish = useCallback(() => {
@@ -82,6 +84,12 @@ function HistoryThumbnail({ historyId, userId }: { historyId: string; userId: st
     activeThumbnailLoads = Math.max(0, activeThumbnailLoads - 1);
     pumpThumbnailQueue();
   }, []);
+
+  useEffect(() => subscribePreview(userId, historyId, (nextPreview) => {
+    setResolvedSrc(nextPreview);
+    setStarted(true);
+    setFailed(false);
+  }), [historyId, userId]);
 
   useEffect(() => {
     const element = hostRef.current;
@@ -94,6 +102,17 @@ function HistoryThumbnail({ historyId, userId }: { historyId: string; userId: st
       setLoad(true);
       return;
     }
+    const root = element.closest("[data-history-scroll-container]") as HTMLElement | null;
+    const rootMargin = 400;
+    const isNearViewport = () => {
+      const rect = element.getBoundingClientRect();
+      const viewport = root?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight };
+      return rect.bottom >= viewport.top - rootMargin && rect.top <= viewport.bottom + rootMargin;
+    };
+    if (isNearViewport()) {
+      setLoad(true);
+      return;
+    }
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry?.isIntersecting) {
@@ -102,8 +121,8 @@ function HistoryThumbnail({ historyId, userId }: { historyId: string; userId: st
         }
       },
       {
-        root: element.closest("[data-history-scroll-container]") as HTMLElement | null,
-        rootMargin: "400px 0px",
+        root,
+        rootMargin: `${rootMargin}px 0px`,
         threshold: 0,
       },
     );
@@ -112,7 +131,7 @@ function HistoryThumbnail({ historyId, userId }: { historyId: string; userId: st
   }, [historyId, userId]);
 
   useEffect(() => {
-    if (!load || failed || started) return;
+    if (!load || started) return;
     finishedRef.current = false;
     let cancelled = false;
     const cancel = enqueueThumbnailLoad(() => {
@@ -127,6 +146,14 @@ function HistoryThumbnail({ historyId, userId }: { historyId: string; userId: st
           if (cancelled) return;
           finish();
           setFailed(true);
+          if (retryCount < 2) {
+            window.setTimeout(() => {
+              if (cancelled) return;
+              setFailed(false);
+              setStarted(false);
+              setRetryCount((count) => count + 1);
+            }, 1200 * (retryCount + 1));
+          }
         }
       })();
     }, finish);
@@ -134,7 +161,7 @@ function HistoryThumbnail({ historyId, userId }: { historyId: string; userId: st
       cancelled = true;
       cancel();
     };
-  }, [failed, finish, historyId, load, started, userId]);
+  }, [finish, historyId, load, retryCount, started, userId]);
 
   return (
     <div ref={hostRef} className="h-full w-full">
@@ -153,7 +180,11 @@ function HistoryThumbnail({ historyId, userId }: { historyId: string; userId: st
           }}
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
         />
-      ) : null}
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-[10px] text-white/55">
+          {failed ? "预览重试中…" : "图片加载中…"}
+        </div>
+      )}
     </div>
   );
 }
@@ -293,6 +324,7 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
   const { blobUrl: thumbnailBlobUrl, loading: thumbnailLoading } = useAuthenticatedThumbnail(thumbnailUrl, userId);
   const fetchHistory = useServerFn(getMyGenerationHistory);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const historySentinelRef = useRef<HTMLDivElement | null>(null);
   const inFlightRef = useRef(false);
   const historyRef = useRef<HistoryItem[]>([]);
   const totalRef = useRef(0);
@@ -324,6 +356,45 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
     setLightbox(null);
     setHeroLightbox(false);
   }, [userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const cached = getCachedHistoryFirstPage(userId) as {
+          items: HistoryItem[];
+          total?: number;
+          limit: number;
+          offset: number;
+          maxKeep?: number;
+          maxDays?: number;
+          isAdmin?: boolean;
+        } | null;
+        const firstPage = cached ?? await fetchHistory({ data: { limit: PAGE_SIZE, offset: 0 } }) as {
+          items: HistoryItem[];
+          total?: number;
+          limit: number;
+          offset: number;
+          maxKeep?: number;
+          maxDays?: number;
+          isAdmin?: boolean;
+        };
+        if (cancelled) return;
+        setCachedHistoryFirstPage(userId, firstPage);
+        const items = (firstPage.items ?? []).slice(0, PAGE_SIZE);
+        for (let offset = 0; offset < items.length; offset += PREWARM_PREVIEW_CONCURRENCY) {
+          if (cancelled) return;
+          await Promise.all(items.slice(offset, offset + PREWARM_PREVIEW_CONCURRENCY).map((item) =>
+            loadHistoryPreview(userId, item.id).catch(() => null),
+          ));
+        }
+      } catch {
+        // Drawer loading remains the fallback when background prewarm is unavailable.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [fetchHistory, userId]);
 
   const loadHistory = useCallback(async (mode: "reset" | "append" = "reset") => {
     const requestUserId = userIdRef.current;
@@ -394,6 +465,21 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
     loadHistory("reset");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyOpen, userId]);
+
+  useEffect(() => {
+    if (!historyOpen || !hasMore || loadingHistory || loadingMore) return;
+    const root = scrollContainerRef.current;
+    const sentinel = historySentinelRef.current;
+    if (!root || !sentinel || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) loadHistory("append");
+      },
+      { root, rootMargin: "500px 0px", threshold: 0 },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, historyOpen, loadHistory, loadingHistory, loadingMore, history.length]);
 
   // 当主画布出现新图（生成完成）时，自动刷新历史，确保下次打开抽屉是最新的
   useEffect(() => {
@@ -573,7 +659,7 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
                     );
                   })}
                 </div>
-                <div className="h-8" />
+                <div ref={historySentinelRef} aria-hidden="true" className="h-8" />
                 {loadingMore && (
                   <div className="py-3 text-center text-[11px] text-muted-foreground">正在加载更多…</div>
                 )}
