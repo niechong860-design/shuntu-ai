@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { BusinessDatabase } from "@/lib/business-database";
 import { createBusinessDatabaseFromContext } from "@/lib/business-database-router";
-import { getPreviewRechargePackage, hasTrustedPackageCreditMapping } from "@/lib/recharge-packages";
+import { hasTrustedPackageCreditMapping } from "@/lib/recharge-packages";
 
 const orderInput = z.object({
   outTradeNo: z.string().min(1).max(32).regex(/^[0-9A-Za-z_*-]+$/),
@@ -39,21 +39,7 @@ export const createXunhuPayOrder = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => z.object({ packageId: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
-    const previewPackage = getPreviewRechargePackage(data.packageId);
     const payment = await import("@/lib/xunhupay.server");
-    if (previewPackage) {
-      let amountCents: number;
-      try {
-        amountCents = payment.parseYuanToCents(previewPackage.price);
-      } catch {
-        throw new Error("套餐价格配置错误");
-      }
-      if (!hasTrustedPackageCreditMapping(data.packageId, amountCents, previewPackage.credits)) {
-        throw new Error("套餐积分配置错误，请联系管理员");
-      }
-      throw new Error("Version Preview 不创建真实支付订单");
-    }
-
     const db = getBusinessDb(context);
     const rechargePackage = (await db.listRechargePackages()).find((row) => row.id === data.packageId && row.is_visible);
     if (!rechargePackage) throw new Error("充值套餐不存在或已下架");

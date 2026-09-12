@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { Gift, Sparkles, Check, Zap, Crown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PaymentViewOrder, XunhuPayStatus } from "@/components/payment/XunhuPayStatus";
-import { PREVIEW_RECHARGE_PACKAGES } from "@/lib/recharge-packages";
+import { RECHARGE_PACKAGES_V2 } from "@/lib/recharge-packages";
 
 type Plan = {
   id: string;
@@ -29,7 +29,7 @@ type Plan = {
   note?: string;
 };
 
-const PLANS: Plan[] = PREVIEW_RECHARGE_PACKAGES.map((plan) => ({
+const PLANS: Plan[] = RECHARGE_PACKAGES_V2.map((plan) => ({
   ...plan,
   icon: plan.doubleCredits ? <Crown className="h-4 w-4" /> : plan.highlighted ? <Zap className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />,
 }));

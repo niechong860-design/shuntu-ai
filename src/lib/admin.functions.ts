@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { PREVIEW_RECHARGE_PACKAGES } from "@/lib/recharge-packages";
+import { getConfiguredRechargePackage } from "@/lib/recharge-packages";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { checkPromptSafety, SAFETY_SERVER_BLOCK_MESSAGE } from "@/lib/promptSafety";
 import { pollFoxApiTask, submitFoxApiImageEdit, submitFoxApiImageGenerationTask } from "@/lib/foxapi-backup";
@@ -2446,6 +2446,12 @@ function assertHttpPurchaseUrl(purchaseUrl: string | null | undefined) {
 }
 
 function mapRechargePackage(row: any) {
+  const configuredPackage = getConfiguredRechargePackage(String(row.id));
+  const isConfiguredVersion = Boolean(
+    configuredPackage &&
+    String(row.price) === configuredPackage.price &&
+    Number(row.credits ?? 0) === configuredPackage.credits,
+  );
   return {
     id: row.id as string,
     title: row.title as string,
@@ -2460,6 +2466,10 @@ function mapRechargePackage(row: any) {
     sortOrder: Number(row.sort_order ?? 0),
     buttonText: (row.button_text ?? "立即购买") as string,
     purchaseUrl: (row.purchase_url ?? "") as string,
+    baseCredits: isConfiguredVersion ? configuredPackage!.baseCredits : Number(row.credits ?? 0),
+    bonusCredits: isConfiguredVersion ? configuredPackage!.bonusCredits : 0,
+    doubleCredits: isConfiguredVersion ? configuredPackage!.doubleCredits : false,
+    note: isConfiguredVersion ? configuredPackage!.note : undefined,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -2483,9 +2493,9 @@ const rechargePackageInput = z.object({
 
 export const listVisibleRechargePackages = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
-    // This branch is the candidate source for the 0% Version Preview. It does
-    // not read or write production D1 package rows.
-    return PREVIEW_RECHARGE_PACKAGES;
+    const db = getBusinessDb(context);
+    const rows = await db.listRechargePackages();
+    return rows.map(mapRechargePackage);
   });
 
 export const listAdminRechargePackages = createServerFn({ method: "POST" })

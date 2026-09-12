@@ -17,11 +17,11 @@ export type RechargePackagePreview = {
   purchaseUrl: string;
 };
 
-// Candidate-only configuration for the 0% Version Preview. It is intentionally
-// kept out of production D1 so the current production package rows are unchanged.
-export const PREVIEW_RECHARGE_PACKAGES: readonly RechargePackagePreview[] = [
+// Trusted package definition shared by production D1 projection and payment
+// validation. D1 remains the runtime source of the package rows.
+export const RECHARGE_PACKAGES_V2: readonly RechargePackagePreview[] = [
   {
-    id: "a885967a-32c3-4697-81e2-281cfdfb4968",
+    id: "b5c1dce9-6742-4340-9149-93cee49a1e12",
     title: "轻享体验版",
     subtitle: "适合首次体验与偶尔创作",
     price: "19.9",
@@ -38,7 +38,7 @@ export const PREVIEW_RECHARGE_PACKAGES: readonly RechargePackagePreview[] = [
     purchaseUrl: "",
   },
   {
-    id: "89eb193d-f99b-4d69-81e1-5c26eca1c8ee",
+    id: "52d12003-fc30-4705-8daa-ceaf18d15915",
     title: "灵感创作版",
     subtitle: "适合日常轻度创作",
     price: "69.9",
@@ -55,7 +55,7 @@ export const PREVIEW_RECHARGE_PACKAGES: readonly RechargePackagePreview[] = [
     purchaseUrl: "",
   },
   {
-    id: "5ffbb43a-39c1-4484-9e87-ee022abf9e80",
+    id: "aaaa2b94-855c-4b2a-b6ea-e149fd15c834",
     title: "进阶创作版",
     subtitle: "适合稳定创作与频繁出图",
     price: "169",
@@ -72,7 +72,7 @@ export const PREVIEW_RECHARGE_PACKAGES: readonly RechargePackagePreview[] = [
     purchaseUrl: "",
   },
   {
-    id: "6a3d9fba-d047-45a9-82e4-2d5ff728c3d5",
+    id: "be1e3e6d-b5a1-41ff-82d4-dca10da91a59",
     title: "专业创作版",
     subtitle: "适合高频创作与长期使用",
     price: "229",
@@ -90,7 +90,7 @@ export const PREVIEW_RECHARGE_PACKAGES: readonly RechargePackagePreview[] = [
     purchaseUrl: "",
   },
   {
-    id: "16b54129-43ce-4881-b294-8454b18f1434",
+    id: "73d892b5-b0d4-4c19-a588-fccde05b6792",
     title: "工作室版",
     subtitle: "适合重度创作与小型团队",
     price: "319",
@@ -127,24 +127,27 @@ export const PREVIEW_RECHARGE_PACKAGES: readonly RechargePackagePreview[] = [
 
 // Existing production package mappings remain supported. The candidate mapping
 // must include package_id because ¥69.9 has a different candidate credit grant.
-export const LEGACY_PACKAGE_CREDITS_BY_CENTS = new Map<number, number>([
-  [990, 1000],
-  [2990, 3180],
-  [6990, 7560],
-  [12900, 14170],
-  [19900, 22000],
+const LEGACY_PACKAGE_MAPPINGS_BY_ID = new Map<string, { amountCents: number; credits: number }>([
+  ["b5c1dce9-6742-4340-9149-93cee49a1e12", { amountCents: 990, credits: 1000 }],
+  ["52d12003-fc30-4705-8daa-ceaf18d15915", { amountCents: 2990, credits: 3180 }],
+  ["aaaa2b94-855c-4b2a-b6ea-e149fd15c834", { amountCents: 6990, credits: 7560 }],
+  ["be1e3e6d-b5a1-41ff-82d4-dca10da91a59", { amountCents: 12900, credits: 14170 }],
+  ["73d892b5-b0d4-4c19-a588-fccde05b6792", { amountCents: 19900, credits: 22000 }],
 ]);
 
-export function getPreviewRechargePackage(packageId: string) {
-  return PREVIEW_RECHARGE_PACKAGES.find((pkg) => pkg.id === packageId);
+export function getConfiguredRechargePackage(packageId: string) {
+  return RECHARGE_PACKAGES_V2.find((pkg) => pkg.id === packageId);
 }
 
 export function hasTrustedPackageCreditMapping(packageId: string, amountCents: number, credits: number) {
-  const previewPackage = getPreviewRechargePackage(packageId);
-  if (previewPackage) {
-    return previewPackage.credits === credits && priceToCents(previewPackage.price) === amountCents;
+  const configuredPackage = getConfiguredRechargePackage(packageId);
+  if (configuredPackage) {
+    if (configuredPackage.credits === credits && priceToCents(configuredPackage.price) === amountCents) return true;
   }
-  return LEGACY_PACKAGE_CREDITS_BY_CENTS.get(amountCents) === credits;
+  // Keep old rows payable during the short code-first rollout window, but only
+  // for the same stable package_id and its original locked values.
+  const legacy = LEGACY_PACKAGE_MAPPINGS_BY_ID.get(packageId);
+  return legacy?.amountCents === amountCents && legacy.credits === credits;
 }
 
 function priceToCents(price: string) {
