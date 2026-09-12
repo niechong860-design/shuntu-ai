@@ -46,8 +46,12 @@ export function createBusinessDatabaseFromContext(context?: ServerContextLike): 
 export function getCloudflareEnvFromContext(context?: ServerContextLike): EnvLike {
   const explicit = context?.cloudflare?.env ?? context?.cloudflareEnv;
   const globalEnv = (globalThis as Record<string, unknown>).__SHUNTU_CLOUDFLARE_ENV__;
+  const runtimeEnv = (globalThis as Record<string, unknown>).__env__;
   const explicitEnv: Record<string, unknown> = explicit && typeof explicit === "object" ? explicit as Record<string, unknown> : {};
-  const requestEnv: Record<string, unknown> = globalEnv && typeof globalEnv === "object" ? globalEnv as Record<string, unknown> : {};
+  const requestEnv: Record<string, unknown> = {
+    ...(globalEnv && typeof globalEnv === "object" ? globalEnv as Record<string, unknown> : {}),
+    ...(runtimeEnv && typeof runtimeEnv === "object" ? runtimeEnv as Record<string, unknown> : {}),
+  };
   if (Object.keys(explicitEnv).length === 0 && Object.keys(requestEnv).length === 0) return undefined;
   return { ...requestEnv, ...explicitEnv };
 }
