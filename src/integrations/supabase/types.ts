@@ -745,6 +745,16 @@ export type Database = {
           success: boolean
         }[]
       }
+      consume_credits_for_generation_v2: {
+        Args: { _model_key: string; _prompt: string }
+        Returns: {
+          cost: number
+          credits: number
+          history_id: string | null
+          message: string
+          success: boolean
+        }[]
+      }
       finalize_generation_task_once: {
         Args: { p_image_url: string; p_task_id: string }
         Returns: {

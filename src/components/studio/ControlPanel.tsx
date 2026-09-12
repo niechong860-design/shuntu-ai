@@ -18,6 +18,7 @@ import { thumbUrl } from "@/lib/image-url";
 import { checkPromptSafety, SAFETY_BLOCK_MESSAGE } from "@/lib/promptSafety";
 import { STYLE_TEMPLATES, applyStyleSuffix, type StyleTemplate } from "@/lib/style-templates";
 import { toast } from "sonner";
+import { loadHistoryPreview } from "@/lib/preview-cache";
 
 type ModelCfg = {
   id: string; model_key: string; name: string; description: string | null; cost: number;
@@ -157,8 +158,9 @@ function clearActive() {
 
 type Props = {
  onGenerateStart: (info: { prompt: string; modelName: string; modelKey?: string; inputParams?: Record<string, unknown> }) => void;
- onGenerateDone: (imageUrl: string | null) => void;
+  onGenerateDone: (imageUrl: string | null, historyId?: string | null) => void;
   generatedImageUrl?: string | null;
+  generatedHistoryId?: string | null;
   generatedImageDragToken?: string | null;
   onProgress?: (p: GenProgress | null) => void;
   generating: boolean;
@@ -192,6 +194,7 @@ export function ControlPanel({
   onGenerateStart,
   onGenerateDone,
   generatedImageUrl,
+  generatedHistoryId,
   generatedImageDragToken,
   onProgress,
   generating,
@@ -482,14 +485,27 @@ export function ControlPanel({
       return;
     }
     if (/^https?:\/\//i.test(url)) {
-      updateReferenceItems((items) => [...items, {
-        id: createReferenceImageId(),
-        sourceUrl: url,
-        previewUrl: url,
-        status: "ready",
-        ownsPreviewUrl: false,
-        generatedDragToken,
-      }]);
+      const id = createReferenceImageId();
+      if (!generatedHistoryId || !session?.user?.id) {
+        toast.error("当前生成图片预览尚未就绪，请稍后重试");
+        return;
+      }
+      pendingGeneratedReferenceTokensRef.current.add(generatedDragToken);
+      try {
+        const previewUrl = await loadHistoryPreview(session.user.id, generatedHistoryId);
+        updateReferenceItems((items) => [...items, {
+          id,
+          sourceUrl: url,
+          previewUrl,
+          status: "ready",
+          ownsPreviewUrl: false,
+          generatedDragToken,
+        }]);
+      } catch {
+        toast.error("生成图片预览读取失败，无法添加为参考图");
+      } finally {
+        pendingGeneratedReferenceTokensRef.current.delete(generatedDragToken);
+      }
       return;
     }
     if (!/^(data:image\/|blob:)/i.test(url)) {
@@ -566,7 +582,7 @@ export function ControlPanel({
         if (s.status === "success" && s.imageUrl) {
           clearActive();
           onProgress?.(null);
-          onGenerateDone(s.imageUrl);
+          onGenerateDone(s.imageUrl, (s as { historyId?: string | null }).historyId);
           refreshProfile();
           return;
         }
@@ -788,7 +804,7 @@ export function ControlPanel({
         // sync 模型：服务端已扣费，刷新余额
         await refreshProfile();
         onProgress?.(null);
-        onGenerateDone(r.imageUrl);
+        onGenerateDone(r.imageUrl, r.historyId);
         return;
       }
 
@@ -1117,7 +1133,7 @@ export function ControlPanel({
         <DialogContent className="max-w-5xl border-border bg-black/90 p-3">
           <DialogTitle className="sr-only">参考图预览</DialogTitle>
           {previewItem && (
-            <img src={previewItem.sourceUrl ?? previewItem.previewUrl} alt="参考图大图" draggable={false} className="max-h-[82vh] w-full rounded-lg object-contain" />
+            <img src={previewItem.previewUrl} alt="参考图大图" draggable={false} className="max-h-[82vh] w-full rounded-lg object-contain" />
           )}
         </DialogContent>
       </Dialog>

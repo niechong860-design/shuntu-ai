@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { updateCurrentProfile } from "@/lib/profile.functions";
 import { Loader2, Upload, Lock, User as UserIcon } from "lucide-react";
 import { toast } from "sonner";
 import { thumbUrl } from "@/lib/image-url";
@@ -53,8 +54,7 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
       const { error: upErr } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
       if (upErr) throw upErr;
       const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
-      const { error: profErr } = await supabase.from("profiles").update({ avatar_url: publicUrl }).eq("id", user.id);
-      if (profErr) throw profErr;
+      await updateCurrentProfile({ data: { avatarUrl: publicUrl } });
       await refreshProfile();
       toast.success("头像已更新");
     } catch (err) {
@@ -66,8 +66,7 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
     if (!user) return;
     setSavingProfile(true);
     try {
-      const { error } = await supabase.from("profiles").update({ display_name: displayName }).eq("id", user.id);
-      if (error) throw error;
+      await updateCurrentProfile({ data: { displayName } });
       await refreshProfile();
       toast.success("资料已保存");
     } catch (err) {

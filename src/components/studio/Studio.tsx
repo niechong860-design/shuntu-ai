@@ -418,7 +418,7 @@ export function Studio() {
       inputParams: info.inputParams,
     });
   };
-  const handleGenerateDone = (url: string | null) => {
+  const handleGenerateDone = (url: string | null, historyId?: string | null) => {
     setGenerating(false);
     setAdminPreparingNextTask(false);
     setAdminTasks((tasks) =>
@@ -437,7 +437,7 @@ export function Studio() {
     setProgress(null);
     if (url) {
       setGeneratedUrl(url);
-      setCurrentHistoryId(null);
+      setCurrentHistoryId(historyId ?? null);
       setGeneratedUrlSource("result");
       rememberLatestResult(url, currentPrompt, currentModel);
     }
@@ -732,6 +732,7 @@ export function Studio() {
             onGenerateStart={handleGenerateStart}
             onGenerateDone={handleGenerateDone}
             generatedImageUrl={generatedUrl}
+            generatedHistoryId={currentHistoryId}
             generatedImageDragToken={generatedImageDragToken}
             onProgress={setProgress}
             generating={generating}
@@ -758,9 +759,9 @@ export function Studio() {
             historyOpen={historyOpen}
             onHistoryOpenChange={setHistoryOpen}
             onReuseCurrent={handleReuseCurrentResult}
-            onSelectHistory={(url, prompt, model, reuseSource) => {
+            onSelectHistory={(url, historyId, prompt, model, reuseSource) => {
               setGeneratedUrl(url);
-              setCurrentHistoryId(null);
+              setCurrentHistoryId(historyId);
               setGeneratedUrlSource("history");
               setCurrentPrompt(prompt);
               setCurrentModel(model);

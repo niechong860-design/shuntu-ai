@@ -20,6 +20,9 @@ dist-ssr
 .wrangler/
 .dev.vars
 
+# D1 migration generated production data / binary staging
+d1/staging/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

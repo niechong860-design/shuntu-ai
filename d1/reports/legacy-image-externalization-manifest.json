@@ -1,0 +1,942 @@
+{
+  "version": 2,
+  "created_at": "2026-09-11T11:54:16.777Z",
+  "source_backup": "C:\\Users\\21972\\Desktop\\shuntu-db-backup\\2026-09-11_01-55-13",
+  "r2_public_base_url": "https://img.shuntu.cc",
+  "generated_namespace": "generated/",
+  "fallback_namespace": "migration/legacy-generated-images/v1",
+  "source_scan": {
+    "task_references": 14,
+    "history_references": 16,
+    "total_references": 30,
+    "shared_task_history_binaries": 8,
+    "task_only_binaries": 6,
+    "history_only_binaries": 8,
+    "unique_binaries": 22,
+    "decoded_bytes_after_dedupe": 112526291,
+    "previous_manifest_mismatch": false,
+    "previous_manifest_summary": {
+      "version": 2,
+      "totalReferences": 30,
+      "uniqueBinaries": 22
+    }
+  },
+  "r2_reuse_summary": {
+    "ALREADY_IN_R2": 0,
+    "NEEDS_UPLOAD": 22,
+    "AMBIGUOUS": 0,
+    "MISMATCH": 0
+  },
+  "key_generation_rule": {
+    "source_file": "src/lib/r2-image-archive.ts",
+    "function": "getArchiveKey(taskId, extension, now)",
+    "pattern": "generated/<UTC year>/<UTC month>/<safe taskId>.<extension>",
+    "date_source": "archive execution time; candidate audit used task/history created/completed/updated UTC months where available"
+  },
+  "relationship_audit": [
+    {
+      "history_id": "0c30a21d-3839-4d55-ae00-9fa3fff2c74e",
+      "generation_task_id": null,
+      "task_exists": false,
+      "task_result_image_url_type": "NONE",
+      "history_image_url_type": "DATA_IMAGE"
+    },
+    {
+      "history_id": "18bc186d-2e8f-4955-9735-2ff34dcf64a9",
+      "generation_task_id": "085c3b79-9b1e-4f3e-b4be-18bca102d4d3",
+      "task_exists": true,
+      "task_result_image_url_type": "DATA_IMAGE",
+      "history_image_url_type": "DATA_IMAGE"
+    },
+    {
+      "history_id": "1b1f782e-83d2-472e-af51-a0fcf8f7f560",
+      "generation_task_id": "279e0794-09a0-4f71-9a1f-ece3dd931f32",
+      "task_exists": true,
+      "task_result_image_url_type": "DATA_IMAGE",
+      "history_image_url_type": "DATA_IMAGE"
+    },
+    {
+      "history_id": "289eb09a-eb3b-47ac-8e54-bf72284d84fe",
+      "generation_task_id": null,
+      "task_exists": false,
+      "task_result_image_url_type": "NONE",
+      "history_image_url_type": "DATA_IMAGE"
+    },
+    {
+      "history_id": "3bfe21c3-bae6-467f-ad30-9a01a9499a10",
+      "generation_task_id": null,
+      "task_exists": false,
+      "task_result_image_url_type": "NONE",
+      "history_image_url_type": "DATA_IMAGE"
+    },
+    {
+      "history_id": "3c3d20db-4b09-4545-92cf-dcbf45094cc7",
+      "generation_task_id": null,
+      "task_exists": false,
+      "task_result_image_url_type": "NONE",
+      "history_image_url_type": "DATA_IMAGE"
+    },
+    {
+      "history_id": "45b5b075-f346-473e-ab99-b14b786d0b90",
+      "generation_task_id": "bdc6266a-f2ae-4538-b43f-d95eb677b297",
+      "task_exists": true,
+      "task_result_image_url_type": "DATA_IMAGE",
+      "history_image_url_type": "DATA_IMAGE"
+    },
+    {
+      "history_id": "64ebee84-bb6d-44f9-b71a-790d6110bb39",
+      "generation_task_id": "76e54da6-931c-40fc-b3d5-7c163becea34",
+      "task_exists": true,
+      "task_result_image_url_type": "DATA_IMAGE",
+      "history_image_url_type": "DATA_IMAGE"
+    },
+    {
+      "history_id": "7d8849de-4ba7-443a-805f-abbd8b36ec24",
+      "generation_task_id": "11655210-ab45-48f5-80d7-f366d55fc165",
+      "task_exists": true,
+      "task_result_image_url_type": "DATA_IMAGE",
+      "history_image_url_type": "DATA_IMAGE"
+    },
+    {
+      "history_id": "bb3fe089-4f12-478b-9a9f-adad4a83a42b",
+      "generation_task_id": "ea504908-6dd2-425c-a955-9914e9554340",
+      "task_exists": true,
+      "task_result_image_url_type": "DATA_IMAGE",
+      "history_image_url_type": "DATA_IMAGE"
+    },
+    {
+      "history_id": "c93dafe0-f103-42f6-bf33-096fbd258fbd",
+      "generation_task_id": "2a3a45d0-5442-4792-bc11-83fde7457d59",
+      "task_exists": true,
+      "task_result_image_url_type": "DATA_IMAGE",
+      "history_image_url_type": "DATA_IMAGE"
+    },
+    {
+      "history_id": "ce8bac4e-2519-4188-8496-6959ecc10300",
+      "generation_task_id": "7a8057cf-6718-494c-a8d0-65defa0ede64",
+      "task_exists": true,
+      "task_result_image_url_type": "DATA_IMAGE",
+      "history_image_url_type": "DATA_IMAGE"
+    },
+    {
+      "history_id": "dcb0c987-61b1-4327-ab6a-55b83df810de",
+      "generation_task_id": null,
+      "task_exists": false,
+      "task_result_image_url_type": "NONE",
+      "history_image_url_type": "DATA_IMAGE"
+    },
+    {
+      "history_id": "e42168a5-7bed-4a40-9c33-bdefd4b185b9",
+      "generation_task_id": null,
+      "task_exists": false,
+      "task_result_image_url_type": "NONE",
+      "history_image_url_type": "DATA_IMAGE"
+    },
+    {
+      "history_id": "f741ced3-759a-4717-8de3-817099d8461f",
+      "generation_task_id": null,
+      "task_exists": false,
+      "task_result_image_url_type": "NONE",
+      "history_image_url_type": "DATA_IMAGE"
+    },
+    {
+      "history_id": "fd50c35f-1a36-4eb9-8a00-d918aab02523",
+      "generation_task_id": null,
+      "task_exists": false,
+      "task_result_image_url_type": "NONE",
+      "history_image_url_type": "DATA_IMAGE"
+    }
+  ],
+  "objects": [
+    {
+      "sha256": "00e2456f1ee4ea3eadbba488e70981aeee049995099dffb568d3806b0402c5ba",
+      "mime_type": "image/png",
+      "decoded_bytes": 18406025,
+      "staging_filename": "00e2456f1ee4ea3eadbba488e70981aeee049995099dffb568d3806b0402c5ba.png",
+      "status": "NEEDS_UPLOAD",
+      "existing_r2_key": null,
+      "existing_r2_url": null,
+      "fallback_proposed_r2_key": "migration/legacy-generated-images/v1/00e2456f1ee4ea3eadbba488e70981aeee049995099dffb568d3806b0402c5ba.png",
+      "fallback_proposed_public_url": "https://img.shuntu.cc/migration/legacy-generated-images/v1/00e2456f1ee4ea3eadbba488e70981aeee049995099dffb568d3806b0402c5ba.png",
+      "r2_reuse_audit": {
+        "candidate_count": 1,
+        "checked_count": 1,
+        "readable_candidate_count": 0,
+        "mismatch_count": 0,
+        "ambiguous_count": 0,
+        "method": "public HTTPS HEAD, then GET only when HEAD indicated an existing generated object",
+        "candidates": [
+          {
+            "key": "generated/2026/08/8e244dbe-8551-457b-b74a-f3c6e9b1f820.png",
+            "url": "https://img.shuntu.cc/generated/2026/08/8e244dbe-8551-457b-b74a-f3c6e9b1f820.png",
+            "source": "generated_key_rule_task_id",
+            "head_status": 404,
+            "result": "NOT_FOUND"
+          }
+        ]
+      },
+      "references": [
+        {
+          "table": "generation_tasks",
+          "row_id": "8e244dbe-8551-457b-b74a-f3c6e9b1f820",
+          "column": "result_image_url",
+          "generation_task_id": "8e244dbe-8551-457b-b74a-f3c6e9b1f820",
+          "request_id": "task_32eafe28-8b50-4c8b-9425-255c2d3c040b"
+        }
+      ]
+    },
+    {
+      "sha256": "07d81c10403e031912b8b55e477494a76e890035a9c7d96fc822076aa5478fa5",
+      "mime_type": "image/png",
+      "decoded_bytes": 19393892,
+      "staging_filename": "07d81c10403e031912b8b55e477494a76e890035a9c7d96fc822076aa5478fa5.png",
+      "status": "NEEDS_UPLOAD",
+      "existing_r2_key": null,
+      "existing_r2_url": null,
+      "fallback_proposed_r2_key": "migration/legacy-generated-images/v1/07d81c10403e031912b8b55e477494a76e890035a9c7d96fc822076aa5478fa5.png",
+      "fallback_proposed_public_url": "https://img.shuntu.cc/migration/legacy-generated-images/v1/07d81c10403e031912b8b55e477494a76e890035a9c7d96fc822076aa5478fa5.png",
+      "r2_reuse_audit": {
+        "candidate_count": 1,
+        "checked_count": 1,
+        "readable_candidate_count": 0,
+        "mismatch_count": 0,
+        "ambiguous_count": 0,
+        "method": "public HTTPS HEAD, then GET only when HEAD indicated an existing generated object",
+        "candidates": [
+          {
+            "key": "generated/2026/08/1b251dbd-a6f9-4501-b1c1-e94cc9bb5b55.png",
+            "url": "https://img.shuntu.cc/generated/2026/08/1b251dbd-a6f9-4501-b1c1-e94cc9bb5b55.png",
+            "source": "generated_key_rule_task_id",
+            "head_status": 404,
+            "result": "NOT_FOUND"
+          }
+        ]
+      },
+      "references": [
+        {
+          "table": "generation_tasks",
+          "row_id": "1b251dbd-a6f9-4501-b1c1-e94cc9bb5b55",
+          "column": "result_image_url",
+          "generation_task_id": "1b251dbd-a6f9-4501-b1c1-e94cc9bb5b55",
+          "request_id": "task_588ff5c9-b954-4060-b74b-f24fe50491b1"
+        }
+      ]
+    },
+    {
+      "sha256": "0d00d30643d3b37b4dfd6996b2470bd45d0e98efaed16c2c5a7e4a88c5c55944",
+      "mime_type": "image/png",
+      "decoded_bytes": 2621224,
+      "staging_filename": "0d00d30643d3b37b4dfd6996b2470bd45d0e98efaed16c2c5a7e4a88c5c55944.png",
+      "status": "NEEDS_UPLOAD",
+      "existing_r2_key": null,
+      "existing_r2_url": null,
+      "fallback_proposed_r2_key": "migration/legacy-generated-images/v1/0d00d30643d3b37b4dfd6996b2470bd45d0e98efaed16c2c5a7e4a88c5c55944.png",
+      "fallback_proposed_public_url": "https://img.shuntu.cc/migration/legacy-generated-images/v1/0d00d30643d3b37b4dfd6996b2470bd45d0e98efaed16c2c5a7e4a88c5c55944.png",
+      "r2_reuse_audit": {
+        "candidate_count": 0,
+        "checked_count": 0,
+        "readable_candidate_count": 0,
+        "mismatch_count": 0,
+        "ambiguous_count": 0,
+        "method": "public HTTPS HEAD, then GET only when HEAD indicated an existing generated object",
+        "candidates": []
+      },
+      "references": [
+        {
+          "table": "generation_history",
+          "row_id": "289eb09a-eb3b-47ac-8e54-bf72284d84fe",
+          "column": "image_url",
+          "generation_task_id": null
+        }
+      ]
+    },
+    {
+      "sha256": "22bce34adb90cf9103860fc663150a671993850e863a4780949e8b6096d7feea",
+      "mime_type": "image/png",
+      "decoded_bytes": 2466061,
+      "staging_filename": "22bce34adb90cf9103860fc663150a671993850e863a4780949e8b6096d7feea.png",
+      "status": "NEEDS_UPLOAD",
+      "existing_r2_key": null,
+      "existing_r2_url": null,
+      "fallback_proposed_r2_key": "migration/legacy-generated-images/v1/22bce34adb90cf9103860fc663150a671993850e863a4780949e8b6096d7feea.png",
+      "fallback_proposed_public_url": "https://img.shuntu.cc/migration/legacy-generated-images/v1/22bce34adb90cf9103860fc663150a671993850e863a4780949e8b6096d7feea.png",
+      "r2_reuse_audit": {
+        "candidate_count": 1,
+        "checked_count": 1,
+        "readable_candidate_count": 0,
+        "mismatch_count": 0,
+        "ambiguous_count": 0,
+        "method": "public HTTPS HEAD, then GET only when HEAD indicated an existing generated object",
+        "candidates": [
+          {
+            "key": "generated/2026/07/bf4c89d3-8469-444b-a49a-0da3827dbfa9.png",
+            "url": "https://img.shuntu.cc/generated/2026/07/bf4c89d3-8469-444b-a49a-0da3827dbfa9.png",
+            "source": "generated_key_rule_task_id",
+            "head_status": 404,
+            "result": "NOT_FOUND"
+          }
+        ]
+      },
+      "references": [
+        {
+          "table": "generation_tasks",
+          "row_id": "bf4c89d3-8469-444b-a49a-0da3827dbfa9",
+          "column": "result_image_url",
+          "generation_task_id": "bf4c89d3-8469-444b-a49a-0da3827dbfa9",
+          "request_id": "task_1a2572e9-45fb-4984-9f1f-4af55b43f17b"
+        }
+      ]
+    },
+    {
+      "sha256": "2a970821254f14b9ca9e56add3b2afb75db71bd6d0cde7b7d084cc9b4f74e2fa",
+      "mime_type": "image/png",
+      "decoded_bytes": 6044398,
+      "staging_filename": "2a970821254f14b9ca9e56add3b2afb75db71bd6d0cde7b7d084cc9b4f74e2fa.png",
+      "status": "NEEDS_UPLOAD",
+      "existing_r2_key": null,
+      "existing_r2_url": null,
+      "fallback_proposed_r2_key": "migration/legacy-generated-images/v1/2a970821254f14b9ca9e56add3b2afb75db71bd6d0cde7b7d084cc9b4f74e2fa.png",
+      "fallback_proposed_public_url": "https://img.shuntu.cc/migration/legacy-generated-images/v1/2a970821254f14b9ca9e56add3b2afb75db71bd6d0cde7b7d084cc9b4f74e2fa.png",
+      "r2_reuse_audit": {
+        "candidate_count": 1,
+        "checked_count": 1,
+        "readable_candidate_count": 0,
+        "mismatch_count": 0,
+        "ambiguous_count": 0,
+        "method": "public HTTPS HEAD, then GET only when HEAD indicated an existing generated object",
+        "candidates": [
+          {
+            "key": "generated/2026/08/279e0794-09a0-4f71-9a1f-ece3dd931f32.png",
+            "url": "https://img.shuntu.cc/generated/2026/08/279e0794-09a0-4f71-9a1f-ece3dd931f32.png",
+            "source": "generated_key_rule_generation_task_id",
+            "head_status": 404,
+            "result": "NOT_FOUND"
+          }
+        ]
+      },
+      "references": [
+        {
+          "table": "generation_tasks",
+          "row_id": "279e0794-09a0-4f71-9a1f-ece3dd931f32",
+          "column": "result_image_url",
+          "generation_task_id": "279e0794-09a0-4f71-9a1f-ece3dd931f32",
+          "request_id": "task_4b464955-42ee-4d74-8ed4-1e9a5f8751d5"
+        },
+        {
+          "table": "generation_history",
+          "row_id": "1b1f782e-83d2-472e-af51-a0fcf8f7f560",
+          "column": "image_url",
+          "generation_task_id": "279e0794-09a0-4f71-9a1f-ece3dd931f32"
+        }
+      ]
+    },
+    {
+      "sha256": "3a669a5b1cf0380eb1ebde72540bf2e205da6dc87cc16bce05255664cc9fc85d",
+      "mime_type": "image/png",
+      "decoded_bytes": 1805372,
+      "staging_filename": "3a669a5b1cf0380eb1ebde72540bf2e205da6dc87cc16bce05255664cc9fc85d.png",
+      "status": "NEEDS_UPLOAD",
+      "existing_r2_key": null,
+      "existing_r2_url": null,
+      "fallback_proposed_r2_key": "migration/legacy-generated-images/v1/3a669a5b1cf0380eb1ebde72540bf2e205da6dc87cc16bce05255664cc9fc85d.png",
+      "fallback_proposed_public_url": "https://img.shuntu.cc/migration/legacy-generated-images/v1/3a669a5b1cf0380eb1ebde72540bf2e205da6dc87cc16bce05255664cc9fc85d.png",
+      "r2_reuse_audit": {
+        "candidate_count": 1,
+        "checked_count": 1,
+        "readable_candidate_count": 0,
+        "mismatch_count": 0,
+        "ambiguous_count": 0,
+        "method": "public HTTPS HEAD, then GET only when HEAD indicated an existing generated object",
+        "candidates": [
+          {
+            "key": "generated/2026/08/bcc91149-0a55-416c-91d8-c1dc0aefadcb.png",
+            "url": "https://img.shuntu.cc/generated/2026/08/bcc91149-0a55-416c-91d8-c1dc0aefadcb.png",
+            "source": "generated_key_rule_task_id",
+            "head_status": 404,
+            "result": "NOT_FOUND"
+          }
+        ]
+      },
+      "references": [
+        {
+          "table": "generation_tasks",
+          "row_id": "bcc91149-0a55-416c-91d8-c1dc0aefadcb",
+          "column": "result_image_url",
+          "generation_task_id": "bcc91149-0a55-416c-91d8-c1dc0aefadcb",
+          "request_id": "task_85599b62-5374-487b-9d1c-e9b100b1cf6f"
+        }
+      ]
+    },
+    {
+      "sha256": "44bd9c4aae4bdd250c635289d6dd8c362e801d999e88850da4d07a28e46f8153",
+      "mime_type": "image/png",
+      "decoded_bytes": 1463819,
+      "staging_filename": "44bd9c4aae4bdd250c635289d6dd8c362e801d999e88850da4d07a28e46f8153.png",
+      "status": "NEEDS_UPLOAD",
+      "existing_r2_key": null,
+      "existing_r2_url": null,
+      "fallback_proposed_r2_key": "migration/legacy-generated-images/v1/44bd9c4aae4bdd250c635289d6dd8c362e801d999e88850da4d07a28e46f8153.png",
+      "fallback_proposed_public_url": "https://img.shuntu.cc/migration/legacy-generated-images/v1/44bd9c4aae4bdd250c635289d6dd8c362e801d999e88850da4d07a28e46f8153.png",
+      "r2_reuse_audit": {
+        "candidate_count": 0,
+        "checked_count": 0,
+        "readable_candidate_count": 0,
+        "mismatch_count": 0,
+        "ambiguous_count": 0,
+        "method": "public HTTPS HEAD, then GET only when HEAD indicated an existing generated object",
+        "candidates": []
+      },
+      "references": [
+        {
+          "table": "generation_history",
+          "row_id": "fd50c35f-1a36-4eb9-8a00-d918aab02523",
+          "column": "image_url",
+          "generation_task_id": null
+        }
+      ]
+    },
+    {
+      "sha256": "4d9503177ce3e41f8fe668dd5484ea4264c7ad1c2b3817cab3161d7f14ab54ea",
+      "mime_type": "image/png",
+      "decoded_bytes": 1668536,
+      "staging_filename": "4d9503177ce3e41f8fe668dd5484ea4264c7ad1c2b3817cab3161d7f14ab54ea.png",
+      "status": "NEEDS_UPLOAD",
+      "existing_r2_key": null,
+      "existing_r2_url": null,
+      "fallback_proposed_r2_key": "migration/legacy-generated-images/v1/4d9503177ce3e41f8fe668dd5484ea4264c7ad1c2b3817cab3161d7f14ab54ea.png",
+      "fallback_proposed_public_url": "https://img.shuntu.cc/migration/legacy-generated-images/v1/4d9503177ce3e41f8fe668dd5484ea4264c7ad1c2b3817cab3161d7f14ab54ea.png",
+      "r2_reuse_audit": {
+        "candidate_count": 0,
+        "checked_count": 0,
+        "readable_candidate_count": 0,
+        "mismatch_count": 0,
+        "ambiguous_count": 0,
+        "method": "public HTTPS HEAD, then GET only when HEAD indicated an existing generated object",
+        "candidates": []
+      },
+      "references": [
+        {
+          "table": "generation_history",
+          "row_id": "0c30a21d-3839-4d55-ae00-9fa3fff2c74e",
+          "column": "image_url",
+          "generation_task_id": null
+        }
+      ]
+    },
+    {
+      "sha256": "640d6632c3ba3a477162a1c2993f883baf9d4456de778398d4be1aa589d8f128",
+      "mime_type": "image/png",
+      "decoded_bytes": 7302558,
+      "staging_filename": "640d6632c3ba3a477162a1c2993f883baf9d4456de778398d4be1aa589d8f128.png",
+      "status": "NEEDS_UPLOAD",
+      "existing_r2_key": null,
+      "existing_r2_url": null,
+      "fallback_proposed_r2_key": "migration/legacy-generated-images/v1/640d6632c3ba3a477162a1c2993f883baf9d4456de778398d4be1aa589d8f128.png",
+      "fallback_proposed_public_url": "https://img.shuntu.cc/migration/legacy-generated-images/v1/640d6632c3ba3a477162a1c2993f883baf9d4456de778398d4be1aa589d8f128.png",
+      "r2_reuse_audit": {
+        "candidate_count": 1,
+        "checked_count": 1,
+        "readable_candidate_count": 0,
+        "mismatch_count": 0,
+        "ambiguous_count": 0,
+        "method": "public HTTPS HEAD, then GET only when HEAD indicated an existing generated object",
+        "candidates": [
+          {
+            "key": "generated/2026/08/bdc6266a-f2ae-4538-b43f-d95eb677b297.png",
+            "url": "https://img.shuntu.cc/generated/2026/08/bdc6266a-f2ae-4538-b43f-d95eb677b297.png",
+            "source": "generated_key_rule_generation_task_id",
+            "head_status": 404,
+            "result": "NOT_FOUND"
+          }
+        ]
+      },
+      "references": [
+        {
+          "table": "generation_tasks",
+          "row_id": "bdc6266a-f2ae-4538-b43f-d95eb677b297",
+          "column": "result_image_url",
+          "generation_task_id": "bdc6266a-f2ae-4538-b43f-d95eb677b297",
+          "request_id": "task_a350bc1e-7c5b-4fb9-8bb2-77c34ef81fe1"
+        },
+        {
+          "table": "generation_history",
+          "row_id": "45b5b075-f346-473e-ab99-b14b786d0b90",
+          "column": "image_url",
+          "generation_task_id": "bdc6266a-f2ae-4538-b43f-d95eb677b297"
+        }
+      ]
+    },
+    {
+      "sha256": "6768cef594025ad30632f015771ca6614a43457be48386c8154a96066ef007c7",
+      "mime_type": "image/png",
+      "decoded_bytes": 1814291,
+      "staging_filename": "6768cef594025ad30632f015771ca6614a43457be48386c8154a96066ef007c7.png",
+      "status": "NEEDS_UPLOAD",
+      "existing_r2_key": null,
+      "existing_r2_url": null,
+      "fallback_proposed_r2_key": "migration/legacy-generated-images/v1/6768cef594025ad30632f015771ca6614a43457be48386c8154a96066ef007c7.png",
+      "fallback_proposed_public_url": "https://img.shuntu.cc/migration/legacy-generated-images/v1/6768cef594025ad30632f015771ca6614a43457be48386c8154a96066ef007c7.png",
+      "r2_reuse_audit": {
+        "candidate_count": 1,
+        "checked_count": 1,
+        "readable_candidate_count": 0,
+        "mismatch_count": 0,
+        "ambiguous_count": 0,
+        "method": "public HTTPS HEAD, then GET only when HEAD indicated an existing generated object",
+        "candidates": [
+          {
+            "key": "generated/2026/08/a16027d8-bfb3-4d16-b447-704ef9a1fd3d.png",
+            "url": "https://img.shuntu.cc/generated/2026/08/a16027d8-bfb3-4d16-b447-704ef9a1fd3d.png",
+            "source": "generated_key_rule_task_id",
+            "head_status": 404,
+            "result": "NOT_FOUND"
+          }
+        ]
+      },
+      "references": [
+        {
+          "table": "generation_tasks",
+          "row_id": "a16027d8-bfb3-4d16-b447-704ef9a1fd3d",
+          "column": "result_image_url",
+          "generation_task_id": "a16027d8-bfb3-4d16-b447-704ef9a1fd3d",
+          "request_id": "task_b2019ab6-9896-4b78-af4d-b8a3dbbb46d2"
+        }
+      ]
+    },
+    {
+      "sha256": "74af9d9f05fd934aa019404d1583f1be4e58c8987d0603d9acbbe9bdff5bb174",
+      "mime_type": "image/png",
+      "decoded_bytes": 2149268,
+      "staging_filename": "74af9d9f05fd934aa019404d1583f1be4e58c8987d0603d9acbbe9bdff5bb174.png",
+      "status": "NEEDS_UPLOAD",
+      "existing_r2_key": null,
+      "existing_r2_url": null,
+      "fallback_proposed_r2_key": "migration/legacy-generated-images/v1/74af9d9f05fd934aa019404d1583f1be4e58c8987d0603d9acbbe9bdff5bb174.png",
+      "fallback_proposed_public_url": "https://img.shuntu.cc/migration/legacy-generated-images/v1/74af9d9f05fd934aa019404d1583f1be4e58c8987d0603d9acbbe9bdff5bb174.png",
+      "r2_reuse_audit": {
+        "candidate_count": 0,
+        "checked_count": 0,
+        "readable_candidate_count": 0,
+        "mismatch_count": 0,
+        "ambiguous_count": 0,
+        "method": "public HTTPS HEAD, then GET only when HEAD indicated an existing generated object",
+        "candidates": []
+      },
+      "references": [
+        {
+          "table": "generation_history",
+          "row_id": "3c3d20db-4b09-4545-92cf-dcbf45094cc7",
+          "column": "image_url",
+          "generation_task_id": null
+        }
+      ]
+    },
+    {
+      "sha256": "75f23f7c09c6ffce8612796a65072c16f64d5e966424eb969ca01a7e0de83ed6",
+      "mime_type": "image/png",
+      "decoded_bytes": 1710548,
+      "staging_filename": "75f23f7c09c6ffce8612796a65072c16f64d5e966424eb969ca01a7e0de83ed6.png",
+      "status": "NEEDS_UPLOAD",
+      "existing_r2_key": null,
+      "existing_r2_url": null,
+      "fallback_proposed_r2_key": "migration/legacy-generated-images/v1/75f23f7c09c6ffce8612796a65072c16f64d5e966424eb969ca01a7e0de83ed6.png",
+      "fallback_proposed_public_url": "https://img.shuntu.cc/migration/legacy-generated-images/v1/75f23f7c09c6ffce8612796a65072c16f64d5e966424eb969ca01a7e0de83ed6.png",
+      "r2_reuse_audit": {
+        "candidate_count": 1,
+        "checked_count": 1,
+        "readable_candidate_count": 0,
+        "mismatch_count": 0,
+        "ambiguous_count": 0,
+        "method": "public HTTPS HEAD, then GET only when HEAD indicated an existing generated object",
+        "candidates": [
+          {
+            "key": "generated/2026/08/d5ccf7dd-deb7-498b-b16d-0cffa147fc20.png",
+            "url": "https://img.shuntu.cc/generated/2026/08/d5ccf7dd-deb7-498b-b16d-0cffa147fc20.png",
+            "source": "generated_key_rule_task_id",
+            "head_status": 404,
+            "result": "NOT_FOUND"
+          }
+        ]
+      },
+      "references": [
+        {
+          "table": "generation_tasks",
+          "row_id": "d5ccf7dd-deb7-498b-b16d-0cffa147fc20",
+          "column": "result_image_url",
+          "generation_task_id": "d5ccf7dd-deb7-498b-b16d-0cffa147fc20",
+          "request_id": "task_de369dd6-638f-4fc8-854d-e41634201f39"
+        }
+      ]
+    },
+    {
+      "sha256": "852fb959293322a2763fb6f7637c4f4a51c86c6f6b17296b23796d7b21f08461",
+      "mime_type": "image/png",
+      "decoded_bytes": 8057633,
+      "staging_filename": "852fb959293322a2763fb6f7637c4f4a51c86c6f6b17296b23796d7b21f08461.png",
+      "status": "NEEDS_UPLOAD",
+      "existing_r2_key": null,
+      "existing_r2_url": null,
+      "fallback_proposed_r2_key": "migration/legacy-generated-images/v1/852fb959293322a2763fb6f7637c4f4a51c86c6f6b17296b23796d7b21f08461.png",
+      "fallback_proposed_public_url": "https://img.shuntu.cc/migration/legacy-generated-images/v1/852fb959293322a2763fb6f7637c4f4a51c86c6f6b17296b23796d7b21f08461.png",
+      "r2_reuse_audit": {
+        "candidate_count": 1,
+        "checked_count": 1,
+        "readable_candidate_count": 0,
+        "mismatch_count": 0,
+        "ambiguous_count": 0,
+        "method": "public HTTPS HEAD, then GET only when HEAD indicated an existing generated object",
+        "candidates": [
+          {
+            "key": "generated/2026/08/ea504908-6dd2-425c-a955-9914e9554340.png",
+            "url": "https://img.shuntu.cc/generated/2026/08/ea504908-6dd2-425c-a955-9914e9554340.png",
+            "source": "generated_key_rule_generation_task_id",
+            "head_status": 404,
+            "result": "NOT_FOUND"
+          }
+        ]
+      },
+      "references": [
+        {
+          "table": "generation_tasks",
+          "row_id": "ea504908-6dd2-425c-a955-9914e9554340",
+          "column": "result_image_url",
+          "generation_task_id": "ea504908-6dd2-425c-a955-9914e9554340",
+          "request_id": "task_5f496d80-b7b6-4d75-b903-e304e63b41e3"
+        },
+        {
+          "table": "generation_history",
+          "row_id": "bb3fe089-4f12-478b-9a9f-adad4a83a42b",
+          "column": "image_url",
+          "generation_task_id": "ea504908-6dd2-425c-a955-9914e9554340"
+        }
+      ]
+    },
+    {
+      "sha256": "887c3ca284cba8216b573beb78f13cd44b89b68ea8188446c8aee3a622d19240",
+      "mime_type": "image/png",
+      "decoded_bytes": 2178354,
+      "staging_filename": "887c3ca284cba8216b573beb78f13cd44b89b68ea8188446c8aee3a622d19240.png",
+      "status": "NEEDS_UPLOAD",
+      "existing_r2_key": null,
+      "existing_r2_url": null,
+      "fallback_proposed_r2_key": "migration/legacy-generated-images/v1/887c3ca284cba8216b573beb78f13cd44b89b68ea8188446c8aee3a622d19240.png",
+      "fallback_proposed_public_url": "https://img.shuntu.cc/migration/legacy-generated-images/v1/887c3ca284cba8216b573beb78f13cd44b89b68ea8188446c8aee3a622d19240.png",
+      "r2_reuse_audit": {
+        "candidate_count": 0,
+        "checked_count": 0,
+        "readable_candidate_count": 0,
+        "mismatch_count": 0,
+        "ambiguous_count": 0,
+        "method": "public HTTPS HEAD, then GET only when HEAD indicated an existing generated object",
+        "candidates": []
+      },
+      "references": [
+        {
+          "table": "generation_history",
+          "row_id": "3bfe21c3-bae6-467f-ad30-9a01a9499a10",
+          "column": "image_url",
+          "generation_task_id": null
+        }
+      ]
+    },
+    {
+      "sha256": "8ae5acdf9bdb22d3896965d92d9821fa3ab35cf1727c2d1d7e545b45e1ee64f7",
+      "mime_type": "image/png",
+      "decoded_bytes": 2100092,
+      "staging_filename": "8ae5acdf9bdb22d3896965d92d9821fa3ab35cf1727c2d1d7e545b45e1ee64f7.png",
+      "status": "NEEDS_UPLOAD",
+      "existing_r2_key": null,
+      "existing_r2_url": null,
+      "fallback_proposed_r2_key": "migration/legacy-generated-images/v1/8ae5acdf9bdb22d3896965d92d9821fa3ab35cf1727c2d1d7e545b45e1ee64f7.png",
+      "fallback_proposed_public_url": "https://img.shuntu.cc/migration/legacy-generated-images/v1/8ae5acdf9bdb22d3896965d92d9821fa3ab35cf1727c2d1d7e545b45e1ee64f7.png",
+      "r2_reuse_audit": {
+        "candidate_count": 0,
+        "checked_count": 0,
+        "readable_candidate_count": 0,
+        "mismatch_count": 0,
+        "ambiguous_count": 0,
+        "method": "public HTTPS HEAD, then GET only when HEAD indicated an existing generated object",
+        "candidates": []
+      },
+      "references": [
+        {
+          "table": "generation_history",
+          "row_id": "f741ced3-759a-4717-8de3-817099d8461f",
+          "column": "image_url",
+          "generation_task_id": null
+        }
+      ]
+    },
+    {
+      "sha256": "8fa858e149c8bb187b69b3b700c0ffe5fb00a2352da8b7c3f699f3c5671a9594",
+      "mime_type": "image/png",
+      "decoded_bytes": 7482520,
+      "staging_filename": "8fa858e149c8bb187b69b3b700c0ffe5fb00a2352da8b7c3f699f3c5671a9594.png",
+      "status": "NEEDS_UPLOAD",
+      "existing_r2_key": null,
+      "existing_r2_url": null,
+      "fallback_proposed_r2_key": "migration/legacy-generated-images/v1/8fa858e149c8bb187b69b3b700c0ffe5fb00a2352da8b7c3f699f3c5671a9594.png",
+      "fallback_proposed_public_url": "https://img.shuntu.cc/migration/legacy-generated-images/v1/8fa858e149c8bb187b69b3b700c0ffe5fb00a2352da8b7c3f699f3c5671a9594.png",
+      "r2_reuse_audit": {
+        "candidate_count": 1,
+        "checked_count": 1,
+        "readable_candidate_count": 0,
+        "mismatch_count": 0,
+        "ambiguous_count": 0,
+        "method": "public HTTPS HEAD, then GET only when HEAD indicated an existing generated object",
+        "candidates": [
+          {
+            "key": "generated/2026/08/7a8057cf-6718-494c-a8d0-65defa0ede64.png",
+            "url": "https://img.shuntu.cc/generated/2026/08/7a8057cf-6718-494c-a8d0-65defa0ede64.png",
+            "source": "generated_key_rule_generation_task_id",
+            "head_status": 404,
+            "result": "NOT_FOUND"
+          }
+        ]
+      },
+      "references": [
+        {
+          "table": "generation_tasks",
+          "row_id": "7a8057cf-6718-494c-a8d0-65defa0ede64",
+          "column": "result_image_url",
+          "generation_task_id": "7a8057cf-6718-494c-a8d0-65defa0ede64",
+          "request_id": "task_8dc6174c-dde0-4e31-af53-a8fc87391ab7"
+        },
+        {
+          "table": "generation_history",
+          "row_id": "ce8bac4e-2519-4188-8496-6959ecc10300",
+          "column": "image_url",
+          "generation_task_id": "7a8057cf-6718-494c-a8d0-65defa0ede64"
+        }
+      ]
+    },
+    {
+      "sha256": "94252f1c8ec2bc7bd30283783682095c64907a0bf9f53a7c39299a1324c28d65",
+      "mime_type": "image/png",
+      "decoded_bytes": 2444187,
+      "staging_filename": "94252f1c8ec2bc7bd30283783682095c64907a0bf9f53a7c39299a1324c28d65.png",
+      "status": "NEEDS_UPLOAD",
+      "existing_r2_key": null,
+      "existing_r2_url": null,
+      "fallback_proposed_r2_key": "migration/legacy-generated-images/v1/94252f1c8ec2bc7bd30283783682095c64907a0bf9f53a7c39299a1324c28d65.png",
+      "fallback_proposed_public_url": "https://img.shuntu.cc/migration/legacy-generated-images/v1/94252f1c8ec2bc7bd30283783682095c64907a0bf9f53a7c39299a1324c28d65.png",
+      "r2_reuse_audit": {
+        "candidate_count": 0,
+        "checked_count": 0,
+        "readable_candidate_count": 0,
+        "mismatch_count": 0,
+        "ambiguous_count": 0,
+        "method": "public HTTPS HEAD, then GET only when HEAD indicated an existing generated object",
+        "candidates": []
+      },
+      "references": [
+        {
+          "table": "generation_history",
+          "row_id": "e42168a5-7bed-4a40-9c33-bdefd4b185b9",
+          "column": "image_url",
+          "generation_task_id": null
+        }
+      ]
+    },
+    {
+      "sha256": "9a3c4ceb5273726afc686fe90d55804b2d558d5f3076333ae8ce52dcd498d430",
+      "mime_type": "image/png",
+      "decoded_bytes": 6935551,
+      "staging_filename": "9a3c4ceb5273726afc686fe90d55804b2d558d5f3076333ae8ce52dcd498d430.png",
+      "status": "NEEDS_UPLOAD",
+      "existing_r2_key": null,
+      "existing_r2_url": null,
+      "fallback_proposed_r2_key": "migration/legacy-generated-images/v1/9a3c4ceb5273726afc686fe90d55804b2d558d5f3076333ae8ce52dcd498d430.png",
+      "fallback_proposed_public_url": "https://img.shuntu.cc/migration/legacy-generated-images/v1/9a3c4ceb5273726afc686fe90d55804b2d558d5f3076333ae8ce52dcd498d430.png",
+      "r2_reuse_audit": {
+        "candidate_count": 1,
+        "checked_count": 1,
+        "readable_candidate_count": 0,
+        "mismatch_count": 0,
+        "ambiguous_count": 0,
+        "method": "public HTTPS HEAD, then GET only when HEAD indicated an existing generated object",
+        "candidates": [
+          {
+            "key": "generated/2026/08/2a3a45d0-5442-4792-bc11-83fde7457d59.png",
+            "url": "https://img.shuntu.cc/generated/2026/08/2a3a45d0-5442-4792-bc11-83fde7457d59.png",
+            "source": "generated_key_rule_generation_task_id",
+            "head_status": 404,
+            "result": "NOT_FOUND"
+          }
+        ]
+      },
+      "references": [
+        {
+          "table": "generation_tasks",
+          "row_id": "2a3a45d0-5442-4792-bc11-83fde7457d59",
+          "column": "result_image_url",
+          "generation_task_id": "2a3a45d0-5442-4792-bc11-83fde7457d59",
+          "request_id": "task_aaa069e8-aaa3-4467-af5d-eded9b24c673"
+        },
+        {
+          "table": "generation_history",
+          "row_id": "c93dafe0-f103-42f6-bf33-096fbd258fbd",
+          "column": "image_url",
+          "generation_task_id": "2a3a45d0-5442-4792-bc11-83fde7457d59"
+        }
+      ]
+    },
+    {
+      "sha256": "aa26311804a79b73442700a230900b509edfdf5c3b8adb063c91f64e9626be58",
+      "mime_type": "image/png",
+      "decoded_bytes": 5787829,
+      "staging_filename": "aa26311804a79b73442700a230900b509edfdf5c3b8adb063c91f64e9626be58.png",
+      "status": "NEEDS_UPLOAD",
+      "existing_r2_key": null,
+      "existing_r2_url": null,
+      "fallback_proposed_r2_key": "migration/legacy-generated-images/v1/aa26311804a79b73442700a230900b509edfdf5c3b8adb063c91f64e9626be58.png",
+      "fallback_proposed_public_url": "https://img.shuntu.cc/migration/legacy-generated-images/v1/aa26311804a79b73442700a230900b509edfdf5c3b8adb063c91f64e9626be58.png",
+      "r2_reuse_audit": {
+        "candidate_count": 1,
+        "checked_count": 1,
+        "readable_candidate_count": 0,
+        "mismatch_count": 0,
+        "ambiguous_count": 0,
+        "method": "public HTTPS HEAD, then GET only when HEAD indicated an existing generated object",
+        "candidates": [
+          {
+            "key": "generated/2026/08/085c3b79-9b1e-4f3e-b4be-18bca102d4d3.png",
+            "url": "https://img.shuntu.cc/generated/2026/08/085c3b79-9b1e-4f3e-b4be-18bca102d4d3.png",
+            "source": "generated_key_rule_generation_task_id",
+            "head_status": 404,
+            "result": "NOT_FOUND"
+          }
+        ]
+      },
+      "references": [
+        {
+          "table": "generation_tasks",
+          "row_id": "085c3b79-9b1e-4f3e-b4be-18bca102d4d3",
+          "column": "result_image_url",
+          "generation_task_id": "085c3b79-9b1e-4f3e-b4be-18bca102d4d3",
+          "request_id": "task_20c1bb1e-e584-4ec9-a181-5bed37f9b90b"
+        },
+        {
+          "table": "generation_history",
+          "row_id": "18bc186d-2e8f-4955-9735-2ff34dcf64a9",
+          "column": "image_url",
+          "generation_task_id": "085c3b79-9b1e-4f3e-b4be-18bca102d4d3"
+        }
+      ]
+    },
+    {
+      "sha256": "e507049752862058b95dc1a316184dc1851f69c4c5aa78d30e3522fcf661269e",
+      "mime_type": "image/png",
+      "decoded_bytes": 2123473,
+      "staging_filename": "e507049752862058b95dc1a316184dc1851f69c4c5aa78d30e3522fcf661269e.png",
+      "status": "NEEDS_UPLOAD",
+      "existing_r2_key": null,
+      "existing_r2_url": null,
+      "fallback_proposed_r2_key": "migration/legacy-generated-images/v1/e507049752862058b95dc1a316184dc1851f69c4c5aa78d30e3522fcf661269e.png",
+      "fallback_proposed_public_url": "https://img.shuntu.cc/migration/legacy-generated-images/v1/e507049752862058b95dc1a316184dc1851f69c4c5aa78d30e3522fcf661269e.png",
+      "r2_reuse_audit": {
+        "candidate_count": 0,
+        "checked_count": 0,
+        "readable_candidate_count": 0,
+        "mismatch_count": 0,
+        "ambiguous_count": 0,
+        "method": "public HTTPS HEAD, then GET only when HEAD indicated an existing generated object",
+        "candidates": []
+      },
+      "references": [
+        {
+          "table": "generation_history",
+          "row_id": "dcb0c987-61b1-4327-ab6a-55b83df810de",
+          "column": "image_url",
+          "generation_task_id": null
+        }
+      ]
+    },
+    {
+      "sha256": "f0b2422a82669ee0960d81f9364bb11dd373a0088e6dbe3e4dc878414937d182",
+      "mime_type": "image/png",
+      "decoded_bytes": 2402572,
+      "staging_filename": "f0b2422a82669ee0960d81f9364bb11dd373a0088e6dbe3e4dc878414937d182.png",
+      "status": "NEEDS_UPLOAD",
+      "existing_r2_key": null,
+      "existing_r2_url": null,
+      "fallback_proposed_r2_key": "migration/legacy-generated-images/v1/f0b2422a82669ee0960d81f9364bb11dd373a0088e6dbe3e4dc878414937d182.png",
+      "fallback_proposed_public_url": "https://img.shuntu.cc/migration/legacy-generated-images/v1/f0b2422a82669ee0960d81f9364bb11dd373a0088e6dbe3e4dc878414937d182.png",
+      "r2_reuse_audit": {
+        "candidate_count": 1,
+        "checked_count": 1,
+        "readable_candidate_count": 0,
+        "mismatch_count": 0,
+        "ambiguous_count": 0,
+        "method": "public HTTPS HEAD, then GET only when HEAD indicated an existing generated object",
+        "candidates": [
+          {
+            "key": "generated/2026/08/11655210-ab45-48f5-80d7-f366d55fc165.png",
+            "url": "https://img.shuntu.cc/generated/2026/08/11655210-ab45-48f5-80d7-f366d55fc165.png",
+            "source": "generated_key_rule_generation_task_id",
+            "head_status": 404,
+            "result": "NOT_FOUND"
+          }
+        ]
+      },
+      "references": [
+        {
+          "table": "generation_tasks",
+          "row_id": "11655210-ab45-48f5-80d7-f366d55fc165",
+          "column": "result_image_url",
+          "generation_task_id": "11655210-ab45-48f5-80d7-f366d55fc165",
+          "request_id": "task_760924df-ef40-4610-a72f-297fd10985e2"
+        },
+        {
+          "table": "generation_history",
+          "row_id": "7d8849de-4ba7-443a-805f-abbd8b36ec24",
+          "column": "image_url",
+          "generation_task_id": "11655210-ab45-48f5-80d7-f366d55fc165"
+        }
+      ]
+    },
+    {
+      "sha256": "f9b1d9cde58c52630a92428511b5f20bc393cf776561f1fd4c9f0483ae2a322f",
+      "mime_type": "image/png",
+      "decoded_bytes": 6168088,
+      "staging_filename": "f9b1d9cde58c52630a92428511b5f20bc393cf776561f1fd4c9f0483ae2a322f.png",
+      "status": "NEEDS_UPLOAD",
+      "existing_r2_key": null,
+      "existing_r2_url": null,
+      "fallback_proposed_r2_key": "migration/legacy-generated-images/v1/f9b1d9cde58c52630a92428511b5f20bc393cf776561f1fd4c9f0483ae2a322f.png",
+      "fallback_proposed_public_url": "https://img.shuntu.cc/migration/legacy-generated-images/v1/f9b1d9cde58c52630a92428511b5f20bc393cf776561f1fd4c9f0483ae2a322f.png",
+      "r2_reuse_audit": {
+        "candidate_count": 1,
+        "checked_count": 1,
+        "readable_candidate_count": 0,
+        "mismatch_count": 0,
+        "ambiguous_count": 0,
+        "method": "public HTTPS HEAD, then GET only when HEAD indicated an existing generated object",
+        "candidates": [
+          {
+            "key": "generated/2026/08/76e54da6-931c-40fc-b3d5-7c163becea34.png",
+            "url": "https://img.shuntu.cc/generated/2026/08/76e54da6-931c-40fc-b3d5-7c163becea34.png",
+            "source": "generated_key_rule_generation_task_id",
+            "head_status": 404,
+            "result": "NOT_FOUND"
+          }
+        ]
+      },
+      "references": [
+        {
+          "table": "generation_tasks",
+          "row_id": "76e54da6-931c-40fc-b3d5-7c163becea34",
+          "column": "result_image_url",
+          "generation_task_id": "76e54da6-931c-40fc-b3d5-7c163becea34",
+          "request_id": "task_b79a95a2-4af0-41ee-a216-a99449be49a8"
+        },
+        {
+          "table": "generation_history",
+          "row_id": "64ebee84-bb6d-44f9-b71a-790d6110bb39",
+          "column": "image_url",
+          "generation_task_id": "76e54da6-931c-40fc-b3d5-7c163becea34"
+        }
+      ]
+    }
+  ]
+}

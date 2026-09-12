@@ -1,18 +1,12 @@
 import { getStartContext } from "@tanstack/start-storage-context";
-
-type R2BucketLike = {
-  put: (
-    key: string,
-    value: ArrayBuffer | ArrayBufferView | Blob | ReadableStream,
-    options?: { httpMetadata?: { contentType?: string } },
-  ) => Promise<unknown>;
-  delete?: (key: string) => Promise<unknown>;
-};
-
-type CloudflareEnvLike = {
-  SHUNTU_GENERATED_IMAGES?: R2BucketLike;
-  R2_PUBLIC_BASE_URL?: string;
-};
+import {
+  deleteGeneratedPreviewForOriginalUrl,
+  ensureGeneratedPreviewFromBytes,
+  ensureGeneratedPreviewFromOriginalUrl,
+  getGeneratedR2KeyFromPublicUrl as getStrictGeneratedR2KeyFromPublicUrl,
+  type CloudflareEnvLike,
+  type R2BucketLike,
+} from "@/lib/r2-image-preview";
 
 type ArchiveGeneratedImageInput = {
   imageUrl: string;
@@ -23,7 +17,6 @@ type ArchiveGeneratedImageInput = {
 };
 
 const PUBLIC_IMAGE_BASE_URL = "https://img.shuntu.cc";
-const PUBLIC_IMAGE_HOST = "img.shuntu.cc";
 const GENERATED_IMAGE_KEY_PREFIX = "generated/";
 const CLOUDFLARE_ENV_GLOBAL_KEY = "__SHUNTU_CLOUDFLARE_ENV__";
 
@@ -59,7 +52,6 @@ function getCloudflareEnv(explicitEnv?: unknown): CloudflareEnvLike {
       PUBLIC_IMAGE_BASE_URL,
   };
 }
-
 
 function normalizePublicBaseUrl(value: string | undefined): string | null {
   const trimmed = String(value ?? "").trim().replace(/\/+$/, "");
@@ -107,20 +99,7 @@ function getImageHost(imageUrl: string): string {
 }
 
 export function getGeneratedR2KeyFromPublicUrl(imageUrl: string | null | undefined): string | null {
-  if (!imageUrl) return null;
-
-  try {
-    const url = new URL(imageUrl);
-    if (url.protocol !== "https:" || url.hostname !== PUBLIC_IMAGE_HOST) return null;
-    if (!url.pathname.startsWith(`/${GENERATED_IMAGE_KEY_PREFIX}`)) return null;
-
-    const key = decodeURIComponent(url.pathname.slice(1));
-    if (!key.startsWith(GENERATED_IMAGE_KEY_PREFIX)) return null;
-    if (key.split("/").some((segment) => segment === "." || segment === "..")) return null;
-    return key;
-  } catch {
-    return null;
-  }
+  return getStrictGeneratedR2KeyFromPublicUrl(imageUrl);
 }
 
 export async function deleteGeneratedImageFromR2Url(
@@ -136,6 +115,7 @@ export async function deleteGeneratedImageFromR2Url(
 
   try {
     await bucket.delete(key);
+    void deleteGeneratedPreviewForOriginalUrl(imageUrl, cloudflareEnv);
     return true;
   } catch (error) {
     const errorName = error instanceof Error ? error.name : typeof error;
@@ -153,6 +133,7 @@ export async function archiveGeneratedImageToR2({
 
   if (!imageUrl) return imageUrl;
   if (imageUrl.startsWith(`${PUBLIC_IMAGE_BASE_URL}/`) || imageUrl === PUBLIC_IMAGE_BASE_URL) {
+    void ensureGeneratedPreviewFromOriginalUrl(imageUrl, cloudflareEnv);
     return imageUrl;
   }
 
@@ -174,7 +155,12 @@ export async function archiveGeneratedImageToR2({
       const extension = getExtension(dataImage.contentType);
       const key = getArchiveKey(taskId, extension);
       await bucket.put(key, dataImage.body, { httpMetadata: { contentType: dataImage.contentType } });
-      return `${publicBaseUrl}/${key}`;
+      const finalUrl = `${publicBaseUrl}/${key}`;
+      await ensureGeneratedPreviewFromBytes(finalUrl, dataImage.body, env).catch((error) => {
+        console.warn("[preview] archive preview failed", error);
+        return false;
+      });
+      return finalUrl;
     } catch {
       return imageUrl;
     }
@@ -204,6 +190,10 @@ export async function archiveGeneratedImageToR2({
     const body = await response.arrayBuffer();
     await bucket.put(key, body, { httpMetadata: { contentType } });
     const finalUrl = `${publicBaseUrl}/${key}`;
+    await ensureGeneratedPreviewFromBytes(finalUrl, new Uint8Array(body), env).catch((error) => {
+      console.warn("[preview] archive preview failed", error);
+      return false;
+    });
     return finalUrl;
   } catch (error) {
     return imageUrl;
