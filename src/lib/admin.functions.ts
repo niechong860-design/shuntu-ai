@@ -2152,6 +2152,7 @@ export const generateImage = createServerFn({ method: "POST" })
     // 异步模型在 checkImageStatus 拿到最终图片后再扣费，避免上游失败仍扣点。
     let safeCost = 0;
     let safeCredits = currentCredits;
+    let syncHistoryId: string | null = null;
     if (imageUrl) {
       const charge = await db.consumeCreditsForGeneration({
         userId,
@@ -2162,6 +2163,7 @@ export const generateImage = createServerFn({ method: "POST" })
       if (!charge.success) throw new Error(charge.message || "扣费失败");
       safeCost = Number(charge.cost ?? 0) || 0;
       safeCredits = Number(charge.credits ?? 0) || 0;
+      syncHistoryId = charge.history_id;
 
       imageUrl = await archiveSuccessfulImageUrl(imageUrl, {
         taskId: `legacy_${crypto.randomUUID()}`,
@@ -2182,6 +2184,7 @@ export const generateImage = createServerFn({ method: "POST" })
       success: true,
       imageUrl,            // sync 模型直接返回，async 模型为 null
       taskId,              // async 模型返回 taskId 供前端轮询
+      historyId: syncHistoryId,
       cost: safeCost,
       credits: safeCredits,
       modelName: model.name,
@@ -2216,6 +2219,7 @@ export const checkImageStatus = createServerFn({ method: "POST" })
         return { status: "failed" as const, reason: "upstream" as const, imageUrl: null as string | null, message, code: null as number | null, taskStatus: result.providerStatus, rawMsg: result.message, debug: null as null };
       }
       const url = result.imageUrl;
+      let historyId: string | null = null;
       // 上游成功返回图片后再扣费记账，避免失败也扣点
       let chargeHistoryId: string | null = null;
       if (data.modelKey && data.prompt) {
@@ -2250,7 +2254,7 @@ export const checkImageStatus = createServerFn({ method: "POST" })
           historyId: chargeHistoryId,
         });
       }
-      return { status: "success" as const, reason: null as null, imageUrl: archivedUrl, message: null as string | null, code: null as number | null, taskStatus: result.providerStatus, rawMsg: null as string | null, debug: null as null };
+      return { status: "success" as const, reason: null as null, imageUrl: archivedUrl, historyId, message: null as string | null, code: null as number | null, taskStatus: result.providerStatus, rawMsg: null as string | null, debug: null as null };
     }
 
     const { global_api_key } = await loadGlobalConfig(db);
@@ -2309,6 +2313,7 @@ export const checkImageStatus = createServerFn({ method: "POST" })
             }
           } catch (e) {
             console.error("[checkImageStatus] 扣费异常", e);
+            return { status: "failed" as const, reason: "deduction" as const, imageUrl: null as string | null, message: "扣费失败，请稍后重试", code, taskStatus, rawMsg, debug: rawDebug };
           }
         }
         const archivedUrl = await archiveSuccessfulImageUrl(url, {
@@ -2326,7 +2331,7 @@ export const checkImageStatus = createServerFn({ method: "POST" })
             historyId: chargeHistoryId,
           });
         }
-        return { status: "success" as const, reason: null as null, imageUrl: archivedUrl, message: null as string | null, code, taskStatus, rawMsg, debug: rawDebug };
+        return { status: "success" as const, reason: null as null, imageUrl: archivedUrl, historyId: chargeHistoryId, message: null as string | null, code, taskStatus, rawMsg, debug: rawDebug };
       }
       return { status: "pending" as const, reason: null as null, imageUrl: null as string | null, message: "成功但URL未就绪", code, taskStatus, rawMsg, debug: rawDebug };
     }

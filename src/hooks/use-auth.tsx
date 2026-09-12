@@ -1,7 +1,8 @@
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { getCurrentProfile } from "@/lib/profile.functions";
+import { clearAllPreviewCache } from "@/lib/preview-cache";
 
 export type Profile = {
   id: string;
@@ -26,6 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const cacheUserIdRef = useRef<string | null>(null);
 
   const loadProfile = useCallback(async (uid: string) => {
     try {
@@ -40,6 +42,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s);
+      const nextUserId = s?.user?.id ?? null;
+      if (cacheUserIdRef.current !== nextUserId) {
+        clearAllPreviewCache();
+        cacheUserIdRef.current = nextUserId;
+      }
       if (s?.user) {
         setTimeout(() => loadProfile(s.user.id), 0);
       } else {
@@ -48,6 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
+      cacheUserIdRef.current = data.session?.user?.id ?? null;
       if (data.session?.user) loadProfile(data.session.user.id);
       setLoading(false);
     });
@@ -60,6 +68,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
+    clearAllPreviewCache();
+    cacheUserIdRef.current = null;
     setSession(null);
     setProfile(null);
   }, []);

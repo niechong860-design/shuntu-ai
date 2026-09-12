@@ -13,7 +13,6 @@ import { Route as InspirationRouteImport } from './routes/inspiration'
 import { Route as DisclaimerRouteImport } from './routes/disclaimer'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PaymentReturnRouteImport } from './routes/payment/return'
-import { Route as ApiGeneratedPreviewRouteImport } from './routes/api/generated-preview'
 import { Route as ApiDownloadImageRouteImport } from './routes/api/download-image'
 import { Route as ApiXunhupayNotifyRouteImport } from './routes/api/xunhupay/notify'
 import { Route as ApiHistoryThumbnailIdRouteImport } from './routes/api/history-thumbnail.$id'
@@ -38,11 +37,6 @@ const PaymentReturnRoute = PaymentReturnRouteImport.update({
   path: '/payment/return',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiGeneratedPreviewRoute = ApiGeneratedPreviewRouteImport.update({
-  id: '/api/generated-preview',
-  path: '/api/generated-preview',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiDownloadImageRoute = ApiDownloadImageRouteImport.update({
   id: '/api/download-image',
   path: '/api/download-image',
@@ -64,7 +58,6 @@ export interface FileRoutesByFullPath {
   '/disclaimer': typeof DisclaimerRoute
   '/inspiration': typeof InspirationRoute
   '/api/download-image': typeof ApiDownloadImageRoute
-  '/api/generated-preview': typeof ApiGeneratedPreviewRoute
   '/payment/return': typeof PaymentReturnRoute
   '/api/history-thumbnail/$id': typeof ApiHistoryThumbnailIdRoute
   '/api/xunhupay/notify': typeof ApiXunhupayNotifyRoute
@@ -74,7 +67,6 @@ export interface FileRoutesByTo {
   '/disclaimer': typeof DisclaimerRoute
   '/inspiration': typeof InspirationRoute
   '/api/download-image': typeof ApiDownloadImageRoute
-  '/api/generated-preview': typeof ApiGeneratedPreviewRoute
   '/payment/return': typeof PaymentReturnRoute
   '/api/history-thumbnail/$id': typeof ApiHistoryThumbnailIdRoute
   '/api/xunhupay/notify': typeof ApiXunhupayNotifyRoute
@@ -85,7 +77,6 @@ export interface FileRoutesById {
   '/disclaimer': typeof DisclaimerRoute
   '/inspiration': typeof InspirationRoute
   '/api/download-image': typeof ApiDownloadImageRoute
-  '/api/generated-preview': typeof ApiGeneratedPreviewRoute
   '/payment/return': typeof PaymentReturnRoute
   '/api/history-thumbnail/$id': typeof ApiHistoryThumbnailIdRoute
   '/api/xunhupay/notify': typeof ApiXunhupayNotifyRoute
@@ -97,7 +88,6 @@ export interface FileRouteTypes {
     | '/disclaimer'
     | '/inspiration'
     | '/api/download-image'
-    | '/api/generated-preview'
     | '/payment/return'
     | '/api/history-thumbnail/$id'
     | '/api/xunhupay/notify'
@@ -107,7 +97,6 @@ export interface FileRouteTypes {
     | '/disclaimer'
     | '/inspiration'
     | '/api/download-image'
-    | '/api/generated-preview'
     | '/payment/return'
     | '/api/history-thumbnail/$id'
     | '/api/xunhupay/notify'
@@ -117,7 +106,6 @@ export interface FileRouteTypes {
     | '/disclaimer'
     | '/inspiration'
     | '/api/download-image'
-    | '/api/generated-preview'
     | '/payment/return'
     | '/api/history-thumbnail/$id'
     | '/api/xunhupay/notify'
@@ -128,7 +116,6 @@ export interface RootRouteChildren {
   DisclaimerRoute: typeof DisclaimerRoute
   InspirationRoute: typeof InspirationRoute
   ApiDownloadImageRoute: typeof ApiDownloadImageRoute
-  ApiGeneratedPreviewRoute: typeof ApiGeneratedPreviewRoute
   PaymentReturnRoute: typeof PaymentReturnRoute
   ApiHistoryThumbnailIdRoute: typeof ApiHistoryThumbnailIdRoute
   ApiXunhupayNotifyRoute: typeof ApiXunhupayNotifyRoute
@@ -164,13 +151,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PaymentReturnRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/generated-preview': {
-      id: '/api/generated-preview'
-      path: '/api/generated-preview'
-      fullPath: '/api/generated-preview'
-      preLoaderRoute: typeof ApiGeneratedPreviewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/download-image': {
       id: '/api/download-image'
       path: '/api/download-image'
@@ -200,7 +180,6 @@ const rootRouteChildren: RootRouteChildren = {
   DisclaimerRoute: DisclaimerRoute,
   InspirationRoute: InspirationRoute,
   ApiDownloadImageRoute: ApiDownloadImageRoute,
-  ApiGeneratedPreviewRoute: ApiGeneratedPreviewRoute,
   PaymentReturnRoute: PaymentReturnRoute,
   ApiHistoryThumbnailIdRoute: ApiHistoryThumbnailIdRoute,
   ApiXunhupayNotifyRoute: ApiXunhupayNotifyRoute,
