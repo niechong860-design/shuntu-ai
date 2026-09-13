@@ -387,6 +387,8 @@ export class D1BusinessDatabase implements BusinessDatabase {
     const beforeCenti = creditsToCentiCredit(profile.credits, "profiles.credits");
     const afterCenti = beforeCenti + deltaCenti;
     if (afterCenti < 0) throw new Error("insufficient credits");
+    const ledgerAmountCenti = Math.abs(deltaCenti);
+    const direction = deltaCenti > 0 ? "add" : "subtract";
 
     const ledgerId = randomId();
     const idempotencyKey = `admin_adjustment:${ledgerId}`;
@@ -394,7 +396,7 @@ export class D1BusinessDatabase implements BusinessDatabase {
     const ledgerRow = {
       id: ledgerId,
       user_id: input.userId,
-      amount: deltaCenti,
+      amount: ledgerAmountCenti,
       source: "admin_adjustment",
       model_key: null,
       model_name: null,
@@ -406,6 +408,7 @@ export class D1BusinessDatabase implements BusinessDatabase {
         admin_user_id: input.adminUserId,
         target_user_id: input.userId,
         delta: input.delta,
+        direction,
         before: profile.credits,
         after: centiCreditToCredits(afterCenti),
         reason: "admin_adjustment",
@@ -421,13 +424,14 @@ export class D1BusinessDatabase implements BusinessDatabase {
         INSERT INTO credit_usage_logs
           (id, user_id, amount, source, model_key, model_name, generation_history_id,
            generation_task_id, idempotency_key, created_at, metadata)
-        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-        WHERE EXISTS (SELECT 1 FROM profiles WHERE id = ? AND credits = ? AND updated_at = ?)
+        SELECT ?, ?, CASE WHEN EXISTS (
+          SELECT 1 FROM profiles WHERE id = ? AND credits = ? AND updated_at = ?
+        ) THEN ? ELSE -1 END, ?, ?, ?, ?, ?, ?, ?, ?
       `).bind(
-        ledgerRow.id, ledgerRow.user_id, ledgerRow.amount, ledgerRow.source,
+        ledgerRow.id, ledgerRow.user_id, input.userId, afterCenti, now, ledgerRow.amount, ledgerRow.source,
         ledgerRow.model_key, ledgerRow.model_name, ledgerRow.generation_history_id,
         ledgerRow.generation_task_id, ledgerRow.idempotency_key, ledgerRow.created_at,
-        ledgerRow.metadata, input.userId, afterCenti, now,
+        ledgerRow.metadata,
       ),
     ], [
       rowStateEvent("profiles", input.userId, profileRow, `profiles:${input.userId}:admin-adjustment:${ledgerId}`),
