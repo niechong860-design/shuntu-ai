@@ -111,7 +111,7 @@ export class SupabaseReplicationTarget implements ReplicationTarget {
     if (!this.options.allowWrites) {
       throw new Error("SUPABASE_REPLICATION_TARGET_WRITE_DISABLED_FOR_THIS_PHASE");
     }
-    const row = convertD1RowStateForSupabase(event.entityType, readPayloadRow(event.payload));
+    const row = await convertD1RowStateForSupabase(event.entityType, readPayloadRow(event.payload), event.idempotencyKey);
     if (event.eventType.endsWith(".delete")) {
       const { error } = await this.supabase.from(event.entityType).delete().eq("id", event.entityId);
       if (error) throw new Error(error.message);
@@ -173,8 +173,11 @@ function readPayloadRow(payload: unknown): Record<string, unknown> {
   return row as Record<string, unknown>;
 }
 
-function convertD1RowStateForSupabase(entityType: string, row: Record<string, unknown>): Record<string, unknown> {
+async function convertD1RowStateForSupabase(entityType: string, row: Record<string, unknown>, idempotencyKey: string): Promise<Record<string, unknown>> {
   const next = { ...row };
+  if (entityType === "credit_usage_logs" && typeof next.id === "string" && !isUuid(next.id)) {
+    next.id = await stableUuidForLegacyLedger(idempotencyKey);
+  }
   if (entityType === "profiles" && next.credits != null) next.credits = centiCreditToCredits(next.credits as number);
   if (entityType === "generation_tasks" && next.credits_required != null) next.credits_required = centiCreditToCredits(next.credits_required as number);
   if (entityType === "generation_history" && next.cost != null) next.cost = centiCreditToCredits(next.cost as number);
@@ -192,6 +195,19 @@ function convertD1RowStateForSupabase(entityType: string, row: Record<string, un
     if (next[key] === 0 || next[key] === 1) next[key] = next[key] === 1;
   }
   return next;
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+async function stableUuidForLegacyLedger(key: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`shuntu:credit_usage_logs:${key}`));
+  const bytes = new Uint8Array(digest).slice(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 function primaryConflictFor(entityType: string): string {

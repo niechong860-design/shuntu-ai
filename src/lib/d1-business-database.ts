@@ -613,7 +613,7 @@ export class D1BusinessDatabase implements BusinessDatabase {
     const creditsAfterCenti = creditsToCentiCredit(profile.credits, "profiles.credits") + amountCenti;
     const ledgerKey = `payment:${input.outTradeNo}`;
     const ledgerRow = {
-      id: ledgerKey,
+      id: randomId(),
       user_id: String(order.user_id),
       amount: amountCenti,
       source: "payment",
