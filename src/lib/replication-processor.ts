@@ -27,6 +27,7 @@ export type ReplicationProcessorOptions = {
   target: ReplicationTarget;
   batchSize?: number;
   maxAttempts?: number;
+  leaseMs?: number;
   now?: Date;
 };
 
@@ -40,13 +41,15 @@ export type ReplicationProcessorResult = {
 export async function processReplicationOutbox(options: ReplicationProcessorOptions): Promise<ReplicationProcessorResult> {
   const batchSize = clampInteger(options.batchSize ?? 25, 1, 100);
   const maxAttempts = clampInteger(options.maxAttempts ?? 8, 1, 50);
+  const leaseMs = clampInteger(options.leaseMs ?? 5 * 60 * 1000, 1_000, 60 * 60 * 1000);
   const now = options.now ?? new Date();
   const nowIso = now.toISOString();
-  const rows = await selectPendingRows(options.db, batchSize, maxAttempts, nowIso);
+  const leaseCutoffIso = new Date(now.getTime() - leaseMs).toISOString();
+  const rows = await selectPendingRows(options.db, batchSize, maxAttempts, nowIso, leaseCutoffIso);
   const result: ReplicationProcessorResult = { scanned: rows.length, synced: 0, failed: 0, deferred: 0 };
 
   for (const row of rows) {
-    const claimed = await claimRow(options.db, row.id, nowIso);
+    const claimed = await claimRow(options.db, row.id, nowIso, leaseCutoffIso);
     if (!claimed) {
       result.deferred += 1;
       continue;
@@ -119,24 +122,29 @@ export class SupabaseReplicationTarget implements ReplicationTarget {
   }
 }
 
-async function selectPendingRows(db: D1DatabaseBindingLike, limit: number, maxAttempts: number, nowIso: string): Promise<ReplicationOutboxRow[]> {
+async function selectPendingRows(db: D1DatabaseBindingLike, limit: number, maxAttempts: number, nowIso: string, leaseCutoffIso: string): Promise<ReplicationOutboxRow[]> {
   const result = await db.prepare(`
     SELECT * FROM replication_outbox
-    WHERE status = 'pending'
-      AND attempt_count < ?
-      AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+    WHERE attempt_count < ?
+      AND (
+        (status = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= ?))
+        OR (status = 'processing' AND locked_at IS NOT NULL AND locked_at <= ?)
+      )
     ORDER BY created_at ASC, id ASC
     LIMIT ?
-  `).bind(maxAttempts, nowIso, limit).all<ReplicationOutboxRow>();
+  `).bind(maxAttempts, nowIso, leaseCutoffIso, limit).all<ReplicationOutboxRow>();
   return Array.isArray(result) ? result : result.results ?? [];
 }
 
-async function claimRow(db: D1DatabaseBindingLike, id: string, nowIso: string): Promise<boolean> {
+async function claimRow(db: D1DatabaseBindingLike, id: string, nowIso: string, leaseCutoffIso: string): Promise<boolean> {
   const result = await db.prepare(`
     UPDATE replication_outbox
     SET status = 'processing', locked_at = ?
-    WHERE id = ? AND status = 'pending'
-  `).bind(nowIso, id).run();
+    WHERE id = ? AND (
+      status = 'pending'
+      OR (status = 'processing' AND locked_at IS NOT NULL AND locked_at <= ?)
+    )
+  `).bind(nowIso, id, leaseCutoffIso).run();
   return changedRows(result) === 1;
 }
 
