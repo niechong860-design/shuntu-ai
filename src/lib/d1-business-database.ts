@@ -32,7 +32,7 @@ import {
   randomId,
   yuanToFen,
 } from "@/lib/business-database";
-import type { ReplicatedEntityType, ReplicationEventType } from "@/lib/d1-replication-outbox";
+import type { ReplicatedEntityType, ReplicationEventType, ReplicationOutboxEvent } from "@/lib/d1-replication-outbox";
 import { buildReplicationOutboxStatement } from "@/lib/d1-replication-outbox";
 
 type BoundValue = string | number | null;
@@ -605,24 +605,56 @@ export class D1BusinessDatabase implements BusinessDatabase {
     if (order.status === "paid") {
       return { success: true, message: "already paid", order: mapUserOrder(order), credits: centiCreditToCredits(order.credits as number), alreadyPaid: true };
     }
+    if (order.status !== "pending") {
+      return { success: false, message: "order is not pending", order: mapUserOrder(order), credits: null, alreadyPaid: false };
+    }
     const profile = await this.ensureProfile({ id: String(order.user_id), now });
-    const creditsAfterCenti = creditsToCentiCredit(profile.credits, "profiles.credits") + Number(order.credits);
+    const amountCenti = Number(order.credits);
+    const creditsAfterCenti = creditsToCentiCredit(profile.credits, "profiles.credits") + amountCenti;
+    const ledgerKey = `payment:${input.outTradeNo}`;
+    const ledgerRow = {
+      id: ledgerKey,
+      user_id: String(order.user_id),
+      amount: amountCenti,
+      source: "payment",
+      model_key: null,
+      model_name: null,
+      generation_history_id: null,
+      generation_task_id: null,
+      idempotency_key: ledgerKey,
+      created_at: now,
+      metadata: jsonToD1({ direction: "credit", reason: "payment", out_trade_no: input.outTradeNo, order_id: String(order.id) }, {}),
+    };
     const orderRow = { ...order, status: "paid", trade_no: input.tradeNo, paid_at: now, updated_at: now };
     const profileRow = { ...profileToRaw(profile), credits: creditsAfterCenti, updated_at: now };
+    const ledgerCondition = { sql: "EXISTS (SELECT 1 FROM credit_usage_logs WHERE idempotency_key = ?)", values: [ledgerKey] };
 
-    await this.batchWithOutbox([
-      this.db.prepare("UPDATE user_orders SET status = 'paid', trade_no = ?, paid_at = ?, updated_at = ? WHERE out_trade_no = ? AND status <> 'paid'")
+    const results = await this.batchWithOutbox([
+      this.db.prepare("UPDATE user_orders SET status = 'paid', trade_no = ?, paid_at = ?, updated_at = ? WHERE out_trade_no = ? AND status = 'pending'")
         .bind(input.tradeNo, now, now, input.outTradeNo),
       this.db.prepare(`
         UPDATE profiles
-        SET credits = ?, updated_at = ?
-        WHERE id = ?
-          AND EXISTS (SELECT 1 FROM user_orders WHERE out_trade_no = ? AND status = 'paid' AND paid_at = ?)
-      `).bind(creditsAfterCenti, now, order.user_id as string, input.outTradeNo, now),
+        SET credits = credits + ?, updated_at = ?
+        WHERE id = ? AND changes() = 1
+      `).bind(amountCenti, now, order.user_id as string),
+      this.db.prepare(`
+        INSERT INTO credit_usage_logs (
+          id, user_id, amount, source, model_key, model_name, generation_history_id, generation_task_id, idempotency_key, created_at, metadata
+        ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() = 1
+      `).bind(
+        ledgerRow.id, ledgerRow.user_id, ledgerRow.amount, ledgerRow.source, ledgerRow.model_key, ledgerRow.model_name,
+        ledgerRow.generation_history_id, ledgerRow.generation_task_id, ledgerRow.idempotency_key, ledgerRow.created_at, ledgerRow.metadata,
+      ),
     ], [
-      rowStateEvent("user_orders", String(order.id), orderRow, `user_orders:${input.outTradeNo}:paid`),
-      rowStateEvent("profiles", String(order.user_id), profileRow, `profiles:${String(order.user_id)}:order:${input.outTradeNo}`),
+      { ...rowStateEvent("user_orders", String(order.id), orderRow, `user_orders:${input.outTradeNo}:paid`), condition: ledgerCondition },
+      { ...rowStateEvent("profiles", String(order.user_id), profileRow, `profiles:${String(order.user_id)}:order:${input.outTradeNo}`), condition: ledgerCondition },
+      { ...rowStateEvent("credit_usage_logs", ledgerRow.id, ledgerRow, `credit_usage_logs:${ledgerKey}`), condition: ledgerCondition },
     ]);
+
+    if (Number((results[0] as D1RunResult | undefined)?.meta?.changes ?? 0) !== 1) {
+      const paidOrder = await this.getOrderByOutTradeNo(input.outTradeNo);
+      return { success: true, message: "already paid", order: paidOrder, credits: paidOrder?.credits ?? null, alreadyPaid: true };
+    }
 
     return { success: true, message: "paid", order: mapUserOrder(orderRow), credits: centiCreditToCredits(Number(order.credits)), alreadyPaid: false };
   }
@@ -637,6 +669,7 @@ export class D1BusinessDatabase implements BusinessDatabase {
     const redeemLogId = input.redeemLogId ?? randomId();
     const amountCenti = Number(coupon.amount);
     const creditsAfterCenti = creditsToCentiCredit(profile.credits, "profiles.credits") + amountCenti;
+    const ledgerKey = `coupon:${code}`;
     const couponRow = { ...coupon, is_used: 1, used_by: input.userId, used_by_email: input.userEmail ?? (profile.email ?? null), used_at: now };
     const profileRow = { ...profileToRaw(profile), credits: creditsAfterCenti, updated_at: now };
     const redeemRow = {
@@ -648,26 +681,51 @@ export class D1BusinessDatabase implements BusinessDatabase {
       error_message: null,
       redeemed_at: now,
     };
+    const ledgerRow = {
+      id: ledgerKey,
+      user_id: input.userId,
+      amount: amountCenti,
+      source: "coupon_redeem",
+      model_key: null,
+      model_name: null,
+      generation_history_id: null,
+      generation_task_id: null,
+      idempotency_key: ledgerKey,
+      created_at: now,
+      metadata: jsonToD1({ direction: "credit", reason: "coupon_redeem", coupon_code: code, redeem_log_id: redeemLogId }, {}),
+    };
+    const redeemCondition = { sql: "EXISTS (SELECT 1 FROM redeem_logs WHERE id = ?)", values: [redeemLogId] };
 
-    await this.batchWithOutbox([
+    const results = await this.batchWithOutbox([
       this.db.prepare("UPDATE coupons SET is_used = 1, used_by = ?, used_by_email = ?, used_at = ? WHERE code = ? AND is_used = 0")
         .bind(input.userId, couponRow.used_by_email as string | null, now, code),
       this.db.prepare(`
         UPDATE profiles
-        SET credits = ?, updated_at = ?
-        WHERE id = ?
-          AND EXISTS (SELECT 1 FROM coupons WHERE code = ? AND is_used = 1 AND used_by = ? AND used_at = ?)
-      `).bind(creditsAfterCenti, now, input.userId, code, input.userId, now),
+        SET credits = credits + ?, updated_at = ?
+        WHERE id = ? AND changes() = 1
+      `).bind(amountCenti, now, input.userId),
+      this.db.prepare(`
+        INSERT INTO credit_usage_logs (
+          id, user_id, amount, source, model_key, model_name, generation_history_id, generation_task_id, idempotency_key, created_at, metadata
+        ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() = 1
+      `).bind(
+        ledgerRow.id, ledgerRow.user_id, ledgerRow.amount, ledgerRow.source, ledgerRow.model_key, ledgerRow.model_name,
+        ledgerRow.generation_history_id, ledgerRow.generation_task_id, ledgerRow.idempotency_key, ledgerRow.created_at, ledgerRow.metadata,
+      ),
       this.db.prepare(`
         INSERT INTO redeem_logs (id, user_id, code, amount, success, error_message, redeemed_at)
-        SELECT ?, ?, ?, ?, 1, NULL, ?
-        WHERE EXISTS (SELECT 1 FROM coupons WHERE code = ? AND is_used = 1 AND used_by = ? AND used_at = ?)
-      `).bind(redeemRow.id, redeemRow.user_id, redeemRow.code, redeemRow.amount, redeemRow.redeemed_at, code, input.userId, now),
+        SELECT ?, ?, ?, ?, 1, NULL, ? WHERE changes() = 1
+      `).bind(redeemRow.id, redeemRow.user_id, redeemRow.code, redeemRow.amount, redeemRow.redeemed_at),
     ], [
-      rowStateEvent("coupons", String(coupon.id), couponRow, `coupons:${code}:redeem`),
-      rowStateEvent("profiles", input.userId, profileRow, `profiles:${input.userId}:coupon:${code}`),
-      rowStateEvent("redeem_logs", redeemLogId, redeemRow, `redeem_logs:${redeemLogId}:redeem`),
+      { ...rowStateEvent("coupons", String(coupon.id), couponRow, `coupons:${code}:redeem`), condition: redeemCondition },
+      { ...rowStateEvent("profiles", input.userId, profileRow, `profiles:${input.userId}:coupon:${code}`), condition: redeemCondition },
+      { ...rowStateEvent("credit_usage_logs", ledgerRow.id, ledgerRow, `credit_usage_logs:${ledgerKey}`), condition: redeemCondition },
+      { ...rowStateEvent("redeem_logs", redeemLogId, redeemRow, `redeem_logs:${redeemLogId}:redeem`), condition: redeemCondition },
     ]);
+
+    if (Number((results[0] as D1RunResult | undefined)?.meta?.changes ?? 0) !== 1) {
+      return { success: false, message: "卡密已被使用", amount: 0, credits: await this.getCredits(input.userId), redeem_log_id: null };
+    }
 
     return { success: true, message: "兑换成功", amount: centiCreditToCredits(amountCenti), credits: centiCreditToCredits(creditsAfterCenti), redeem_log_id: redeemLogId };
   }
@@ -749,7 +807,7 @@ export class D1BusinessDatabase implements BusinessDatabase {
     return Array.isArray(result) ? result : result.results ?? [];
   }
 
-  private async batchWithOutbox(businessStatements: D1PreparedStatementLike[], events: ReturnType<typeof rowStateEvent>[]) {
+  private async batchWithOutbox(businessStatements: D1PreparedStatementLike[], events: ReplicationOutboxEvent[]) {
     if (businessStatements.length === 0) throw new Error("D1 business transaction requires business statements");
     if (events.length === 0) throw new Error("D1 business transaction requires replication outbox events");
     const outbox = events.map((event) => buildReplicationOutboxStatement(this.db, event));

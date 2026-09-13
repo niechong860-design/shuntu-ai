@@ -68,6 +68,10 @@ function main() {
   const secondOrder = completePaidOrder({ outTradeNo: "ORDER1", tradeNo: "TRADE1", now: "2026-09-11T01:07:00.000Z" });
   assert.equal(secondOrder.alreadyPaid, true);
   assert.equal(readProfileCenti("user-rich"), creditsBeforeOrder + 100000);
+  assert.equal(countRows("credit_usage_logs", "idempotency_key = 'payment:ORDER1'"), 1);
+  assert.equal(countRows("replication_outbox", "idempotency_key = 'user_orders:ORDER1:paid'"), 1);
+  assert.equal(countRows("replication_outbox", "idempotency_key = 'profiles:user-rich:order:ORDER1'"), 1);
+  assert.equal(countRows("replication_outbox", "idempotency_key = 'credit_usage_logs:payment:ORDER1'"), 1);
 
   const creditsBeforeCoupon = readProfileCenti("user-rich");
   const firstRedeem = redeemCoupon({ userId: "user-rich", code: "CARD25", email: "rich@example.com", redeemLogId: "redeem-1", now: "2026-09-11T01:08:00.000Z" });
@@ -77,6 +81,24 @@ function main() {
   assert.equal(secondRedeem.success, false);
   assert.equal(readProfileCenti("user-rich"), creditsBeforeCoupon + 2500);
   assert.equal(countRows("redeem_logs", "code = 'CARD25' AND success = 1"), 1);
+  assert.equal(countRows("credit_usage_logs", "idempotency_key = 'coupon:CARD25'"), 1);
+  assert.equal(countRows("replication_outbox", "idempotency_key = 'coupons:CARD25:redeem'"), 1);
+  assert.equal(countRows("replication_outbox", "idempotency_key = 'profiles:user-rich:coupon:CARD25'"), 1);
+  assert.equal(countRows("replication_outbox", "idempotency_key = 'credit_usage_logs:coupon:CARD25'"), 1);
+
+  createOrder({ id: "order-rollback", userId: "user-rich", outTradeNo: "ORDER-ROLLBACK", amountFen: 990, creditsCenti: 1000, now: "2026-09-11T01:09:30.000Z" });
+  const paymentRollbackCredits = readProfileCenti("user-rich");
+  assert.throws(() => completePaidOrder({ outTradeNo: "ORDER-ROLLBACK", tradeNo: "TRADE-ROLLBACK", now: "2026-09-11T01:09:31.000Z", failOutbox: true }), /CHECK constraint failed|constraint/i);
+  assert.equal(readProfileCenti("user-rich"), paymentRollbackCredits);
+  assert.equal(countRows("user_orders", "out_trade_no = 'ORDER-ROLLBACK' AND status = 'paid'"), 0);
+  assert.equal(countRows("credit_usage_logs", "idempotency_key = 'payment:ORDER-ROLLBACK'"), 0);
+
+  db.prepare("INSERT INTO coupons (id, code, amount, is_used, created_at, created_by) VALUES ('coupon-rollback', 'CARD-ROLLBACK', 1000, 0, '2026-09-11T00:00:00.000Z', 'admin')").run();
+  const couponRollbackCredits = readProfileCenti("user-rich");
+  assert.throws(() => redeemCoupon({ userId: "user-rich", code: "CARD-ROLLBACK", email: "rich@example.com", redeemLogId: "redeem-rollback", now: "2026-09-11T01:09:32.000Z", failOutbox: true }), /CHECK constraint failed|constraint/i);
+  assert.equal(readProfileCenti("user-rich"), couponRollbackCredits);
+  assert.equal(countRows("coupons", "code = 'CARD-ROLLBACK' AND is_used = 1"), 0);
+  assert.equal(countRows("credit_usage_logs", "idempotency_key = 'coupon:CARD-ROLLBACK'"), 0);
 
   const rollbackCreditBefore = readProfileCenti("user-rich");
   assert.throws(() => consumeCredits({ userId: "user-rich", modelKey: "model-18", prompt: "rollback", historyId: "hist-rollback", ledgerId: "ledger-rollback", now: "2026-09-11T01:10:00.000Z", failOutbox: true }), /CHECK constraint failed|constraint/i);
@@ -106,7 +128,9 @@ function main() {
       insufficientBalanceRollback: "PASS",
       finalizeTwiceIdempotent: "PASS",
       paymentCallbackTwiceIdempotent: "PASS",
+      paymentOutboxFailureRollsBack: "PASS",
       couponRedeemTwiceIdempotent: "PASS",
+      couponOutboxFailureRollsBack: "PASS",
       d1MutationWithOutbox: "PASS",
       forcedOutboxFailureRollsBackBusinessMutation: "PASS",
       replicationTargetFailureLeavesOutboxPending: "PASS",
@@ -203,32 +227,42 @@ function completePaidOrder(input) {
   const order = db.prepare("SELECT * FROM user_orders WHERE out_trade_no = ?").get(input.outTradeNo);
   if (!order) return { success: false, alreadyPaid: false };
   if (order.status === "paid") return { success: true, alreadyPaid: true };
-  const profile = db.prepare("SELECT * FROM profiles WHERE id = ?").get(order.user_id);
-  const creditsAfter = profile.credits + order.credits;
+  let paid = false;
   transaction(() => {
-    db.prepare("UPDATE user_orders SET status = 'paid', trade_no = ?, paid_at = ?, updated_at = ? WHERE out_trade_no = ? AND status <> 'paid'").run(input.tradeNo, input.now, input.now, input.outTradeNo);
-    db.prepare("UPDATE profiles SET credits = ?, updated_at = ? WHERE id = ?").run(creditsAfter, input.now, order.user_id);
-    insertOutbox({ eventType: "user_orders.upsert", entityType: "user_orders", entityId: order.id, payload: { row: { ...order, status: "paid", trade_no: input.tradeNo, paid_at: input.now, updated_at: input.now } }, key: `user_orders:${order.out_trade_no}:paid`, now: input.now });
-    insertOutbox({ eventType: "profiles.upsert", entityType: "profiles", entityId: order.user_id, payload: { row: { ...profile, credits: creditsAfter, updated_at: input.now } }, key: `profiles:${order.user_id}:order:${order.out_trade_no}`, now: input.now });
+    const claim = db.prepare("UPDATE user_orders SET status = 'paid', trade_no = ?, paid_at = ?, updated_at = ? WHERE out_trade_no = ? AND status = 'pending'").run(input.tradeNo, input.now, input.now, input.outTradeNo);
+    if (claim.changes !== 1) return;
+    paid = true;
+    db.prepare("UPDATE profiles SET credits = credits + ?, updated_at = ? WHERE id = ?").run(order.credits, input.now, order.user_id);
+    const profile = db.prepare("SELECT * FROM profiles WHERE id = ?").get(order.user_id);
+    const ledger = { id: `payment:${input.outTradeNo}`, user_id: order.user_id, amount: order.credits, source: "payment", model_key: null, model_name: null, generation_history_id: null, generation_task_id: null, idempotency_key: `payment:${input.outTradeNo}`, created_at: input.now, metadata: JSON.stringify({ direction: "credit", reason: "payment", out_trade_no: input.outTradeNo, order_id: order.id }) };
+    db.prepare("INSERT INTO credit_usage_logs (id, user_id, amount, source, model_key, model_name, generation_history_id, generation_task_id, idempotency_key, created_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(ledger.id, ledger.user_id, ledger.amount, ledger.source, ledger.model_key, ledger.model_name, ledger.generation_history_id, ledger.generation_task_id, ledger.idempotency_key, ledger.created_at, ledger.metadata);
+    insertOutbox({ eventType: input.failOutbox ? "bad.event" : "user_orders.upsert", entityType: "user_orders", entityId: order.id, payload: { row: { ...order, status: "paid", trade_no: input.tradeNo, paid_at: input.now, updated_at: input.now } }, key: `user_orders:${order.out_trade_no}:paid`, now: input.now });
+    insertOutbox({ eventType: "profiles.upsert", entityType: "profiles", entityId: order.user_id, payload: { row: profile }, key: `profiles:${order.user_id}:order:${order.out_trade_no}`, now: input.now });
+    insertOutbox({ eventType: "credit_usage_logs.upsert", entityType: "credit_usage_logs", entityId: ledger.id, payload: { row: ledger }, key: `credit_usage_logs:${ledger.id}`, now: input.now });
   });
-  return { success: true, alreadyPaid: false };
+  return { success: true, alreadyPaid: !paid };
 }
 
 function redeemCoupon(input) {
   const coupon = db.prepare("SELECT * FROM coupons WHERE code = ?").get(input.code);
   if (!coupon || coupon.is_used) return { success: false };
-  const profile = db.prepare("SELECT * FROM profiles WHERE id = ?").get(input.userId);
-  const creditsAfter = profile.credits + coupon.amount;
   const redeem = { id: input.redeemLogId, user_id: input.userId, code: input.code, amount: coupon.amount, success: 1, error_message: null, redeemed_at: input.now };
+  let redeemed = false;
   transaction(() => {
-    db.prepare("UPDATE coupons SET is_used = 1, used_by = ?, used_by_email = ?, used_at = ? WHERE code = ? AND is_used = 0").run(input.userId, input.email, input.now, input.code);
-    db.prepare("UPDATE profiles SET credits = ?, updated_at = ? WHERE id = ?").run(creditsAfter, input.now, input.userId);
+    const claim = db.prepare("UPDATE coupons SET is_used = 1, used_by = ?, used_by_email = ?, used_at = ? WHERE code = ? AND is_used = 0").run(input.userId, input.email, input.now, input.code);
+    if (claim.changes !== 1) return;
+    redeemed = true;
+    db.prepare("UPDATE profiles SET credits = credits + ?, updated_at = ? WHERE id = ?").run(coupon.amount, input.now, input.userId);
+    const profile = db.prepare("SELECT * FROM profiles WHERE id = ?").get(input.userId);
+    const ledger = { id: `coupon:${input.code}`, user_id: input.userId, amount: coupon.amount, source: "coupon_redeem", model_key: null, model_name: null, generation_history_id: null, generation_task_id: null, idempotency_key: `coupon:${input.code}`, created_at: input.now, metadata: JSON.stringify({ direction: "credit", reason: "coupon_redeem", coupon_code: input.code, redeem_log_id: redeem.id }) };
+    db.prepare("INSERT INTO credit_usage_logs (id, user_id, amount, source, model_key, model_name, generation_history_id, generation_task_id, idempotency_key, created_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(ledger.id, ledger.user_id, ledger.amount, ledger.source, ledger.model_key, ledger.model_name, ledger.generation_history_id, ledger.generation_task_id, ledger.idempotency_key, ledger.created_at, ledger.metadata);
     db.prepare("INSERT INTO redeem_logs (id, user_id, code, amount, success, error_message, redeemed_at) VALUES (?, ?, ?, ?, 1, NULL, ?)").run(redeem.id, redeem.user_id, redeem.code, redeem.amount, redeem.redeemed_at);
-    insertOutbox({ eventType: "coupons.upsert", entityType: "coupons", entityId: coupon.id, payload: { row: { ...coupon, is_used: 1, used_by: input.userId, used_by_email: input.email, used_at: input.now } }, key: `coupons:${input.code}:redeem`, now: input.now });
-    insertOutbox({ eventType: "profiles.upsert", entityType: "profiles", entityId: input.userId, payload: { row: { ...profile, credits: creditsAfter, updated_at: input.now } }, key: `profiles:${input.userId}:coupon:${input.code}`, now: input.now });
+    insertOutbox({ eventType: input.failOutbox ? "bad.event" : "coupons.upsert", entityType: "coupons", entityId: coupon.id, payload: { row: { ...coupon, is_used: 1, used_by: input.userId, used_by_email: input.email, used_at: input.now } }, key: `coupons:${input.code}:redeem`, now: input.now });
+    insertOutbox({ eventType: "profiles.upsert", entityType: "profiles", entityId: input.userId, payload: { row: profile }, key: `profiles:${input.userId}:coupon:${input.code}`, now: input.now });
+    insertOutbox({ eventType: "credit_usage_logs.upsert", entityType: "credit_usage_logs", entityId: ledger.id, payload: { row: ledger }, key: `credit_usage_logs:${ledger.id}`, now: input.now });
     insertOutbox({ eventType: "redeem_logs.upsert", entityType: "redeem_logs", entityId: redeem.id, payload: { row: redeem }, key: `redeem_logs:${redeem.id}`, now: input.now });
   });
-  return { success: true };
+  return { success: redeemed };
 }
 
 function insertOutbox(input) {

@@ -29,6 +29,10 @@ export type ReplicationOutboxEvent = {
   payload: unknown;
   idempotencyKey: string;
   createdAt?: string;
+  condition?: {
+    sql: string;
+    values: BoundValue[];
+  };
 };
 
 const forbiddenPayloadKeyPattern = /api[_-]?key|secret|token|jwt|authorization|service[_-]?role|provider[_-]?secret|private[_-]?key|credential|signature|^sig$/i;
@@ -110,6 +114,8 @@ export function buildReplicationOutboxStatement(db: D1DatabaseLike, event: Repli
   const id = event.id ?? crypto.randomUUID();
   const payloadJson = JSON.stringify(sanitizedPayload);
   if (payloadJson == null) throw new Error("Replication payload is not JSON serializable");
+  const conditionSql = event.condition ? ` WHERE ${event.condition.sql}` : "";
+  const conditionValues = event.condition?.values ?? [];
 
   return db.prepare(`
     INSERT INTO replication_outbox (
@@ -122,7 +128,7 @@ export function buildReplicationOutboxStatement(db: D1DatabaseLike, event: Repli
       status,
       attempt_count,
       created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, ?)
+    ) SELECT ?, ?, ?, ?, ?, ?, 'pending', 0, ?${conditionSql}
     ON CONFLICT(idempotency_key) DO NOTHING
   `).bind(
     id,
@@ -132,6 +138,7 @@ export function buildReplicationOutboxStatement(db: D1DatabaseLike, event: Repli
     payloadJson,
     event.idempotencyKey,
     createdAt,
+    ...conditionValues,
   );
 }
 
