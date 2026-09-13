@@ -12,7 +12,9 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 // (otherwise wrangler tries to deploy raw src/server.ts and fails to resolve TanStack
 // virtual entries like #tanstack-start-entry).
 export default defineConfig({
-  nitro: true,
+  nitro: {
+    plugins: ["./plugins/replication-outbox.ts"],
+  } as unknown as {},
   tanstackStart: {
     server: { entry: "server" },
   },
