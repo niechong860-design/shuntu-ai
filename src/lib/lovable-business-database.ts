@@ -94,6 +94,10 @@ export class LovableBusinessDatabase implements BusinessDatabase {
     return Number(profile?.credits ?? 0);
   }
 
+  async adjustCreditsByAdmin(): Promise<never> {
+    throw new Error("admin credit adjustment requires D1 primary");
+  }
+
   async createGenerationTask(input: CreateGenerationTaskInput): Promise<GenerationTask> {
     const existing = await this.getGenerationTaskByRequestId(input.requestId);
     if (existing) return existing;

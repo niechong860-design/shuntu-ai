@@ -246,7 +246,7 @@ function UsersPanel() {
                     </Popover>
                     <Popover>
                       <PopoverTrigger asChild>
-                        <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive">
+                        <Button variant="ghost" size="sm" disabled title="删除功能暂不可用" className="text-destructive hover:bg-destructive/10 hover:text-destructive">
                           <Trash2 className="mr-1 h-3.5 w-3.5" />删除
                         </Button>
                       </PopoverTrigger>

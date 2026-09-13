@@ -308,20 +308,13 @@ export const adminAdjustCredits = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    assertLovableOnlyLegacyWrite(context, "adminAdjustCredits");
-    const { data: row, error: e1 } = await supabaseAdmin
-      .from("profiles")
-      .select("credits")
-      .eq("id", data.userId)
-      .single();
-    if (e1) throw new Error(e1.message);
-    const next = Math.max(0, (row?.credits ?? 0) + data.delta);
-    const { error: e2 } = await supabaseAdmin
-      .from("profiles")
-      .update({ credits: next, updated_at: new Date().toISOString() })
-      .eq("id", data.userId);
-    if (e2) throw new Error(e2.message);
-    return { credits: next };
+    const db = getBusinessDb(context);
+    if (db.primary !== "d1") throw new Error("admin credit adjustment requires D1 primary");
+    return await db.adjustCreditsByAdmin({
+      adminUserId: context.userId,
+      userId: data.userId,
+      delta: data.delta,
+    });
   });
 
 // --- Coupons ---

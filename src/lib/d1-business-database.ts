@@ -2,6 +2,8 @@ import type {
   BusinessDatabase,
   CompletePaidOrderInput,
   CompletePaidOrderResult,
+  AdminAdjustCreditsInput,
+  AdminAdjustCreditsResult,
   ConsumeCreditsForGenerationInput,
   ConsumeCreditsResult,
   Coupon,
@@ -373,6 +375,74 @@ export class D1BusinessDatabase implements BusinessDatabase {
     ]);
 
     return { success: true, message: "charged", credits: centiCreditToCredits(creditsAfterCenti), cost: centiCreditToCredits(costCenti), history_id: historyId };
+  }
+
+  async adjustCreditsByAdmin(input: AdminAdjustCreditsInput): Promise<AdminAdjustCreditsResult> {
+    const now = input.now ?? nowIso();
+    const deltaCenti = creditsToCentiCredit(input.delta, "admin_adjustment.delta");
+    if (deltaCenti === 0) throw new Error("adjustment must not be zero");
+
+    const profile = await this.getProfile(input.userId);
+    if (!profile) throw new Error("user profile not found");
+    const beforeCenti = creditsToCentiCredit(profile.credits, "profiles.credits");
+    const afterCenti = beforeCenti + deltaCenti;
+    if (afterCenti < 0) throw new Error("insufficient credits");
+
+    const ledgerId = randomId();
+    const idempotencyKey = `admin_adjustment:${ledgerId}`;
+    const profileRow = { ...profileToRaw(profile), credits: afterCenti, updated_at: now };
+    const ledgerRow = {
+      id: ledgerId,
+      user_id: input.userId,
+      amount: deltaCenti,
+      source: "admin_adjustment",
+      model_key: null,
+      model_name: null,
+      generation_history_id: null,
+      generation_task_id: null,
+      idempotency_key: idempotencyKey,
+      created_at: now,
+      metadata: jsonToD1({
+        admin_user_id: input.adminUserId,
+        target_user_id: input.userId,
+        delta: input.delta,
+        before: profile.credits,
+        after: centiCreditToCredits(afterCenti),
+        reason: "admin_adjustment",
+      }, {}),
+    };
+
+    await this.batchWithOutbox([
+      this.db.prepare(`
+        UPDATE profiles SET credits = ?, updated_at = ?
+        WHERE id = ? AND credits = ? AND credits + ? >= 0
+      `).bind(afterCenti, now, input.userId, beforeCenti, deltaCenti),
+      this.db.prepare(`
+        INSERT INTO credit_usage_logs
+          (id, user_id, amount, source, model_key, model_name, generation_history_id,
+           generation_task_id, idempotency_key, created_at, metadata)
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE EXISTS (SELECT 1 FROM profiles WHERE id = ? AND credits = ? AND updated_at = ?)
+      `).bind(
+        ledgerRow.id, ledgerRow.user_id, ledgerRow.amount, ledgerRow.source,
+        ledgerRow.model_key, ledgerRow.model_name, ledgerRow.generation_history_id,
+        ledgerRow.generation_task_id, ledgerRow.idempotency_key, ledgerRow.created_at,
+        ledgerRow.metadata, input.userId, afterCenti, now,
+      ),
+    ], [
+      rowStateEvent("profiles", input.userId, profileRow, `profiles:${input.userId}:admin-adjustment:${ledgerId}`),
+      rowStateEvent("credit_usage_logs", ledgerId, ledgerRow, `credit_usage_logs:${idempotencyKey}`),
+    ]);
+
+    const committed = await this.first<RawRow>("SELECT id FROM credit_usage_logs WHERE idempotency_key = ?", idempotencyKey);
+    if (!committed) throw new Error("credit adjustment was not committed; please retry");
+    return {
+      credits: centiCreditToCredits(afterCenti),
+      before: profile.credits,
+      after: centiCreditToCredits(afterCenti),
+      delta: input.delta,
+      ledgerId,
+    };
   }
 
   async finalizeUserGenerationTaskOnce(input: FinalizeGenerationTaskInput): Promise<FinalizeGenerationTaskResult> {
