@@ -104,7 +104,7 @@ function getQueueProgress(task: FloatingTask): GenProgress {
 }
 
 export function Studio() {
-  const { session, profile, loading } = useAuth();
+  const { session, profile, loading, refreshProfile } = useAuth();
   const fetchGenerationTasks = useServerFn(getMyGenerationTasks);
   const fetchHistory = useServerFn(getMyGenerationHistory);
   const createTask = useServerFn(createGenerationTask);
@@ -372,6 +372,7 @@ export function Studio() {
                 setProgress(null);
                 rememberLatestResult(task.resultImageUrl, prompt, modelName);
               }
+              void refreshProfile();
               return;
             }
             if (task.status === "failed" || task.status === "succeeded") {
@@ -652,6 +653,7 @@ export function Studio() {
           setProgress(null);
           rememberLatestResult(task.resultImageUrl, prompt, modelName);
         }
+        await refreshProfile();
         toast.success("任务已完成");
       } else if (task.status === "failed" || task.status === "succeeded") {
         setProgress(null);

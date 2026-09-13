@@ -4,6 +4,9 @@ import type {
   CompletePaidOrderResult,
   AdminAdjustCreditsInput,
   AdminAdjustCreditsResult,
+  AdminUserBusinessRow,
+  AdminCreditUsageLogRow,
+  AdminAnalyticsData,
   ConsumeCreditsForGenerationInput,
   ConsumeCreditsResult,
   Coupon,
@@ -446,6 +449,64 @@ export class D1BusinessDatabase implements BusinessDatabase {
       after: centiCreditToCredits(afterCenti),
       delta: input.delta,
       ledgerId,
+    };
+  }
+
+  async listAdminUserBusinessRows(): Promise<AdminUserBusinessRow[]> {
+    const rows = await this.all<RawRow>(`
+      SELECT p.*, COALESCE(SUM(l.amount), 0) AS total_spent
+      FROM profiles p
+      LEFT JOIN credit_usage_logs l ON l.user_id = p.id
+      GROUP BY p.id
+      ORDER BY p.created_at DESC
+    `);
+    return rows.map((row) => ({ ...mapProfile(row), total_spent: centiCreditToCredits(row.total_spent as number) }));
+  }
+
+  async listAdminCreditUsageLogs(input: { userId: string; limit: number; offset: number }): Promise<{ rows: AdminCreditUsageLogRow[]; total: number }> {
+    const total = await this.first<{ count: number }>("SELECT COUNT(*) AS count FROM credit_usage_logs WHERE user_id = ?", input.userId);
+    const rows = await this.all<RawRow>(`
+      SELECT l.*, h.image_url
+      FROM credit_usage_logs l
+      LEFT JOIN generation_history h ON h.id = l.generation_history_id AND h.user_id = l.user_id
+      WHERE l.user_id = ?
+      ORDER BY l.created_at DESC
+      LIMIT ? OFFSET ?
+    `, input.userId, input.limit, input.offset);
+    return {
+      rows: rows.map((row) => ({
+        id: String(row.id),
+        user_id: String(row.user_id),
+        amount: centiCreditToCredits(row.amount as number),
+        source: String(row.source),
+        model_key: asNullableString(row.model_key),
+        model_name: asNullableString(row.model_name),
+        generation_history_id: asNullableString(row.generation_history_id),
+        generation_task_id: asNullableString(row.generation_task_id),
+        idempotency_key: String(row.idempotency_key),
+        created_at: String(row.created_at),
+        metadata: jsonFromD1(row.metadata),
+        image_url: asNullableString(row.image_url),
+      })),
+      total: Number(total?.count ?? 0),
+    };
+  }
+
+  async getAdminAnalyticsData(): Promise<AdminAnalyticsData> {
+    const [profiles, usage, coupons] = await Promise.all([
+      this.all<RawRow>("SELECT * FROM profiles ORDER BY created_at DESC"),
+      this.all<RawRow>("SELECT model_key, model_name, amount, created_at FROM credit_usage_logs"),
+      this.first<{ count: number }>("SELECT COUNT(*) AS count FROM coupons WHERE is_used = 0"),
+    ]);
+    return {
+      profiles: profiles.map(mapProfile),
+      usage: usage.map((row) => ({
+        model_key: asNullableString(row.model_key),
+        model_name: asNullableString(row.model_name),
+        amount: centiCreditToCredits(row.amount as number),
+        created_at: String(row.created_at),
+      })),
+      unusedCoupons: Number(coupons?.count ?? 0),
     };
   }
 

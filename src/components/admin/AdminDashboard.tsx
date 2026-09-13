@@ -5,9 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useServerFn } from "@tanstack/react-start";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   adminListUsers, adminResetPassword, adminAdjustCredits,
-  adminBanUser, adminDeleteUser,
+  adminBanUser,
   adminGetUserCreditUsageLogs,
   adminListCoupons, adminGenerateCoupons, adminDeleteCoupon,
 } from "@/lib/admin.functions";
@@ -105,13 +106,19 @@ export function AdminDashboard({ open, onOpenChange, isFounder = false }: { open
 
 function UsersPanel() {
   const list = useServerFn(adminListUsers);
+  const queryClient = useQueryClient();
   const usageList = useServerFn(adminGetUserCreditUsageLogs);
   const resetPw = useServerFn(adminResetPassword);
   const adjust = useServerFn(adminAdjustCredits);
   const banFn = useServerFn(adminBanUser);
-  const delFn = useServerFn(adminDeleteUser);
-  const [users, setUsers] = useState<UserRow[]>([]);
-  const [loading, setLoading] = useState(false);
+  const usersQuery = useQuery({
+    queryKey: ["admin", "users"],
+    queryFn: async () => (await list({})) as UserRow[],
+    refetchInterval: () => typeof document !== "undefined" && document.visibilityState === "visible" ? 15000 : false,
+    refetchOnWindowFocus: true,
+  });
+  const users = usersQuery.data ?? [];
+  const loading = usersQuery.isFetching;
   const [pwOpen, setPwOpen] = useState<UserRow | null>(null);
   const [creditOpen, setCreditOpen] = useState<UserRow | null>(null);
   const [usageOpen, setUsageOpen] = useState<UserRow | null>(null);
@@ -122,11 +129,17 @@ function UsersPanel() {
   const usagePageSize = 50;
 
   const load = async () => {
-    setLoading(true);
-    try { setUsers((await list({})) as UserRow[]); } catch (e: any) { toast.error(e.message); }
-    finally { setLoading(false); }
+    try { await usersQuery.refetch(); } catch (e: any) { toast.error(e.message); }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [queryClient]);
 
   const loadUsageLogs = async (user: UserRow, offset = 0, append = false) => {
     setUsageLoading(true);
@@ -234,11 +247,11 @@ function UsersPanel() {
                             variant={u.is_banned ? "default" : "destructive"}
                             onClick={async () => {
                               const next = !u.is_banned;
-                              setUsers(prev => prev.map(x => x.id === u.id ? { ...x, is_banned: next } : x));
                               try {
                                 await banFn({ data: { userId: u.id, banned: next } });
+                                await queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
                                 toast.success(next ? "已封禁用户" : "已解封用户");
-                              } catch (e: any) { toast.error(e.message); load(); }
+                              } catch (e: any) { toast.error(e.message); void load(); }
                             }}
                           >确认{u.is_banned ? "解封" : "封禁"}</Button>
                         </div>
@@ -261,13 +274,7 @@ function UsersPanel() {
                           <Button
                             size="sm"
                             variant="destructive"
-                            onClick={async () => {
-                              setUsers(prev => prev.filter(x => x.id !== u.id));
-                              try {
-                                await delFn({ data: { userId: u.id } });
-                                toast.success("用户已删除");
-                              } catch (e: any) { toast.error(e.message); load(); }
-                            }}
+                            onClick={() => {}}
                           >确认删除</Button>
                         </div>
                       </PopoverContent>
@@ -308,8 +315,9 @@ function UsersPanel() {
               try {
                 const r = await adjust({ data: { userId: creditOpen.id, delta } });
                 toast.success(`更新成功，新余额 ${r.credits}`);
-                setCreditOpen(null);
-                load();
+                setCreditOpen((current) => current ? { ...current, credits: Number(r.credits) } : current);
+                await queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+                await queryClient.refetchQueries({ queryKey: ["admin", "users"], type: "active" });
               } catch (e: any) { toast.error(e.message); }
             }}
           />
