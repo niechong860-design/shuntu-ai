@@ -324,6 +324,9 @@ export interface BusinessDatabase {
   getOrderByOutTradeNo(outTradeNo: string): Promise<UserOrder | null>;
   completePaidOrder(input: CompletePaidOrderInput): Promise<CompletePaidOrderResult>;
   redeemCoupon(input: RedeemCouponInput): Promise<RedeemCouponResult>;
+  listAdminCoupons?(): Promise<Coupon[]>;
+  generateAdminCoupons?(input: { count: number; amount: number; createdBy: string }): Promise<Array<{ code: string; amount: number }>>;
+  deleteAdminCoupon?(couponId: string): Promise<void>;
 
   listModelsConfig(input?: { includeSecrets?: boolean; enabledOnly?: boolean }): Promise<ModelConfig[]>;
   getGlobalConfig(): Promise<Record<string, unknown> | null>;

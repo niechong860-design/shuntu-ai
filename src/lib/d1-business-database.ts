@@ -865,6 +865,60 @@ export class D1BusinessDatabase implements BusinessDatabase {
     return { success: true, message: "兑换成功", amount: centiCreditToCredits(amountCenti), credits: centiCreditToCredits(creditsAfterCenti), redeem_log_id: redeemLogId };
   }
 
+  async listAdminCoupons(): Promise<Coupon[]> {
+    const rows = await this.all<RawRow>("SELECT * FROM coupons ORDER BY created_at DESC LIMIT 500");
+    return rows.map(mapCoupon);
+  }
+
+  async generateAdminCoupons(input: { count: number; amount: number; createdBy: string }): Promise<Array<{ code: string; amount: number }>> {
+    const amountCenti = creditsToCentiCredit(input.amount, "coupon.amount");
+    const now = nowIso();
+    const rows = Array.from({ length: input.count }, () => {
+      const id = randomId();
+      const code = `LUMEN-${id.replace(/-/g, "").slice(0, 8).toUpperCase()}-${id.replace(/-/g, "").slice(8, 16).toUpperCase()}`;
+      return {
+        id,
+        code,
+        amount: amountCenti,
+        is_used: 0,
+        used_by: null,
+        used_by_email: null,
+        used_at: null,
+        created_at: now,
+        created_by: input.createdBy,
+      } satisfies RawRow;
+    });
+
+    await this.batchWithOutbox(
+      rows.map((row) => this.db.prepare(`
+        INSERT INTO coupons (id, code, amount, is_used, used_by, used_by_email, used_at, created_at, created_by)
+        VALUES (?, ?, ?, 0, NULL, NULL, NULL, ?, ?)
+      `).bind(row.id as string, row.code as string, row.amount as number, row.created_at as string, row.created_by as string)),
+      rows.map((row) => rowStateEvent("coupons", row.id as string, row, `coupons:${row.id}:create`)),
+    );
+
+    return rows.map((row) => ({ code: String(row.code), amount: input.amount }));
+  }
+
+  async deleteAdminCoupon(couponId: string): Promise<void> {
+    const row = await this.first<RawRow>("SELECT * FROM coupons WHERE id = ?", couponId);
+    if (!row) throw new Error("卡密不存在");
+    if (boolFromD1(row.is_used)) throw new Error("已使用的卡密不可删除");
+    const result = await this.batchWithOutbox(
+      [this.db.prepare("DELETE FROM coupons WHERE id = ? AND is_used = 0").bind(couponId)],
+      [{
+        eventType: "coupons.delete",
+        entityType: "coupons",
+        entityId: couponId,
+        payload: { row },
+        idempotencyKey: `coupons:${couponId}:delete`,
+      }],
+    );
+    if (Number((result[0] as D1RunResult | undefined)?.meta?.changes ?? 0) !== 1) {
+      throw new Error("已使用的卡密不可删除");
+    }
+  }
+
   async listModelsConfig(input: { includeSecrets?: boolean; enabledOnly?: boolean } = {}): Promise<ModelConfig[]> {
     const columns = input.includeSecrets
       ? "*"
@@ -998,6 +1052,20 @@ function mapProfile(row: RawRow): Profile {
     credits: centiCreditToCredits(row.credits as number),
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
+  };
+}
+
+function mapCoupon(row: RawRow): Coupon {
+  return {
+    id: String(row.id),
+    code: String(row.code),
+    amount: centiCreditToCredits(row.amount as number),
+    is_used: boolFromD1(row.is_used),
+    used_by: asNullableString(row.used_by),
+    used_by_email: asNullableString(row.used_by_email),
+    used_at: asNullableString(row.used_at),
+    created_at: String(row.created_at),
+    created_by: asNullableString(row.created_by),
   };
 }
 

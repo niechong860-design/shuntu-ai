@@ -257,23 +257,13 @@ export const adminAdjustCredits = createServerFn({ method: "POST" })
   });
 
 // --- Coupons ---
-function makeCode() {
-  const seg = () =>
-    Math.random().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4).padEnd(4, "X");
-  return `LUMEN-${seg()}-${seg()}`;
-}
-
 export const adminListCoupons = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
-    const { data, error } = await supabaseAdmin
-      .from("coupons")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(500);
-    if (error) throw new Error(error.message);
-    const rows = data ?? [];
+    const db = getBusinessDb(context);
+    if (db.primary !== "d1" || !db.listAdminCoupons) throw new Error("admin coupon listing requires D1 primary");
+    const rows = await db.listAdminCoupons();
     const presentEmail = (value: unknown) =>
       typeof value === "string" && value.trim().length > 0 ? value : null;
     const missingEmailUserIds = Array.from(new Set(
@@ -285,18 +275,7 @@ export const adminListCoupons = createServerFn({ method: "POST" })
     if (missingEmailUserIds.length === 0) return rows;
 
     const emailByUserId = new Map<string, string | null>();
-    const { data: profiles, error: profilesError } = await supabaseAdmin
-      .from("profiles")
-      .select("id, email")
-      .in("id", missingEmailUserIds);
-    if (profilesError) throw new Error(profilesError.message);
-
-    for (const profile of profiles ?? []) {
-      emailByUserId.set(profile.id, presentEmail(profile.email));
-    }
-
-    const stillMissingUserIds = missingEmailUserIds.filter((userId) => !emailByUserId.get(userId));
-    await Promise.all(stillMissingUserIds.map(async (userId) => {
+    await Promise.all(missingEmailUserIds.map(async (userId) => {
       const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId);
       emailByUserId.set(userId, authUser.user?.email ?? null);
     }));
@@ -312,14 +291,9 @@ export const adminDeleteCoupon = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ couponId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    assertLovableOnlyLegacyWrite(context, "adminDeleteCoupon");
-    const { data: row, error: e1 } = await supabaseAdmin
-      .from("coupons").select("is_used").eq("id", data.couponId).maybeSingle();
-    if (e1) throw new Error(e1.message);
-    if (!row) throw new Error("卡密不存在");
-    if (row.is_used) throw new Error("已使用的卡密不可删除");
-    const { error } = await supabaseAdmin.from("coupons").delete().eq("id", data.couponId);
-    if (error) throw new Error(error.message);
+    const db = getBusinessDb(context);
+    if (db.primary !== "d1" || !db.deleteAdminCoupon) throw new Error("admin coupon deletion requires D1 primary");
+    await db.deleteAdminCoupon(data.couponId);
     return { ok: true };
   });
 
@@ -330,18 +304,9 @@ export const adminGenerateCoupons = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    assertLovableOnlyLegacyWrite(context, "adminGenerateCoupons");
-    const rows = Array.from({ length: data.count }, () => ({
-      code: makeCode(),
-      amount: data.amount,
-      created_by: context.userId,
-    }));
-    const { data: inserted, error } = await supabaseAdmin
-      .from("coupons")
-      .insert(rows)
-      .select("code, amount");
-    if (error) throw new Error(error.message);
-    return inserted;
+    const db = getBusinessDb(context);
+    if (db.primary !== "d1" || !db.generateAdminCoupons) throw new Error("admin coupon generation requires D1 primary");
+    return await db.generateAdminCoupons({ count: data.count, amount: data.amount, createdBy: context.userId });
   });
 
 // --- Redeem (user) ---

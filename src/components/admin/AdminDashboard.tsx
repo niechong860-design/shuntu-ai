@@ -500,7 +500,7 @@ function CouponsPanel() {
         await navigator.clipboard.writeText((inserted ?? []).map(x => x.code).join("\n"));
         toast.success("已自动复制到剪贴板");
       } catch { /* user can click copy in dialog */ }
-      load();
+      await load();
     }
     catch (e: any) { toast.error(e.message); }
     finally { setBusy(false); }
