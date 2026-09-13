@@ -120,18 +120,9 @@ export const adminListUsers = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
-    const { data: profiles, error } = await supabaseAdmin
-      .from("profiles")
-      .select("id, email, display_name, credits, created_at")
-      .order("created_at", { ascending: false });
-    if (error) throw new Error(error.message);
-    const { data: usageTotals, error: usageError } = await (supabaseAdmin as any)
-      .rpc("admin_credit_usage_totals");
-    if (usageError) throw new Error(usageError.message);
-    const sumMap = new Map<string, number>();
-    for (const r of (usageTotals ?? []) as Array<{ user_id: string; total_spent: number | string }>) {
-      sumMap.set(r.user_id, Number(r.total_spent ?? 0));
-    }
+    const db = getBusinessDb(context);
+    if (db.primary !== "d1" || !db.listAdminUserBusinessRows) throw new Error("admin user listing requires D1 primary");
+    const profiles = await db.listAdminUserBusinessRows();
     const banMap = new Map<string, boolean>();
     const authUsers: Array<{ id: string; email: string | null; created_at: string }> = [];
     try {
@@ -151,27 +142,22 @@ export const adminListUsers = createServerFn({ method: "POST" })
 
     // 合并：以 auth.users 为基准，profile 缺失则用 auth 信息补齐（保证新注册用户也能显示）
     const profileMap = new Map<string, any>();
-    for (const p of (profiles ?? []) as any[]) profileMap.set(p.id, p);
-    const merged = authUsers.map(au => {
-      const p = profileMap.get(au.id);
+    for (const p of profiles) profileMap.set(p.id, p);
+    const authMap = new Map(authUsers.map((user) => [user.id, user]));
+    const userIds = new Set([...profileMap.keys(), ...authMap.keys()]);
+    const merged = Array.from(userIds).map((id) => {
+      const au = authMap.get(id);
+      const p = profileMap.get(id);
       return {
-        id: au.id,
-        email: p?.email ?? au.email,
+        id,
+        email: p?.email ?? au?.email ?? null,
         display_name: p?.display_name ?? null,
         credits: Number(p?.credits ?? 0),
-        created_at: p?.created_at ?? au.created_at,
-        total_spent: sumMap.get(au.id) ?? 0,
-        is_banned: banMap.get(au.id) ?? false,
+        created_at: p?.created_at ?? au?.created_at ?? new Date(0).toISOString(),
+        total_spent: Number(p?.total_spent ?? 0),
+        is_banned: banMap.get(id) ?? false,
       };
     });
-    // 若 auth 列表为空（极少数情况），回退到 profiles
-    if (merged.length === 0) {
-      return (profiles ?? []).map((p: any) => ({
-        ...p,
-        total_spent: sumMap.get(p.id) ?? 0,
-        is_banned: banMap.get(p.id) ?? false,
-      }));
-    }
     merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     return merged;
   });
@@ -189,60 +175,13 @@ export const adminGetUserCreditUsageLogs = createServerFn({ method: "POST" })
     await assertAdmin(context.userId);
     const limit = Math.min(100, Math.max(1, Number(data.limit ?? 50)));
     const offset = Math.max(0, Number(data.offset ?? 0));
-    const { data: rows, error, count } = await (supabaseAdmin as any)
-      .from("credit_usage_logs")
-      .select(
-        "id, user_id, amount, source, model_key, model_name, generation_history_id, generation_task_id, idempotency_key, created_at, metadata",
-        { count: "exact" },
-      )
-      .eq("user_id", data.userId)
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
-    if (error) throw new Error(error.message);
-
-    const historyIds = Array.from(new Set((rows ?? [])
-      .map((row: any) => row.generation_history_id)
-      .filter((value: unknown): value is string => typeof value === "string" && value.length > 0)));
-    const taskIds = Array.from(new Set((rows ?? [])
-      .map((row: any) => row.generation_task_id)
-      .filter((value: unknown): value is string => typeof value === "string" && value.length > 0)));
-    const historyImageById = new Map<string, string | null>();
-    const historyImageByTaskId = new Map<string, string | null>();
-
-    if (historyIds.length > 0) {
-      const { data: historyRows, error: historyError } = await (supabaseAdmin as any)
-        .from("generation_history")
-        .select("id, image_url")
-        .eq("user_id", data.userId)
-        .in("id", historyIds);
-      if (historyError) throw new Error(historyError.message);
-      for (const history of historyRows ?? []) {
-        historyImageById.set(history.id, history.image_url ?? null);
-      }
-    }
-
-    if (taskIds.length > 0) {
-      const { data: taskHistoryRows, error: taskHistoryError } = await (supabaseAdmin as any)
-        .from("generation_history")
-        .select("generation_task_id, image_url")
-        .eq("user_id", data.userId)
-        .in("generation_task_id", taskIds);
-      if (taskHistoryError) throw new Error(taskHistoryError.message);
-      for (const history of taskHistoryRows ?? []) {
-        if (history.generation_task_id && !historyImageByTaskId.has(history.generation_task_id)) {
-          historyImageByTaskId.set(history.generation_task_id, history.image_url ?? null);
-        }
-      }
-    }
-
-    const items = (rows ?? []).map((row: any) => ({
-      ...row,
-      image_url: historyImageById.get(row.generation_history_id) ?? historyImageByTaskId.get(row.generation_task_id) ?? null,
-    }));
+    const db = getBusinessDb(context);
+    if (db.primary !== "d1" || !db.listAdminCreditUsageLogs) throw new Error("admin usage logs require D1 primary");
+    const { rows, total } = await db.listAdminCreditUsageLogs({ userId: data.userId, limit, offset });
 
     return {
-      items,
-      total: count ?? 0,
+      items: rows,
+      total,
       limit,
       offset,
     };
@@ -308,20 +247,13 @@ export const adminAdjustCredits = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    assertLovableOnlyLegacyWrite(context, "adminAdjustCredits");
-    const { data: row, error: e1 } = await supabaseAdmin
-      .from("profiles")
-      .select("credits")
-      .eq("id", data.userId)
-      .single();
-    if (e1) throw new Error(e1.message);
-    const next = Math.max(0, (row?.credits ?? 0) + data.delta);
-    const { error: e2 } = await supabaseAdmin
-      .from("profiles")
-      .update({ credits: next, updated_at: new Date().toISOString() })
-      .eq("id", data.userId);
-    if (e2) throw new Error(e2.message);
-    return { credits: next };
+    const db = getBusinessDb(context);
+    if (db.primary !== "d1") throw new Error("admin credit adjustment requires D1 primary");
+    return await db.adjustCreditsByAdmin({
+      adminUserId: context.userId,
+      userId: data.userId,
+      delta: data.delta,
+    });
   });
 
 // --- Coupons ---
@@ -2363,25 +2295,12 @@ export const adminGetAnalytics = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
     const { startUtc, endUtc } = getBeijingDayRange();
-
-    const [
-      todayUsersQ,
-      totalUsersQ,
-      unusedCouponsQ,
-      todayUsageQ,
-      allUsageQ,
-      todayRegsQ,
-    ] = await Promise.all([
-      supabaseAdmin.from("profiles").select("id", { count: "exact", head: true }).gte("created_at", startUtc).lt("created_at", endUtc),
-      supabaseAdmin.from("profiles").select("id", { count: "exact", head: true }),
-      supabaseAdmin.from("coupons").select("id", { count: "exact", head: true }).eq("is_used", false),
-      (supabaseAdmin as any).from("credit_usage_logs").select("model_key, model_name, amount, created_at").gte("created_at", startUtc).lt("created_at", endUtc),
-      (supabaseAdmin as any).from("credit_usage_logs").select("model_key, model_name, amount, created_at"),
-      supabaseAdmin.from("profiles").select("id, email, credits, created_at").gte("created_at", startUtc).lt("created_at", endUtc).order("created_at", { ascending: false }).limit(50),
-    ]);
-
-    const todayUsage = (todayUsageQ.data ?? []) as Array<{ model_key: string | null; model_name: string | null; amount: number | string }>;
-    const allUsage = (allUsageQ.data ?? []) as Array<{ model_key: string | null; model_name: string | null; amount: number | string }>;
+    const db = getBusinessDb(context);
+    if (db.primary !== "d1" || !db.getAdminAnalyticsData) throw new Error("admin analytics requires D1 primary");
+    const analytics = await db.getAdminAnalyticsData();
+    const todayProfiles = analytics.profiles.filter((profile) => profile.created_at >= startUtc && profile.created_at < endUtc);
+    const todayUsage = analytics.usage.filter((row) => row.created_at >= startUtc && row.created_at < endUtc);
+    const allUsage = analytics.usage;
     const todayCostSum = todayUsage.reduce((s, r) => s + Number(r.amount ?? 0), 0);
 
     const groupBy = (rows: Array<{ model_key: string | null; model_name: string | null; amount: number | string }>) => {
@@ -2408,10 +2327,10 @@ export const adminGetAnalytics = createServerFn({ method: "POST" })
 
     return {
       metrics: {
-        todayUsers: todayUsersQ.count ?? 0,
+        todayUsers: todayProfiles.length,
         todayCost: todayCostSum,
-        totalUsers: totalUsersQ.count ?? 0,
-        unusedCoupons: unusedCouponsQ.count ?? 0,
+        totalUsers: analytics.profiles.length,
+        unusedCoupons: analytics.unusedCoupons,
       },
       models,
       dayRange: {
@@ -2419,7 +2338,7 @@ export const adminGetAnalytics = createServerFn({ method: "POST" })
         startUtc,
         endUtc,
       },
-      todayRegistrations: (todayRegsQ.data ?? []).map((r: any) => ({
+      todayRegistrations: todayProfiles.slice(0, 50).map((r) => ({
         id: r.id,
         email: r.email,
         credits: Number(r.credits ?? 0),

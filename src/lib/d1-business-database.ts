@@ -2,6 +2,11 @@ import type {
   BusinessDatabase,
   CompletePaidOrderInput,
   CompletePaidOrderResult,
+  AdminAdjustCreditsInput,
+  AdminAdjustCreditsResult,
+  AdminUserBusinessRow,
+  AdminCreditUsageLogRow,
+  AdminAnalyticsData,
   ConsumeCreditsForGenerationInput,
   ConsumeCreditsResult,
   Coupon,
@@ -373,6 +378,136 @@ export class D1BusinessDatabase implements BusinessDatabase {
     ]);
 
     return { success: true, message: "charged", credits: centiCreditToCredits(creditsAfterCenti), cost: centiCreditToCredits(costCenti), history_id: historyId };
+  }
+
+  async adjustCreditsByAdmin(input: AdminAdjustCreditsInput): Promise<AdminAdjustCreditsResult> {
+    const now = input.now ?? nowIso();
+    const deltaCenti = creditsToCentiCredit(input.delta, "admin_adjustment.delta");
+    if (deltaCenti === 0) throw new Error("adjustment must not be zero");
+
+    const profile = await this.getProfile(input.userId);
+    if (!profile) throw new Error("user profile not found");
+    const beforeCenti = creditsToCentiCredit(profile.credits, "profiles.credits");
+    const afterCenti = beforeCenti + deltaCenti;
+    if (afterCenti < 0) throw new Error("insufficient credits");
+    const ledgerAmountCenti = Math.abs(deltaCenti);
+    const direction = deltaCenti > 0 ? "add" : "subtract";
+
+    const ledgerId = randomId();
+    const idempotencyKey = `admin_adjustment:${ledgerId}`;
+    const profileRow = { ...profileToRaw(profile), credits: afterCenti, updated_at: now };
+    const ledgerRow = {
+      id: ledgerId,
+      user_id: input.userId,
+      amount: ledgerAmountCenti,
+      source: "admin_adjustment",
+      model_key: null,
+      model_name: null,
+      generation_history_id: null,
+      generation_task_id: null,
+      idempotency_key: idempotencyKey,
+      created_at: now,
+      metadata: jsonToD1({
+        admin_user_id: input.adminUserId,
+        target_user_id: input.userId,
+        delta: input.delta,
+        direction,
+        before: profile.credits,
+        after: centiCreditToCredits(afterCenti),
+        reason: "admin_adjustment",
+      }, {}),
+    };
+
+    await this.batchWithOutbox([
+      this.db.prepare(`
+        UPDATE profiles SET credits = ?, updated_at = ?
+        WHERE id = ? AND credits = ? AND credits + ? >= 0
+      `).bind(afterCenti, now, input.userId, beforeCenti, deltaCenti),
+      this.db.prepare(`
+        INSERT INTO credit_usage_logs
+          (id, user_id, amount, source, model_key, model_name, generation_history_id,
+           generation_task_id, idempotency_key, created_at, metadata)
+        SELECT ?, ?, CASE WHEN EXISTS (
+          SELECT 1 FROM profiles WHERE id = ? AND credits = ? AND updated_at = ?
+        ) THEN ? ELSE -1 END, ?, ?, ?, ?, ?, ?, ?, ?
+      `).bind(
+        ledgerRow.id, ledgerRow.user_id, input.userId, afterCenti, now, ledgerRow.amount, ledgerRow.source,
+        ledgerRow.model_key, ledgerRow.model_name, ledgerRow.generation_history_id,
+        ledgerRow.generation_task_id, ledgerRow.idempotency_key, ledgerRow.created_at,
+        ledgerRow.metadata,
+      ),
+    ], [
+      rowStateEvent("profiles", input.userId, profileRow, `profiles:${input.userId}:admin-adjustment:${ledgerId}`),
+      rowStateEvent("credit_usage_logs", ledgerId, ledgerRow, `credit_usage_logs:${idempotencyKey}`),
+    ]);
+
+    const committed = await this.first<RawRow>("SELECT id FROM credit_usage_logs WHERE idempotency_key = ?", idempotencyKey);
+    if (!committed) throw new Error("credit adjustment was not committed; please retry");
+    return {
+      credits: centiCreditToCredits(afterCenti),
+      before: profile.credits,
+      after: centiCreditToCredits(afterCenti),
+      delta: input.delta,
+      ledgerId,
+    };
+  }
+
+  async listAdminUserBusinessRows(): Promise<AdminUserBusinessRow[]> {
+    const rows = await this.all<RawRow>(`
+      SELECT p.*, COALESCE(SUM(l.amount), 0) AS total_spent
+      FROM profiles p
+      LEFT JOIN credit_usage_logs l ON l.user_id = p.id
+      GROUP BY p.id
+      ORDER BY p.created_at DESC
+    `);
+    return rows.map((row) => ({ ...mapProfile(row), total_spent: centiCreditToCredits(row.total_spent as number) }));
+  }
+
+  async listAdminCreditUsageLogs(input: { userId: string; limit: number; offset: number }): Promise<{ rows: AdminCreditUsageLogRow[]; total: number }> {
+    const total = await this.first<{ count: number }>("SELECT COUNT(*) AS count FROM credit_usage_logs WHERE user_id = ?", input.userId);
+    const rows = await this.all<RawRow>(`
+      SELECT l.*, h.image_url
+      FROM credit_usage_logs l
+      LEFT JOIN generation_history h ON h.id = l.generation_history_id AND h.user_id = l.user_id
+      WHERE l.user_id = ?
+      ORDER BY l.created_at DESC
+      LIMIT ? OFFSET ?
+    `, input.userId, input.limit, input.offset);
+    return {
+      rows: rows.map((row) => ({
+        id: String(row.id),
+        user_id: String(row.user_id),
+        amount: centiCreditToCredits(row.amount as number),
+        source: String(row.source),
+        model_key: asNullableString(row.model_key),
+        model_name: asNullableString(row.model_name),
+        generation_history_id: asNullableString(row.generation_history_id),
+        generation_task_id: asNullableString(row.generation_task_id),
+        idempotency_key: String(row.idempotency_key),
+        created_at: String(row.created_at),
+        metadata: jsonFromD1(row.metadata),
+        image_url: asNullableString(row.image_url),
+      })),
+      total: Number(total?.count ?? 0),
+    };
+  }
+
+  async getAdminAnalyticsData(): Promise<AdminAnalyticsData> {
+    const [profiles, usage, coupons] = await Promise.all([
+      this.all<RawRow>("SELECT * FROM profiles ORDER BY created_at DESC"),
+      this.all<RawRow>("SELECT model_key, model_name, amount, created_at FROM credit_usage_logs"),
+      this.first<{ count: number }>("SELECT COUNT(*) AS count FROM coupons WHERE is_used = 0"),
+    ]);
+    return {
+      profiles: profiles.map(mapProfile),
+      usage: usage.map((row) => ({
+        model_key: asNullableString(row.model_key),
+        model_name: asNullableString(row.model_name),
+        amount: centiCreditToCredits(row.amount as number),
+        created_at: String(row.created_at),
+      })),
+      unusedCoupons: Number(coupons?.count ?? 0),
+    };
   }
 
   async finalizeUserGenerationTaskOnce(input: FinalizeGenerationTaskInput): Promise<FinalizeGenerationTaskResult> {

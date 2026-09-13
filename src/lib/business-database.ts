@@ -192,6 +192,35 @@ export type ConsumeCreditsResult = {
   history_id: string | null;
 };
 
+export type AdminAdjustCreditsInput = {
+  adminUserId: string;
+  userId: string;
+  delta: number;
+  now?: string;
+};
+
+export type AdminAdjustCreditsResult = {
+  credits: number;
+  before: number;
+  after: number;
+  delta: number;
+  ledgerId: string;
+};
+
+export type AdminUserBusinessRow = Profile & {
+  total_spent: number;
+};
+
+export type AdminCreditUsageLogRow = CreditUsageLog & {
+  image_url: string | null;
+};
+
+export type AdminAnalyticsData = {
+  profiles: Profile[];
+  usage: Array<Pick<CreditUsageLog, "model_key" | "model_name" | "amount" | "created_at">>;
+  unusedCoupons: number;
+};
+
 export type FinalizeGenerationTaskInput = {
   taskId: string;
   userId: string;
@@ -272,6 +301,10 @@ export interface BusinessDatabase {
   cancelQueuedGenerationTask(input: { taskId: string; userId: string; now?: string }): Promise<GenerationTask | null>;
   updateGenerationTaskLifecycle(input: UpdateGenerationTaskLifecycleInput): Promise<GenerationTask>;
   consumeCreditsForGeneration(input: ConsumeCreditsForGenerationInput): Promise<ConsumeCreditsResult>;
+  adjustCreditsByAdmin(input: AdminAdjustCreditsInput): Promise<AdminAdjustCreditsResult>;
+  listAdminUserBusinessRows?(): Promise<AdminUserBusinessRow[]>;
+  listAdminCreditUsageLogs?(input: { userId: string; limit: number; offset: number }): Promise<{ rows: AdminCreditUsageLogRow[]; total: number }>;
+  getAdminAnalyticsData?(): Promise<AdminAnalyticsData>;
   finalizeUserGenerationTaskOnce(input: FinalizeGenerationTaskInput): Promise<FinalizeGenerationTaskResult>;
   getGenerationHistory(input: { historyId: string; userId?: string }): Promise<GenerationHistory | null>;
   listGenerationHistory(input: {
