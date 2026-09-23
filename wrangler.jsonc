@@ -1,7 +1,35 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "tanstack-start-app",
+  "name": "ai-shuntu",
   "compatibility_date": "2025-09-24",
   "compatibility_flags": ["nodejs_compat"],
-  "main": "src/server.ts",
+  "triggers": {
+    "crons": ["*/1 * * * *"]
+  },
+  "main": ".output/server/index.mjs",
+  "assets": {
+    "directory": ".output/public"
+  },
+  "vars": {
+    "DATABASE_PRIMARY": "d1",
+    "SUPABASE_URL": "https://nkkrjqzcofzqcyxdkmjy.supabase.co",
+    "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_h758ulTO0AGw5k8OmgwlIg_ud9te9pK",
+    "R2_PUBLIC_BASE_URL": "https://img.shuntu.cc"
+  },
+  "r2_buckets": [
+    {
+      "binding": "SHUNTU_GENERATED_IMAGES",
+      "bucket_name": "shuntu-generated-images"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "shuntu-prod",
+      "database_id": "a475419e-3878-4ede-84d0-75fad8ebd5cd"
+    }
+  ],
+  "images": {
+    "binding": "IMAGES"
+  }
 }
