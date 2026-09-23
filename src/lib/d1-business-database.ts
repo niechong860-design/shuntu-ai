@@ -929,6 +929,30 @@ export class D1BusinessDatabase implements BusinessDatabase {
     return rows.map(mapModelConfig);
   }
 
+  async updateModel(input: { id: string; patch: Record<string, unknown> }): Promise<void> {
+    const allowed = ["model_key", "name", "description", "cost", "api_url", "api_key", "request_format", "prompt_key", "fetch_url", "extra_params", "is_enabled", "sort_order"];
+    const entries = Object.entries(input.patch).filter(([key]) => allowed.includes(key));
+    if (!entries.length) return;
+    const assignments = entries.map(([key]) => `${key} = ?`).join(", ");
+    const values = entries.map(([key, value]) => key === "is_enabled" && typeof value === "boolean"
+      ? boolToD1(value)
+      : key === "extra_params"
+        ? jsonToD1((value as JsonValue | null) ?? {}, {})
+        : bindValue(value));
+    values.push(nowIso(), input.id);
+    await this.db.prepare(`UPDATE models_config SET ${assignments}, updated_at = ? WHERE id = ?`).bind(...values).run();
+  }
+
+  async createModel(input: Record<string, unknown> & { id?: string }): Promise<{ id: string }> {
+    const id = input.id ?? randomId();
+    const now = nowIso();
+    await this.db.prepare(`INSERT INTO models_config (id, model_key, name, description, cost, api_url, api_key, request_format, prompt_key, fetch_url, extra_params, is_enabled, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id, input.model_key as string, input.name as string, (input.description as string | null) ?? null, Number(input.cost ?? 1), (input.api_url as string | null) ?? null, (input.api_key as string | null) ?? null, input.request_format as string ?? "async_id", input.prompt_key as string ?? "prompt", (input.fetch_url as string | null) ?? null, jsonToD1((input.extra_params as JsonValue | null) ?? {}, {}), boolToD1(input.is_enabled !== false), Number(input.sort_order ?? 999), now, now).run();
+    return { id };
+  }
+
+  async deleteModel(id: string): Promise<void> { await this.db.prepare("DELETE FROM models_config WHERE id = ?").bind(id).run(); }
+
   async getGlobalConfig(): Promise<Record<string, unknown> | null> {
     return await this.first<RawRow>("SELECT * FROM global_config LIMIT 1");
   }
@@ -937,22 +961,60 @@ export class D1BusinessDatabase implements BusinessDatabase {
     return await this.first<RawRow>("SELECT * FROM admin_settings WHERE id = 1 LIMIT 1");
   }
 
+  async updateAdminSettings(patch: { access_password?: string; system_prompt?: string; contact_wechat?: string; contact_qq?: string }): Promise<void> {
+    await this.db.prepare("INSERT OR IGNORE INTO admin_settings (id) VALUES (1)").run();
+    const entries = Object.entries(patch).filter(([key]) => ["access_password", "system_prompt", "contact_wechat", "contact_qq"].includes(key));
+    if (!entries.length) return;
+    await this.db.prepare(`UPDATE admin_settings SET ${entries.map(([key]) => `${key} = ?`).join(", ")}, updated_at = ? WHERE id = 1`)
+      .bind(...entries.map(([, value]) => bindValue(value)), nowIso()).run();
+  }
+
   async listAnnouncements(): Promise<Record<string, unknown>[]> {
     return await this.all<RawRow>("SELECT * FROM announcements ORDER BY created_at DESC");
   }
+
+  async upsertAnnouncement(input: { id?: string; title: string; content: string; type: string; image_url: string | null; link_url: string | null; link_label: string | null; is_pinned: boolean; is_published: boolean }): Promise<{ id: string }> {
+    const id = input.id ?? randomId(); const now = nowIso();
+    if (input.id) await this.db.prepare("UPDATE announcements SET title = ?, content = ?, type = ?, image_url = ?, link_url = ?, link_label = ?, is_pinned = ?, is_published = ?, updated_at = ? WHERE id = ?").bind(input.title, input.content, input.type, input.image_url, input.link_url, input.link_label, boolToD1(input.is_pinned), boolToD1(input.is_published), now, id).run();
+    else await this.db.prepare("INSERT INTO announcements (id, title, content, type, image_url, link_url, link_label, is_pinned, is_published, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.title, input.content, input.type, input.image_url, input.link_url, input.link_label, boolToD1(input.is_pinned), boolToD1(input.is_published), now, now).run();
+    return { id };
+  }
+  async deleteAnnouncement(id: string): Promise<void> { await this.db.prepare("DELETE FROM announcements WHERE id = ?").bind(id).run(); }
 
   async listAds(): Promise<Record<string, unknown>[]> {
     return await this.all<RawRow>("SELECT * FROM ads ORDER BY sort_order ASC");
   }
 
+  async upsertAd(input: { id?: string; title: string; link_url: string | null; is_active: boolean; sort_order: number }): Promise<{ id: string }> {
+    const id = input.id ?? randomId(); const now = nowIso();
+    if (input.id) await this.db.prepare("UPDATE ads SET title = ?, link_url = ?, is_active = ?, sort_order = ?, updated_at = ? WHERE id = ?").bind(input.title, input.link_url, boolToD1(input.is_active), input.sort_order, now, id).run();
+    else await this.db.prepare("INSERT INTO ads (id, title, link_url, is_active, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(id, input.title, input.link_url, boolToD1(input.is_active), input.sort_order, now, now).run();
+    return { id };
+  }
+  async deleteAd(id: string): Promise<void> { await this.db.prepare("DELETE FROM ads WHERE id = ?").bind(id).run(); }
+
   async listStyleTemplates(): Promise<Record<string, unknown>[]> {
     return await this.all<RawRow>("SELECT * FROM style_templates ORDER BY sort_order ASC");
   }
+  async updateStyleTemplate(input: { id: string; patch: { name?: string; prompt?: string; image_url?: string | null; sort_order?: number } }): Promise<void> {
+    const entries = Object.entries(input.patch).filter(([key]) => ["name", "prompt", "image_url", "sort_order"].includes(key)); if (!entries.length) return;
+    await this.db.prepare(`UPDATE style_templates SET ${entries.map(([key]) => `${key} = ?`).join(", ")}, updated_at = ? WHERE id = ?`).bind(...entries.map(([, value]) => bindValue(value)), nowIso(), input.id).run();
+  }
+  async createStyleTemplate(input: { id: string; name: string; prompt: string; image_url: string | null; sort_order: number }): Promise<{ id: string }> { const now = nowIso(); await this.db.prepare("INSERT INTO style_templates (id, name, prompt, image_url, sort_order, updated_at) VALUES (?, ?, ?, ?, ?, ?)").bind(input.id, input.name, input.prompt, input.image_url, input.sort_order, now).run(); return { id: input.id }; }
+  async deleteStyleTemplate(id: string): Promise<void> { await this.db.prepare("DELETE FROM style_templates WHERE id = ?").bind(id).run(); }
 
   async listRechargePackages(): Promise<RechargePackage[]> {
     const rows = await this.all<RawRow>("SELECT * FROM recharge_packages WHERE is_visible = 1 ORDER BY sort_order ASC");
     return rows.map(mapRechargePackage);
   }
+  async upsertRechargePackage(input: { id?: string; title: string; subtitle: string | null; price: string; credits: number; features: JsonValue; badge_text: string | null; is_popular: boolean; highlighted: boolean; is_visible: boolean; sort_order: number; button_text: string; purchase_url: string | null }): Promise<{ id: string }> {
+    const id = input.id ?? randomId(); const now = nowIso(); const values = [input.title, input.subtitle, input.price, creditsToCentiCredit(input.credits), jsonToD1(input.features, []), boolToD1(input.is_popular), boolToD1(input.highlighted), boolToD1(input.is_visible), input.sort_order, input.button_text, input.purchase_url];
+    if (input.id) await this.db.prepare("UPDATE recharge_packages SET title = ?, subtitle = ?, price = ?, credits = ?, features = ?, is_popular = ?, highlighted = ?, is_visible = ?, sort_order = ?, button_text = ?, purchase_url = ?, updated_at = ? WHERE id = ?").bind(...values, now, id).run();
+    else await this.db.prepare("INSERT INTO recharge_packages (id, title, subtitle, price, credits, features, is_popular, highlighted, is_visible, sort_order, button_text, purchase_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, ...values, now, now).run();
+    return { id };
+  }
+  async hideRechargePackage(id: string): Promise<void> { await this.db.prepare("UPDATE recharge_packages SET is_visible = 0, updated_at = ? WHERE id = ?").bind(nowIso(), id).run(); }
+  async deleteRechargePackage(id: string): Promise<void> { await this.db.prepare("DELETE FROM recharge_packages WHERE id = ?").bind(id).run(); }
 
   async getReplicationHealth(now = new Date()) {
     const pending = await this.first<{ pendingReplication: number; oldestPendingAt: string | null }>(`

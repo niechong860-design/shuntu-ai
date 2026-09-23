@@ -329,14 +329,35 @@ export interface BusinessDatabase {
   deleteAdminCoupon?(couponId: string): Promise<void>;
 
   listModelsConfig(input?: { includeSecrets?: boolean; enabledOnly?: boolean }): Promise<ModelConfig[]>;
+  updateModel?(input: { id: string; patch: Record<string, unknown> }): Promise<void>;
+  createModel?(input: Record<string, unknown> & { id?: string }): Promise<{ id: string }>;
+  deleteModel?(id: string): Promise<void>;
   getGlobalConfig(): Promise<Record<string, unknown> | null>;
   getAdminSettings(): Promise<Record<string, unknown> | null>;
+  updateAdminSettings?(patch: { access_password?: string; system_prompt?: string; contact_wechat?: string; contact_qq?: string }): Promise<void>;
   listAnnouncements(): Promise<Record<string, unknown>[]>;
+  upsertAnnouncement?(input: { id?: string; title: string; content: string; type: string; image_url: string | null; link_url: string | null; link_label: string | null; is_pinned: boolean; is_published: boolean }): Promise<{ id: string }>;
+  deleteAnnouncement?(id: string): Promise<void>;
   listAds(): Promise<Record<string, unknown>[]>;
+  upsertAd?(input: { id?: string; title: string; link_url: string | null; is_active: boolean; sort_order: number }): Promise<{ id: string }>;
+  deleteAd?(id: string): Promise<void>;
   listStyleTemplates(): Promise<Record<string, unknown>[]>;
+  updateStyleTemplate?(input: { id: string; patch: { name?: string; prompt?: string; image_url?: string | null; sort_order?: number } }): Promise<void>;
+  createStyleTemplate?(input: { id: string; name: string; prompt: string; image_url: string | null; sort_order: number }): Promise<{ id: string }>;
+  deleteStyleTemplate?(id: string): Promise<void>;
   listRechargePackages(): Promise<RechargePackage[]>;
+  upsertRechargePackage?(input: { id?: string; title: string; subtitle: string | null; price: string; credits: number; features: JsonValue; badge_text: string | null; is_popular: boolean; highlighted: boolean; is_visible: boolean; sort_order: number; button_text: string; purchase_url: string | null }): Promise<{ id: string }>;
+  hideRechargePackage?(id: string): Promise<void>;
+  deleteRechargePackage?(id: string): Promise<void>;
   getReplicationHealth?(now?: Date): Promise<ReplicationHealth>;
 }
+
+export type AdminConfigDatabase = Required<Pick<BusinessDatabase,
+  | "updateModel" | "createModel" | "deleteModel" | "updateAdminSettings"
+  | "upsertAnnouncement" | "deleteAnnouncement" | "upsertAd" | "deleteAd"
+  | "updateStyleTemplate" | "createStyleTemplate" | "deleteStyleTemplate"
+  | "upsertRechargePackage" | "hideRechargePackage" | "deleteRechargePackage"
+>>;
 
 export function creditsToCentiCredit(value: number | string, label = "credits"): number {
   return decimalToScaledInteger(value, 2, label);
