@@ -29,9 +29,12 @@ function createSupabaseClient() {
       return fetch(input, init);
     }
 
-    requestUrl.pathname = `/api/auth${requestUrl.pathname.slice("/auth/v1".length)}`;
-    if (input instanceof Request) return fetch(new Request(requestUrl, input), init);
-    return fetch(requestUrl, init);
+    const proxyUrl = new URL(
+      `/api/auth${requestUrl.pathname.slice("/auth/v1".length)}${requestUrl.search}`,
+      window.location.origin,
+    );
+    if (input instanceof Request) return fetch(new Request(proxyUrl, input), init);
+    return fetch(proxyUrl, init);
   };
 
   return createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
