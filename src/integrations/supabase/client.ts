@@ -18,7 +18,25 @@ function createSupabaseClient() {
     throw new Error(message);
   }
 
+  const fetchWithAuthProxy: typeof fetch = (input, init) => {
+    if (typeof window === "undefined") return fetch(input, init);
+
+    const requestUrl = new URL(input instanceof Request ? input.url : String(input));
+    const authBaseUrl = new URL(SUPABASE_URL);
+    if (requestUrl.origin !== authBaseUrl.origin || !requestUrl.pathname.startsWith("/auth/v1/")) {
+      return fetch(input, init);
+    }
+
+    const proxyUrl = new URL(
+      `/api/auth${requestUrl.pathname.slice("/auth/v1".length)}${requestUrl.search}`,
+      window.location.origin,
+    );
+    if (input instanceof Request) return fetch(new Request(proxyUrl, input), init);
+    return fetch(proxyUrl, init);
+  };
+
   return createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    global: { fetch: fetchWithAuthProxy },
     auth: {
       storage: typeof window !== 'undefined' ? localStorage : undefined,
       persistSession: true,
