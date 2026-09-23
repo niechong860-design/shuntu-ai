@@ -3,8 +3,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { updateCurrentProfile } from "@/lib/profile.functions";
 import { Loader2, Upload, Lock, User as UserIcon } from "lucide-react";
 import { toast } from "sonner";
+import { thumbUrl } from "@/lib/image-url";
 
 export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const { user, profile, refreshProfile } = useAuth();
@@ -52,8 +54,7 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
       const { error: upErr } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
       if (upErr) throw upErr;
       const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
-      const { error: profErr } = await supabase.from("profiles").update({ avatar_url: publicUrl }).eq("id", user.id);
-      if (profErr) throw profErr;
+      await updateCurrentProfile({ data: { avatarUrl: publicUrl } });
       await refreshProfile();
       toast.success("头像已更新");
     } catch (err) {
@@ -65,8 +66,7 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
     if (!user) return;
     setSavingProfile(true);
     try {
-      const { error } = await supabase.from("profiles").update({ display_name: displayName }).eq("id", user.id);
-      if (error) throw error;
+      await updateCurrentProfile({ data: { displayName } });
       await refreshProfile();
       toast.success("资料已保存");
     } catch (err) {
@@ -112,7 +112,7 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
                 className="group relative h-20 w-20 overflow-hidden rounded-full ring-1 ring-border transition-all hover:ring-primary/60"
               >
                 {avatar ? (
-                  <img src={avatar} alt="" className="h-full w-full object-cover" />
+                  <img src={thumbUrl(avatar, { quality: 75 })} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                 ) : (
                   <>
                     <div className="h-full w-full bg-gradient-to-br from-primary/40 via-accent to-secondary" />

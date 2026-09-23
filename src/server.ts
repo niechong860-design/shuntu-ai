@@ -2,10 +2,15 @@ import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+import { runReplicationBatch, type ReplicationRuntimeEnv } from "./lib/replication-runtime";
 
 type ServerEntry = {
-  fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
+  fetch: (request: Request, requestOpts?: unknown, ctx?: unknown) => Promise<Response> | Response;
 };
+
+type WorkerExecutionContext = { waitUntil?: (promise: Promise<unknown>) => void };
+
+const CLOUDFLARE_ENV_GLOBAL_KEY = "__SHUNTU_CLOUDFLARE_ENV__";
 
 let serverEntryPromise: Promise<ServerEntry> | undefined;
 
@@ -66,15 +71,44 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
   return brandedErrorResponse();
 }
 
+async function handleManualReplication(request: Request, env: ReplicationRuntimeEnv): Promise<Response> {
+  if (request.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
+  const expected = (env as ReplicationRuntimeEnv & { REPLICATION_RUNNER_TOKEN?: string }).REPLICATION_RUNNER_TOKEN?.trim();
+  const supplied = request.headers.get("x-replication-runner-token")?.trim();
+  if (!expected || !supplied || supplied !== expected) return new Response("Not Found", { status: 404 });
+  try {
+    const result = await runReplicationBatch(env, 10);
+    return Response.json(result, { headers: { "cache-control": "no-store" } });
+  } catch (error) {
+    console.error("[replication] batch failed", error instanceof Error ? error.message : "unknown error");
+    return Response.json({ error: "replication batch failed" }, { status: 503, headers: { "cache-control": "no-store" } });
+  }
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      (globalThis as Record<string, unknown>)[CLOUDFLARE_ENV_GLOBAL_KEY] = env;
+      if (new URL(request.url).pathname === "/api/internal/replication") {
+        return await handleManualReplication(request, (env ?? {}) as ReplicationRuntimeEnv);
+      }
       const handler = await getServerEntry();
-      const response = await handler.fetch(request, env, ctx);
+      const response = await handler.fetch(request, {
+        context: {
+          cloudflare: { env, ctx },
+        },
+      });
       return await normalizeCatastrophicSsrResponse(response);
     } catch (error) {
       console.error(error);
       return brandedErrorResponse();
     }
+  },
+  async scheduled(_controller: unknown, env: unknown, ctx: WorkerExecutionContext) {
+    const task = runReplicationBatch((env ?? {}) as ReplicationRuntimeEnv, 10).catch((error) => {
+      console.error("[replication] scheduled batch failed", error instanceof Error ? error.message : "unknown error");
+    });
+    ctx.waitUntil?.(task);
+    await task;
   },
 };

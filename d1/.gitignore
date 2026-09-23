@@ -1,0 +1,7 @@
+.local/
+staging/
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite-journal

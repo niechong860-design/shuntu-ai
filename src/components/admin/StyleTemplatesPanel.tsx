@@ -6,6 +6,8 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   adminListStyleTemplates,
   adminUpdateStyleTemplate,
+  adminCreateStyleTemplate,
+  adminDeleteStyleTemplate,
   adminGetSystemPrompt,
   adminSetSystemPrompt,
   adminGetContactInfo,
@@ -14,7 +16,8 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
-import { Save, Upload, RefreshCw, ImageIcon, FileText, Palette, Headphones } from "lucide-react";
+import { Save, Upload, RefreshCw, ImageIcon, FileText, Palette, Headphones, Plus, Trash2 } from "lucide-react";
+import { thumbUrl } from "@/lib/image-url";
 
 type Tpl = {
   id: string;
@@ -25,11 +28,11 @@ type Tpl = {
 };
 
 export function StyleTemplatesPanel() {
+  // 风格模板已改为前台固定本地数据，后台不再管理（见 src/lib/style-templates.ts）。
   return (
     <div className="space-y-6">
       <ContactInfoCard />
       <SystemPromptCard />
-      <TemplatesGrid />
     </div>
   );
 }
@@ -159,8 +162,11 @@ function SystemPromptCard() {
 
 function TemplatesGrid() {
   const listFn = useServerFn(adminListStyleTemplates);
+  const createFn = useServerFn(adminCreateStyleTemplate);
   const [items, setItems] = useState<Tpl[]>([]);
   const [loading, setLoading] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -169,6 +175,19 @@ function TemplatesGrid() {
     finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
+
+  const create = async () => {
+    const name = newName.trim();
+    if (!name) return toast.error("请先填写模板名称");
+    setCreating(true);
+    try {
+      await createFn({ data: { name } });
+      toast.success(`已新增模板：${name}`);
+      setNewName("");
+      load();
+    } catch (e: any) { toast.error(e.message); }
+    finally { setCreating(false); }
+  };
 
   return (
     <div className="rounded-lg border border-border/60 bg-white/[0.03] p-4 space-y-3">
@@ -182,8 +201,21 @@ function TemplatesGrid() {
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        每个模板可单独修改示例图（9:16）和风格 Prompt。Prompt 仅控制视觉风格（灯光/背景/氛围/色调等），不要写比例或分辨率。
+        每个模板可单独修改名称、示例图（9:16）和风格 Prompt。Prompt 仅控制视觉风格（灯光/背景/氛围/色调等），不要写比例或分辨率。
       </p>
+      <div className="flex gap-2 rounded-lg border border-dashed border-primary/30 bg-primary/[0.04] p-3">
+        <Input
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          placeholder="新模板名称，例如：赛博朋克"
+          className="h-9"
+          onKeyDown={(e) => { if (e.key === "Enter") create(); }}
+        />
+        <Button size="sm" onClick={create} disabled={creating}>
+          <Plus className="mr-1.5 h-3.5 w-3.5" />
+          {creating ? "新增中…" : "新增模板"}
+        </Button>
+      </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((t) => (
           <TemplateCard key={t.id} tpl={t} onSaved={load} />
@@ -195,23 +227,41 @@ function TemplatesGrid() {
 
 function TemplateCard({ tpl, onSaved }: { tpl: Tpl; onSaved: () => void }) {
   const updateFn = useServerFn(adminUpdateStyleTemplate);
+  const deleteFn = useServerFn(adminDeleteStyleTemplate);
   const { session } = useAuth();
+  const [name, setName] = useState(tpl.name ?? "");
   const [imageUrl, setImageUrl] = useState(tpl.image_url ?? "");
   const [prompt, setPrompt] = useState(tpl.prompt ?? "");
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const dirty = (imageUrl || "") !== (tpl.image_url ?? "") || prompt !== (tpl.prompt ?? "");
+  const dirty =
+    name !== (tpl.name ?? "") ||
+    (imageUrl || "") !== (tpl.image_url ?? "") ||
+    prompt !== (tpl.prompt ?? "");
 
   const save = async () => {
+    if (!name.trim()) return toast.error("模板名称不能为空");
     setBusy(true);
     try {
-      await updateFn({ data: { id: tpl.id, image_url: imageUrl || null, prompt } });
-      toast.success(`已保存：${tpl.name}`);
+      await updateFn({ data: { id: tpl.id, name: name.trim(), image_url: imageUrl || null, prompt } });
+      toast.success(`已保存：${name}`);
       onSaved();
     } catch (e: any) { toast.error(e.message); }
     finally { setBusy(false); }
+  };
+
+  const remove = async () => {
+    if (!confirm(`确定删除模板「${tpl.name}」？此操作不可恢复。`)) return;
+    setDeleting(true);
+    try {
+      await deleteFn({ data: { id: tpl.id } });
+      toast.success(`已删除：${tpl.name}`);
+      onSaved();
+    } catch (e: any) { toast.error(e.message); }
+    finally { setDeleting(false); }
   };
 
   const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -242,15 +292,20 @@ function TemplateCard({ tpl, onSaved }: { tpl: Tpl; onSaved: () => void }) {
 
   return (
     <div className="rounded-xl border border-border bg-white/[0.02] p-3 space-y-2">
-      <div className="flex items-center justify-between">
-        <div className="text-sm font-medium">{tpl.name}</div>
-        <span className="font-mono text-[10px] text-muted-foreground">{tpl.id}</span>
+      <div className="flex items-center justify-between gap-2">
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="模板名称"
+          className="h-8 text-sm font-medium"
+        />
+        <span className="font-mono text-[10px] text-muted-foreground shrink-0">{tpl.id.slice(0, 12)}</span>
       </div>
 
       <div className="flex gap-3">
         <div className="relative aspect-[9/16] w-[90px] shrink-0 overflow-hidden rounded-lg border border-border bg-black/30">
           {imageUrl ? (
-            <img src={imageUrl} alt={tpl.name} className="h-full w-full object-cover" />
+            <img src={thumbUrl(imageUrl, { quality: 65 })} alt={tpl.name} loading="lazy" decoding="async" className="h-full w-full object-cover" />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-muted-foreground">
               <ImageIcon className="h-5 w-5" strokeWidth={1.5} />
@@ -285,9 +340,15 @@ function TemplateCard({ tpl, onSaved }: { tpl: Tpl; onSaved: () => void }) {
         className="font-mono text-[11px]"
       />
 
-      <Button size="sm" className="w-full" onClick={save} disabled={busy || !dirty}>
-        <Save className="mr-1.5 h-3.5 w-3.5" />保存
-      </Button>
+      <div className="flex gap-2">
+        <Button size="sm" className="flex-1" onClick={save} disabled={busy || !dirty}>
+          <Save className="mr-1.5 h-3.5 w-3.5" />保存
+        </Button>
+        <Button size="sm" variant="outline" onClick={remove} disabled={deleting}
+          className="text-destructive hover:bg-destructive/10 hover:text-destructive">
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
     </div>
   );
 }

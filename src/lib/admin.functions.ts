@@ -1,7 +1,83 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { getConfiguredRechargePackage } from "@/lib/recharge-packages";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { checkPromptSafety, SAFETY_SERVER_BLOCK_MESSAGE } from "@/lib/promptSafety";
+import { pollFoxApiTask, submitFoxApiImageEdit, submitFoxApiImageGenerationTask } from "@/lib/foxapi-backup";
+import {
+  buildGptImageProProviderPayload,
+  GPT_IMAGE_PRO_MODEL_KEY,
+  GPT_IMAGE_PRO_VBL_EDITS_URL,
+  GPT_IMAGE_PRO_VBL_GENERATIONS_URL,
+  validateGptImageProProviderPayload,
+} from "@/lib/gpt-image-pro-provider-contract";
+import { archiveGeneratedImageToR2, deleteGeneratedImageFromR2Url } from "@/lib/r2-image-archive";
+import type { BusinessDatabase, GenerationTask, ModelConfig } from "@/lib/business-database";
+import { createBusinessDatabaseFromContext } from "@/lib/business-database-router";
+import { assertLovableOnlyLegacyWrite } from "@/lib/legacy-lovable-guard";
+
+const FOXAPI_BACKUP_MODEL_KEY = "gpt-image-2-backup";
+const GPT_IMAGE_2_BACKUP_MODEL_KEY = "gpt_image_2_backup";
+const GPT_IMAGE_2_BACKUP_EDIT_URL = "https://image1.vibelearning.top/v1/images/edits";
+
+function sanitizeUpstreamExtraParams(extraParams: unknown): Record<string, any> {
+  if (!extraParams || typeof extraParams !== "object" || Array.isArray(extraParams)) return {};
+  const sanitized: Record<string, any> = {};
+  for (const [key, value] of Object.entries(extraParams as Record<string, any>)) {
+    if (key.startsWith("ui_")) continue;
+    sanitized[key] = value;
+  }
+  return sanitized;
+}
+
+type HistoryPruneRow = {
+  id: string;
+  image_url: string | null;
+  generation_task_id: string | null;
+};
+
+function getBusinessDb(context: unknown): BusinessDatabase {
+  return createBusinessDatabaseFromContext(context as Parameters<typeof createBusinessDatabaseFromContext>[0]);
+}
+
+async function stableTextHash(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function asRecord(value: unknown): Record<string, any> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : {};
+}
+
+async function getBusinessModel(db: BusinessDatabase, modelKey: string, includeSecrets = false): Promise<ModelConfig | null> {
+  const models = await db.listModelsConfig({ includeSecrets, enabledOnly: false });
+  return models.find((model) => model.model_key === modelKey) ?? null;
+}
+
+async function attachImageToConsumedHistory(input: {
+  db: BusinessDatabase;
+  userId: string;
+  modelName: string;
+  imageUrl: string;
+  historyId: string | null;
+}) {
+  if (input.historyId) {
+    await input.db.setGenerationHistoryImageUrl({
+      historyId: input.historyId,
+      userId: input.userId,
+      imageUrl: input.imageUrl,
+    });
+    return;
+  }
+  if (input.db.primary === "d1") return;
+  await input.db.setLatestGenerationHistoryImageUrl({
+    userId: input.userId,
+    modelName: input.modelName,
+    imageUrl: input.imageUrl,
+  });
+}
 
 async function assertAdmin(userId: string) {
   const { data, error } = await supabaseAdmin
@@ -24,28 +100,130 @@ async function assertFounder(userId: string) {
   if (!data) throw new Error("仅创始人可执行该操作");
 }
 
+function getBeijingDayRange(now = new Date()) {
+  const beijingOffsetMs = 8 * 60 * 60 * 1000;
+  const beijingNow = new Date(now.getTime() + beijingOffsetMs);
+  const year = beijingNow.getUTCFullYear();
+  const month = beijingNow.getUTCMonth();
+  const day = beijingNow.getUTCDate();
+  const startUtcMs = Date.UTC(year, month, day, 0, 0, 0, 0) - beijingOffsetMs;
+  const endUtcMs = startUtcMs + 24 * 60 * 60 * 1000;
+
+  return {
+    startUtc: new Date(startUtcMs).toISOString(),
+    endUtc: new Date(endUtcMs).toISOString(),
+  };
+}
 
 // --- Users ---
 export const adminListUsers = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
-    const { data: profiles, error } = await supabaseAdmin
-      .from("profiles")
-      .select("id, email, display_name, credits, created_at")
-      .order("created_at", { ascending: false });
-    if (error) throw new Error(error.message);
-    const { data: history } = await supabaseAdmin
-      .from("generation_history")
-      .select("user_id, cost");
-    const sumMap = new Map<string, number>();
-    for (const r of (history ?? []) as Array<{ user_id: string; cost: number | string }>) {
-      sumMap.set(r.user_id, (sumMap.get(r.user_id) ?? 0) + Number(r.cost ?? 0));
+    const db = getBusinessDb(context);
+    if (db.primary !== "d1" || !db.listAdminUserBusinessRows) throw new Error("admin user listing requires D1 primary");
+    const profiles = await db.listAdminUserBusinessRows();
+    const banMap = new Map<string, boolean>();
+    const authUsers: Array<{ id: string; email: string | null; created_at: string }> = [];
+    try {
+      let page = 1;
+      while (page < 20) {
+        const { data: au, error: aerr } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 1000 });
+        if (aerr) break;
+        for (const u of au?.users ?? []) {
+          const until = (u as any).banned_until as string | null | undefined;
+          banMap.set(u.id, !!until && new Date(until).getTime() > Date.now());
+          authUsers.push({ id: u.id, email: u.email ?? null, created_at: (u as any).created_at ?? new Date().toISOString() });
+        }
+        if (!au || au.users.length < 1000) break;
+        page++;
+      }
+    } catch { /* ignore */ }
+
+    // 合并：以 auth.users 为基准，profile 缺失则用 auth 信息补齐（保证新注册用户也能显示）
+    const profileMap = new Map<string, any>();
+    for (const p of profiles) profileMap.set(p.id, p);
+    const authMap = new Map(authUsers.map((user) => [user.id, user]));
+    const userIds = new Set([...profileMap.keys(), ...authMap.keys()]);
+    const merged = Array.from(userIds).map((id) => {
+      const au = authMap.get(id);
+      const p = profileMap.get(id);
+      return {
+        id,
+        email: p?.email ?? au?.email ?? null,
+        display_name: p?.display_name ?? null,
+        credits: Number(p?.credits ?? 0),
+        created_at: p?.created_at ?? au?.created_at ?? new Date(0).toISOString(),
+        total_spent: Number(p?.total_spent ?? 0),
+        is_banned: banMap.get(id) ?? false,
+      };
+    });
+    merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return merged;
+  });
+
+export const adminGetUserCreditUsageLogs = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      userId: z.string().uuid(),
+      limit: z.number().int().min(1).max(100).optional(),
+      offset: z.number().int().min(0).optional(),
+    }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    await assertAdmin(context.userId);
+    const limit = Math.min(100, Math.max(1, Number(data.limit ?? 50)));
+    const offset = Math.max(0, Number(data.offset ?? 0));
+    const db = getBusinessDb(context);
+    if (db.primary !== "d1" || !db.listAdminCreditUsageLogs) throw new Error("admin usage logs require D1 primary");
+    const { rows, total } = await db.listAdminCreditUsageLogs({ userId: data.userId, limit, offset });
+
+    return {
+      items: rows,
+      total,
+      limit,
+      offset,
+    };
+  });
+
+export const adminBanUser = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ userId: z.string().uuid(), banned: z.boolean() }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const { data: roles } = await supabaseAdmin
+      .from("user_roles").select("role").eq("user_id", data.userId);
+    if ((roles ?? []).some((r: any) => r.role === "founder")) {
+      throw new Error("不能封禁创始人账号");
     }
-    return (profiles ?? []).map((p: any) => ({
-      ...p,
-      total_spent: sumMap.get(p.id) ?? 0,
-    }));
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(data.userId, {
+      ban_duration: data.banned ? "876000h" : "none",
+    } as any);
+    if (error) throw new Error(error.message);
+    return { ok: true, banned: data.banned };
+  });
+
+export const adminDeleteUser = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ userId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    if (data.userId === context.userId) throw new Error("不能删除自己");
+    const { data: roles } = await supabaseAdmin
+      .from("user_roles").select("role").eq("user_id", data.userId);
+    if ((roles ?? []).some((r: any) => r.role === "founder")) {
+      throw new Error("不能删除创始人账号");
+    }
+    assertLovableOnlyLegacyWrite(context, "adminDeleteUser");
+    await supabaseAdmin.from("user_roles").delete().eq("user_id", data.userId);
+    await supabaseAdmin.from("generation_history").delete().eq("user_id", data.userId);
+    await supabaseAdmin.from("profiles").delete().eq("id", data.userId);
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(data.userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
   });
 
 export const adminResetPassword = createServerFn({ method: "POST" })
@@ -69,39 +247,43 @@ export const adminAdjustCredits = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    const { data: row, error: e1 } = await supabaseAdmin
-      .from("profiles")
-      .select("credits")
-      .eq("id", data.userId)
-      .single();
-    if (e1) throw new Error(e1.message);
-    const next = Math.max(0, (row?.credits ?? 0) + data.delta);
-    const { error: e2 } = await supabaseAdmin
-      .from("profiles")
-      .update({ credits: next, updated_at: new Date().toISOString() })
-      .eq("id", data.userId);
-    if (e2) throw new Error(e2.message);
-    return { credits: next };
+    const db = getBusinessDb(context);
+    if (db.primary !== "d1") throw new Error("admin credit adjustment requires D1 primary");
+    return await db.adjustCreditsByAdmin({
+      adminUserId: context.userId,
+      userId: data.userId,
+      delta: data.delta,
+    });
   });
 
 // --- Coupons ---
-function makeCode() {
-  const seg = () =>
-    Math.random().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4).padEnd(4, "X");
-  return `LUMEN-${seg()}-${seg()}`;
-}
-
 export const adminListCoupons = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
-    const { data, error } = await supabaseAdmin
-      .from("coupons")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(500);
-    if (error) throw new Error(error.message);
-    return data;
+    const db = getBusinessDb(context);
+    if (db.primary !== "d1" || !db.listAdminCoupons) throw new Error("admin coupon listing requires D1 primary");
+    const rows = await db.listAdminCoupons();
+    const presentEmail = (value: unknown) =>
+      typeof value === "string" && value.trim().length > 0 ? value : null;
+    const missingEmailUserIds = Array.from(new Set(
+      rows
+        .filter((coupon: any) => coupon.is_used && coupon.used_by && !presentEmail(coupon.used_by_email))
+        .map((coupon: any) => coupon.used_by as string),
+    ));
+
+    if (missingEmailUserIds.length === 0) return rows;
+
+    const emailByUserId = new Map<string, string | null>();
+    await Promise.all(missingEmailUserIds.map(async (userId) => {
+      const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId);
+      emailByUserId.set(userId, authUser.user?.email ?? null);
+    }));
+
+    return rows.map((coupon: any) => ({
+      ...coupon,
+      used_by_email: presentEmail(coupon.used_by_email) ?? emailByUserId.get(coupon.used_by) ?? null,
+    }));
   });
 
 export const adminDeleteCoupon = createServerFn({ method: "POST" })
@@ -109,13 +291,9 @@ export const adminDeleteCoupon = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ couponId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    const { data: row, error: e1 } = await supabaseAdmin
-      .from("coupons").select("is_used").eq("id", data.couponId).maybeSingle();
-    if (e1) throw new Error(e1.message);
-    if (!row) throw new Error("卡密不存在");
-    if (row.is_used) throw new Error("已使用的卡密不可删除");
-    const { error } = await supabaseAdmin.from("coupons").delete().eq("id", data.couponId);
-    if (error) throw new Error(error.message);
+    const db = getBusinessDb(context);
+    if (db.primary !== "d1" || !db.deleteAdminCoupon) throw new Error("admin coupon deletion requires D1 primary");
+    await db.deleteAdminCoupon(data.couponId);
     return { ok: true };
   });
 
@@ -126,44 +304,34 @@ export const adminGenerateCoupons = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    const rows = Array.from({ length: data.count }, () => ({
-      code: makeCode(),
-      amount: data.amount,
-      created_by: context.userId,
-    }));
-    const { data: inserted, error } = await supabaseAdmin
-      .from("coupons")
-      .insert(rows)
-      .select("code, amount");
-    if (error) throw new Error(error.message);
-    return inserted;
+    const db = getBusinessDb(context);
+    if (db.primary !== "d1" || !db.generateAdminCoupons) throw new Error("admin coupon generation requires D1 primary");
+    return await db.generateAdminCoupons({ count: data.count, amount: data.amount, createdBy: context.userId });
   });
 
 // --- Redeem (user) ---
+// Calls the secure RPC `redeem_gift_card`. The function runs inside a
+// transaction with FOR UPDATE row locking and writes an audit row to
+// `redeem_logs`. No direct table writes happen from the client.
 export const redeemCoupon = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ code: z.string().min(3).max(64) }).parse(d))
+  .inputValidator((d) => z.object({ code: z.string().min(3).max(64).regex(/^[A-Za-z0-9_-]+$/) }).parse(d))
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
-    const { data: res, error } = await supabase.rpc("redeem_coupon", { _code: data.code.trim() });
-    if (error) throw new Error(error.message);
-    const row = Array.isArray(res) ? res[0] : res;
-    return row as { success: boolean; message: string; amount: number };
+    const db = getBusinessDb(context);
+    const res = await db.redeemCoupon({
+      userId: context.userId,
+      userEmail: (context.claims as { email?: string } | undefined)?.email ?? null,
+      code: data.code.trim(),
+    });
+    return { success: res.success, message: res.message, amount: res.amount };
   });
 
 // --- Models config (PUBLIC: safe columns only, no api_key) ---
 export const listModelsConfig = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async () => {
-    // Use supabaseAdmin with explicit safe-column projection so the public RLS
-    // policy can be removed (api_key / api_url / fetch_url are never returned).
-    const { data, error } = await supabaseAdmin
-      .from("models_config")
-      .select("id, model_key, name, description, cost, sort_order, updated_at")
-      .eq("is_enabled", true)
-      .order("sort_order", { ascending: true });
-    if (error) throw new Error(error.message);
-    return data ?? [];
+  .handler(async ({ context }) => {
+    const db = getBusinessDb(context);
+    return await db.listModelsConfig({ enabledOnly: true, includeSecrets: false });
   });
 
 // Admin variant: includes api_url & api_key + dynamic adapter fields
@@ -186,6 +354,7 @@ export const adminUpdateModelPrice = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminUpdateModelPrice");
     const { error } = await supabaseAdmin
       .from("models_config")
       .update({ cost: data.cost, updated_at: new Date().toISOString() })
@@ -215,6 +384,7 @@ export const adminUpdateModel = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminUpdateModel");
     const { id, ...rest } = data;
     const patch = { ...rest, updated_at: new Date().toISOString() };
     const { error } = await supabaseAdmin.from("models_config").update(patch as never).eq("id", id);
@@ -241,6 +411,7 @@ export const adminCreateModel = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminCreateModel");
     const { data: row, error } = await supabaseAdmin
       .from("models_config")
       .insert({
@@ -267,6 +438,7 @@ export const adminDeleteModel = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminDeleteModel");
     const { error } = await supabaseAdmin.from("models_config").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
@@ -279,32 +451,1127 @@ export const consumeGeneration = createServerFn({ method: "POST" })
     z.object({ modelKey: z.string().min(1).max(64), prompt: z.string().max(4000).optional() }).parse(d),
   )
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
-    const { data: res, error } = await supabase.rpc("consume_credits_for_generation", {
-      _model_key: data.modelKey,
-      _prompt: data.prompt ?? "",
+    const db = getBusinessDb(context);
+    const row = await db.consumeCreditsForGeneration({
+      userId: context.userId,
+      modelKey: data.modelKey,
+      prompt: data.prompt ?? "",
     });
-    if (error) throw new Error(error.message);
-    const row = Array.isArray(res) ? res[0] : res;
-    return row as { success: boolean; message: string; credits: number; cost: number };
+    return { success: row.success, message: row.message, credits: row.credits, cost: row.cost };
   });
 
-// --- 获取当前用户最近 100 条生成历史（仅含图片） ---
+// --- 获取当前用户生成历史（分页 + 缩略图）---
+// 列表只返回轻量 thumbnailUrl，原图 originalImageUrl 用于详情/下载。
+function buildHistoryThumbUrl(historyId: string, url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (/^(blob:|data:)/i.test(url)) return url;
+  try {
+    const parsed = new URL(url);
+    if (parsed.origin === "https://img.shuntu.cc" && parsed.pathname.startsWith("/generated/")) {
+      return `/api/history-thumbnail/${encodeURIComponent(historyId)}`;
+    }
+  } catch {
+    // Preserve the legacy URL below when the stored value is not absolute.
+  }
+  if (!url.includes("/storage/v1/object/public/") && !url.includes("/storage/v1/render/image/public/")) {
+    return url;
+  }
+  const transformed = url.includes("/storage/v1/object/public/")
+    ? url.replace("/storage/v1/object/public/", "/storage/v1/render/image/public/")
+    : url;
+  const sep = transformed.includes("?") ? "&" : "?";
+  return `${transformed}${sep}width=480&quality=62&resize=contain`;
+}
+
+function getErrorName(error: unknown): string {
+  return error instanceof Error ? error.name : typeof error;
+}
+
+async function getPrunedHistoryImageUrls(rows: HistoryPruneRow[]): Promise<string[]> {
+  const urls = new Set<string>();
+  const taskIds = new Set<string>();
+
+  for (const row of rows) {
+    if (row.image_url) urls.add(row.image_url);
+    if (row.generation_task_id) taskIds.add(row.generation_task_id);
+  }
+
+  if (taskIds.size > 0) {
+    try {
+      const { data, error } = await (supabaseAdmin as any)
+        .from("generation_tasks")
+        .select("result_image_url")
+        .in("id", Array.from(taskIds));
+      if (error) {
+        console.warn("[history] prune task image lookup failed", { errorName: getErrorName(error) });
+      } else {
+        for (const task of data ?? []) {
+          if (task.result_image_url) urls.add(task.result_image_url);
+        }
+      }
+    } catch (error) {
+      console.warn("[history] prune task image lookup failed", { errorName: getErrorName(error) });
+    }
+  }
+
+  return Array.from(urls);
+}
+
+async function deletePrunedHistoryR2Images(rows: HistoryPruneRow[]) {
+  const urls = await getPrunedHistoryImageUrls(rows);
+  for (const url of urls) {
+    await deleteGeneratedImageFromR2Url(url);
+  }
+}
+
 export const getMyGenerationHistory = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const { supabase } = context;
-    const { data, error } = await supabase
-      .from("generation_history")
-      .select("id, model, prompt, image_url, created_at, cost")
-      .not("image_url", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(100);
-    if (error) throw new Error(error.message);
-    return (data ?? []) as Array<{
-      id: string; model: string; prompt: string | null; image_url: string; created_at: string; cost: number;
-    }>;
+  .inputValidator((input: { limit?: number; offset?: number } | undefined) => ({
+    limit: Math.min(50, Math.max(1, Number(input?.limit ?? 20))),
+    offset: Math.max(0, Number(input?.offset ?? 0)),
+  }))
+  .handler(async ({ context, data }) => {
+    const { userId } = context;
+    const db = getBusinessDb(context);
+    const { limit, offset } = data;
+
+    // 判断是否管理员（admin / founder）
+    const { data: roles } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .in("role", ["admin", "founder"]);
+    const isAdmin = !!(roles && roles.length > 0);
+    const maxKeep = isAdmin ? 300 : 100;
+    const maxDays = 15;
+    const cutoff = new Date(Date.now() - maxDays * 24 * 60 * 60 * 1000).toISOString();
+
+    // 自动清理：超过 15 天 或 超过 maxKeep 张，删除最旧的。
+    // D1 主库阶段先不复制这类隐式 delete/R2 delete 行为，避免读路径触发跨存储副作用。
+    if (db.primary === "lovable") {
+      try {
+        const { data: expiredRows, error: expiredLookupError } = await supabaseAdmin
+          .from("generation_history")
+          .select("id, image_url, generation_task_id")
+          .eq("user_id", userId)
+          .lt("created_at", cutoff);
+        if (expiredLookupError) {
+          console.warn("[history] prune expired lookup failed", { errorName: getErrorName(expiredLookupError) });
+        }
+
+        const { error: expiredDeleteError } = await supabaseAdmin
+          .from("generation_history")
+          .delete()
+          .eq("user_id", userId)
+          .lt("created_at", cutoff);
+        if (expiredDeleteError) {
+          console.warn("[history] prune expired delete failed", { errorName: getErrorName(expiredDeleteError) });
+        } else {
+          await deletePrunedHistoryR2Images((expiredRows ?? []) as HistoryPruneRow[]);
+        }
+
+        const { data: keepIds } = await supabaseAdmin
+          .from("generation_history")
+          .select("id")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false })
+          .range(0, maxKeep - 1);
+        const keepSet = (keepIds ?? []).map((r: any) => r.id);
+        if (keepSet.length >= maxKeep) {
+          const keepClause = `(${keepSet.map((id: string) => `"${id}"`).join(",")})`;
+          const { data: overflowRows, error: overflowLookupError } = await supabaseAdmin
+            .from("generation_history")
+            .select("id, image_url, generation_task_id")
+            .eq("user_id", userId)
+            .not("id", "in", keepClause);
+          if (overflowLookupError) {
+            console.warn("[history] prune overflow lookup failed", { errorName: getErrorName(overflowLookupError) });
+          }
+
+          const { error: overflowDeleteError } = await supabaseAdmin
+            .from("generation_history")
+            .delete()
+            .eq("user_id", userId)
+            .not("id", "in", keepClause);
+          if (overflowDeleteError) {
+            console.warn("[history] prune overflow delete failed", { errorName: getErrorName(overflowDeleteError) });
+          } else {
+            await deletePrunedHistoryR2Images((overflowRows ?? []) as HistoryPruneRow[]);
+          }
+        }
+      } catch (e) {
+        console.warn("[history] prune failed", { errorName: getErrorName(e) });
+      }
+    }
+
+    // 管理员可以查看所有用户的历史（用于核查违规）；普通用户只能看自己的
+    if (offset >= maxKeep) {
+      return { items: [], total: maxKeep, limit, offset, maxKeep, maxDays, isAdmin };
+    }
+    const { rows, total: rawTotal } = await db.listGenerationHistory({
+      userId: isAdmin ? undefined : userId,
+      since: isAdmin ? undefined : cutoff,
+      imageOnly: true,
+      limit: Math.min(limit, maxKeep - offset),
+      offset,
+    });
+
+    const taskIds = Array.from(new Set((rows ?? [])
+      .map((r: any) => r.generation_task_id)
+      .filter((value: unknown): value is string => typeof value === "string" && value.length > 0)));
+    const taskReuseMap = new Map<string, { modelKey: string | null; inputParams: Record<string, any> | null }>();
+    if (taskIds.length > 0) {
+      const taskRows = await db.getGenerationTasksByIds(taskIds);
+      for (const task of taskRows ?? []) {
+        taskReuseMap.set(task.id, {
+          modelKey: (task.model_id ?? null) as string | null,
+          inputParams: (task.input_params ?? null) as Record<string, any> | null,
+        });
+      }
+    }
+
+    // 管理员需要显示作者信息
+    let authorEmailMap = new Map<string, string | null>();
+    if (isAdmin && rows && rows.length > 0) {
+      const uids = Array.from(new Set(rows.map((r: any) => r.user_id)));
+      const profs = await db.getProfilesByIds(uids);
+      const profileEmailMap = new Map((profs ?? []).map((p: any) => [p.id, p.email ?? null]));
+      authorEmailMap = new Map(uids.map((uid) => [uid, profileEmailMap.get(uid) ?? null]));
+      await Promise.all(uids.map(async (uid) => {
+        try {
+          const { data: authData, error: authError } = await supabaseAdmin.auth.admin.getUserById(uid);
+          if (!authError && authData.user?.email) {
+            authorEmailMap.set(uid, authData.user.email);
+          }
+        } catch {
+          // Keep profiles.email fallback.
+        }
+      }));
+    }
+
+    const items = (rows ?? []).map((r: any) => {
+      const authorEmail = authorEmailMap.get(r.user_id) ?? null;
+      return {
+        id: r.id as string,
+        userId: r.user_id as string,
+        generationTaskId: (r.generation_task_id ?? null) as string | null,
+        modelKey: r.generation_task_id ? taskReuseMap.get(r.generation_task_id)?.modelKey ?? null : null,
+        model: r.model as string,
+        prompt: (r.prompt ?? null) as string | null,
+        finalPrompt: (r.prompt ?? null) as string | null,
+        styleName: null as string | null,
+        aspectRatio: null as string | null,
+        createdAt: r.created_at as string,
+        originalImageUrl: r.image_url as string,
+        thumbnailUrl: buildHistoryThumbUrl(r.id, r.image_url),
+        inputParams: r.generation_task_id ? taskReuseMap.get(r.generation_task_id)?.inputParams ?? null : null,
+        status: "done" as const,
+        cost: Number(r.cost ?? 0),
+        authorName: null,
+        authorEmail,
+        // backward-compat:
+        image_url: r.image_url as string,
+        created_at: r.created_at as string,
+      };
+    });
+    const total = Math.min(rawTotal ?? items.length, maxKeep);
+    return { items, total, limit, offset, maxKeep, maxDays, isAdmin };
   });
+
+export const getMyGenerationTasks = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { userId } = context;
+    const db = getBusinessDb(context);
+    const rows = await db.listUserGenerationTasks({
+      userId,
+      statuses: ["queued", "running"],
+      limit: 3,
+      order: "asc",
+    });
+
+    const items = (rows ?? []).map((r: any) => ({
+      id: r.id as string,
+      requestId: r.request_id as string,
+      userId: r.user_id as string,
+      status: r.status as "queued" | "running" | "succeeded" | "failed",
+      modelId: r.model_id as string,
+      prompt: (r.prompt ?? null) as string | null,
+      inputParams: asRecord(r.input_params),
+      createdAt: r.created_at as string,
+      updatedAt: r.updated_at as string,
+      startedAt: (r.started_at ?? null) as string | null,
+      completedAt: (r.completed_at ?? null) as string | null,
+      resultImageUrl: (r.result_image_url ?? null) as string | null,
+      errorCode: (r.error_code ?? null) as string | null,
+      errorMessage: (r.error_message ?? null) as string | null,
+      deductionStatus: (r.deduction_status ?? null) as string | null,
+      deductionId: (r.deduction_id ?? null) as string | null,
+    }));
+
+    return { items, isAdmin: false };
+  });
+
+export const createGenerationTask = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      modelKey: z.string().min(1).max(64),
+      prompt: z.string().min(1).max(4000),
+      inputParams: z.record(z.string(), z.any()).optional(),
+    }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    const { userId } = context;
+    const db = getBusinessDb(context);
+
+    const activeCount = await db.countUserGenerationTasks({ userId, statuses: ["queued", "running"] });
+    if (activeCount >= 3) {
+      throw new Error("当前已有 3 个进行中任务，请等待任务完成后再提交。");
+    }
+
+    const model = await getBusinessModel(db, data.modelKey, false);
+    if (!model) throw new Error("模型不存在或已不可用。");
+    if ((model as any).is_enabled === false) throw new Error("模型不存在或已不可用。");
+
+    const creditsRequired = Math.max(0, Number((model as any).cost ?? 0));
+    const activeTasks = await db.listUserGenerationTasks({
+      userId,
+      statuses: ["queued", "running"],
+      deductionStatus: "not_charged",
+    });
+    const reservedCredits = activeTasks.reduce(
+      (sum: number, task) => sum + Number(task.credits_required ?? 0),
+      0,
+    );
+    const availableCredits = await db.getCredits(userId) - reservedCredits;
+    if (availableCredits < creditsRequired) {
+      throw new Error("余额不足，无法创建多任务。");
+    }
+
+    const requestId = `task_${crypto.randomUUID()}`;
+    const task = await db.createGenerationTask({
+      requestId,
+      userId,
+      modelId: data.modelKey,
+      prompt: data.prompt,
+      inputParams: { ...(data.inputParams ?? {}), queueVersion: "userQueue" },
+      creditsRequired,
+    });
+
+    return {
+      taskId: task.id as string,
+      requestId: task.request_id as string,
+      status: task.status as "queued",
+      prompt: task.prompt as string,
+      modelId: task.model_id as string,
+      creditsRequired: Number(task.credits_required ?? creditsRequired),
+    };
+  });
+
+export const cancelMyQueuedGenerationTasks = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { userId } = context;
+    const db = getBusinessDb(context);
+    const canceledCount = await db.cancelUserQueuedGenerationTasks({ userId });
+    return { canceledCount };
+  });
+
+export const cancelGenerationTask = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ taskId: z.string().uuid() }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    const { userId } = context;
+    const db = getBusinessDb(context);
+    const task = await db.cancelQueuedGenerationTask({ taskId: data.taskId, userId });
+    if (!task) throw new Error("任务已开始、已完成、已取消，或不属于当前任务。");
+
+    return {
+      taskId: task.id as string,
+      status: "canceled" as const,
+    };
+  });
+
+type AdminPreviewFinalizeResult = {
+  deductionStatus: string | null;
+  historyId: string | null;
+  credits: number | null;
+  cost: number | null;
+  finalizeMessage: string | null;
+};
+
+async function finalizeUserGenerationTaskOnce(
+  db: BusinessDatabase,
+  userId: string,
+  taskId: string,
+  imageUrl: string,
+  resultPayload?: Record<string, any> | null,
+): Promise<AdminPreviewFinalizeResult> {
+  const row = await db.finalizeUserGenerationTaskOnce({
+    taskId,
+    userId,
+    imageUrl,
+    resultPayload: resultPayload ?? null,
+  });
+  if (!row?.success) {
+    throw new Error(row?.message ?? "Finalize task failed");
+  }
+  if (row.deduction_status !== "charged" || !row.history_id) {
+    throw new Error(row?.message ?? "Task finalized without charged deduction or history");
+  }
+
+  return {
+    deductionStatus: (row.deduction_status ?? null) as string | null,
+    historyId: (row.history_id ?? null) as string | null,
+    credits: row.credits == null ? null : Number(row.credits),
+    cost: row.cost == null ? null : Number(row.cost),
+    finalizeMessage: (row.message ?? null) as string | null,
+  };
+}
+
+async function archiveSuccessfulImageUrl(
+  imageUrl: string,
+  meta: { taskId: string; userId?: string | null; modelKey?: string | null; cloudflareEnv?: unknown },
+): Promise<string> {
+  return archiveGeneratedImageToR2({
+    imageUrl,
+    taskId: meta.taskId,
+    userId: meta.userId,
+    modelKey: meta.modelKey,
+    cloudflareEnv: meta.cloudflareEnv,
+  });
+}
+
+function getCloudflareEnvFromServerContext(context: unknown): unknown {
+  const serverContext = context as { cloudflare?: { env?: unknown }; cloudflareEnv?: unknown } | null | undefined;
+  return serverContext?.cloudflare?.env ?? serverContext?.cloudflareEnv;
+}
+
+export const startGenerationTask = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ taskId: z.string().uuid() }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    const { userId } = context;
+    const db = getBusinessDb(context);
+    const cloudflareEnv = getCloudflareEnvFromServerContext(context);
+
+    const runningCount = await db.countUserGenerationTasks({
+      userId,
+      statuses: ["running"],
+      deductionStatus: "not_charged",
+    });
+    if (runningCount > 0) {
+      throw new Error("已有任务正在生成，请等待当前任务完成。");
+    }
+
+    const now = new Date().toISOString();
+    const task = await db.claimQueuedGenerationTask({ taskId: data.taskId, userId, now });
+    if (!task) {
+      throw new Error("任务已被处理、取消，或不属于当前任务。");
+    }
+
+    try {
+      const runningCountAfterClaim = await db.countUserGenerationTasks({
+        userId,
+        statuses: ["running"],
+        deductionStatus: "not_charged",
+      });
+      if (runningCountAfterClaim > 1) {
+        await db.updateGenerationTaskLifecycle({
+          taskId: task.id,
+          userId,
+          status: "queued",
+          startedAt: null,
+          now: new Date().toISOString(),
+        });
+        throw new Error("已有任务正在生成，请等待当前任务完成。");
+      }
+
+      const result = await submitAdminPreviewGenerationTask(task, db);
+      const finishedAt = new Date().toISOString();
+
+      if (result.status === "succeeded") {
+        let finalImageUrl = result.resultImageUrl;
+        try {
+          finalImageUrl = await archiveSuccessfulImageUrl(result.resultImageUrl, {
+            taskId: task.id as string,
+            userId,
+            modelKey: (task.model_id ?? null) as string | null,
+            cloudflareEnv,
+          });
+          const finalizeResult = await finalizeUserGenerationTaskOnce(db, userId, task.id as string, finalImageUrl, result.resultPayload);
+          return {
+            taskId: task.id as string,
+            status: "succeeded" as const,
+            startedAt: task.started_at as string,
+            resultImageUrl: finalImageUrl,
+            errorMessage: null as string | null,
+            resultPayload: result.resultPayload,
+            ...finalizeResult,
+          };
+        } catch (e) {
+          const message = e instanceof Error ? e.message : "Finalize task failed";
+          await db.updateGenerationTaskLifecycle({
+            taskId: task.id,
+            userId,
+            status: "failed",
+            errorMessage: message,
+            resultImageUrl: finalImageUrl,
+            resultPayload: result.resultPayload,
+            completedAt: finishedAt,
+            now: finishedAt,
+          });
+          return {
+            taskId: task.id as string,
+            status: "failed" as const,
+            startedAt: task.started_at as string,
+            resultImageUrl: null as string | null,
+            errorMessage: message,
+            resultPayload: result.resultPayload,
+          };
+        }
+      }
+
+      await db.updateGenerationTaskLifecycle({
+        taskId: task.id,
+        userId,
+        status: "running",
+        resultPayload: result.resultPayload,
+        now: finishedAt,
+      });
+      return {
+        taskId: task.id as string,
+        status: "running" as const,
+        startedAt: task.started_at as string,
+        resultImageUrl: null as string | null,
+        errorMessage: null as string | null,
+        resultPayload: result.resultPayload,
+      };
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "上游提交失败";
+      const failedAt = new Date().toISOString();
+      await db.updateGenerationTaskLifecycle({
+        taskId: task.id,
+        userId,
+        status: "failed",
+        errorMessage: message,
+        completedAt: failedAt,
+        now: failedAt,
+      });
+      return {
+        taskId: task.id as string,
+        status: "failed" as const,
+        startedAt: task.started_at as string,
+        resultImageUrl: null as string | null,
+        errorMessage: message,
+        resultPayload: null as any,
+      };
+    }
+  });
+
+export const pollGenerationTask = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ taskId: z.string().uuid() }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    const { userId } = context;
+    const db = getBusinessDb(context);
+    const cloudflareEnv = getCloudflareEnvFromServerContext(context);
+
+    const task = await db.getUserGenerationTask({ taskId: data.taskId, userId });
+    if (!task) throw new Error("任务不存在，或不属于当前任务。");
+    if (task.status !== "running") {
+      const finalized = task.status === "succeeded" && task.deduction_status === "charged" && !!task.deduction_id;
+      let resultImageUrl = (task.result_image_url ?? null) as string | null;
+      if (finalized && resultImageUrl && !resultImageUrl.startsWith("https://img.shuntu.cc/")) {
+        const originalImageUrl = resultImageUrl;
+        try {
+          resultImageUrl = await archiveSuccessfulImageUrl(originalImageUrl, {
+            taskId: task.id as string,
+            userId,
+            modelKey: (task.model_id ?? null) as string | null,
+            cloudflareEnv,
+          });
+          if (resultImageUrl !== originalImageUrl) {
+            await db.updateGenerationTaskLifecycle({
+              taskId: task.id,
+              userId,
+              resultImageUrl,
+            });
+          }
+        } catch (e) {
+          console.warn("[pollGenerationTask] archived completed task image failed", e);
+          resultImageUrl = originalImageUrl;
+        }
+      }
+      return {
+        taskId: task.id as string,
+        status: finalized ? "succeeded" as const : task.status === "succeeded" ? "failed" as const : task.status as "failed" | "queued" | "canceled",
+        resultImageUrl,
+        errorMessage: finalized ? (task.error_message ?? null) as string | null : task.status === "succeeded" ? "Task completed without charged deduction or history" : (task.error_message ?? null) as string | null,
+        resultPayload: task.result_payload ?? null,
+        deductionStatus: (task.deduction_status ?? null) as string | null,
+        historyId: (task.deduction_id ?? null) as string | null,
+      };
+    }
+
+    const taskResultPayload = asRecord(task.result_payload);
+    const providerTaskId = taskResultPayload.providerTaskId;
+    if (!providerTaskId) {
+      return {
+        taskId: task.id as string,
+        status: "running" as const,
+        resultImageUrl: null as string | null,
+        errorMessage: null as string | null,
+        resultPayload: task.result_payload ?? null,
+      };
+    }
+
+    const pollResult = await pollAdminPreviewProviderTask(db, String(providerTaskId), (task.model_id ?? null) as string | null);
+    const now = new Date().toISOString();
+    if (pollResult.status === "succeeded") {
+      const resultPayload = { ...taskResultPayload, ...pollResult.resultPayload, providerStatus: "succeeded" };
+      let finalImageUrl = pollResult.resultImageUrl;
+      try {
+        finalImageUrl = await archiveSuccessfulImageUrl(pollResult.resultImageUrl, {
+          taskId: task.id as string,
+          userId,
+          modelKey: (task.model_id ?? null) as string | null,
+          cloudflareEnv,
+        });
+        const finalizeResult = await finalizeUserGenerationTaskOnce(db, userId, task.id as string, finalImageUrl, resultPayload);
+        return {
+          taskId: task.id as string,
+          status: "succeeded" as const,
+          resultImageUrl: finalImageUrl,
+          errorMessage: null as string | null,
+          resultPayload,
+          ...finalizeResult,
+        };
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Finalize task failed";
+        await db.updateGenerationTaskLifecycle({
+          taskId: task.id,
+          userId,
+          status: "failed",
+          errorMessage: message,
+          resultPayload,
+          completedAt: now,
+          now,
+        });
+        return {
+          taskId: task.id as string,
+          status: "failed" as const,
+          resultImageUrl: null as string | null,
+          errorMessage: message,
+          resultPayload,
+        };
+      }
+    }
+
+    if (pollResult.status === "failed") {
+      const resultPayload = { ...taskResultPayload, ...pollResult.resultPayload, providerStatus: "failed" };
+      await db.updateGenerationTaskLifecycle({
+        taskId: task.id,
+        userId,
+        status: "failed",
+        errorMessage: pollResult.errorMessage,
+        resultPayload,
+        completedAt: now,
+        now,
+      });
+      return {
+        taskId: task.id as string,
+        status: "failed" as const,
+        resultImageUrl: null as string | null,
+        errorMessage: pollResult.errorMessage,
+        resultPayload,
+      };
+    }
+
+    return {
+      taskId: task.id as string,
+      status: "running" as const,
+      resultImageUrl: null as string | null,
+      errorMessage: null as string | null,
+      resultPayload: { ...taskResultPayload, ...pollResult.resultPayload, providerStatus: "running" },
+    };
+  });
+
+async function submitAdminPreviewGenerationTask(task: any, db: BusinessDatabase): Promise<
+  | { status: "succeeded"; resultImageUrl: string; resultPayload: Record<string, any> }
+  | { status: "running"; resultImageUrl: null; resultPayload: Record<string, any> }
+> {
+  const inputParams = (task.input_params ?? {}) as Record<string, any>;
+  const { base_url, global_api_key } = await loadGlobalConfig(db);
+  const model = await getBusinessModel(db, String(task.model_id), true);
+  if (!model) throw new Error("模型不存在或已不可用。");
+  if ((model as any).is_enabled === false) throw new Error("模型不存在或已不可用。");
+  if (!(model as any).api_url && (model as any).model_key !== FOXAPI_BACKUP_MODEL_KEY) throw new Error("该模型尚未配置 API 接口地址。");
+
+  const targetKey = (model as any).model_key === FOXAPI_BACKUP_MODEL_KEY
+    ? ""
+    : normalizeUpstreamApiKey((model as any).api_key) || normalizeUpstreamApiKey(global_api_key);
+  const pureApiKey = String(targetKey).replace(/Bearer\s+/i, "").trim();
+  if (!pureApiKey && (model as any).model_key !== FOXAPI_BACKUP_MODEL_KEY) throw new Error("该模型或全局接口设置尚未配置 API Key。");
+
+  const isGptImagePro = (model as any).model_key === GPT_IMAGE_PRO_MODEL_KEY;
+  const submitUrl = (model as any).model_key === FOXAPI_BACKUP_MODEL_KEY
+    ? ""
+    : isGptImagePro
+      ? GPT_IMAGE_PRO_VBL_GENERATIONS_URL
+      : resolveUrl(base_url, (model as any).api_url);
+  const prompt = String(task.prompt ?? "").trim();
+  if (!prompt) throw new Error("任务提示词为空。");
+
+  const aspectRatio = String(inputParams.aspectRatio ?? "1:1");
+  const sizeValue = String(inputParams.size ?? "1K");
+  const referenceImages = Array.isArray(inputParams.referenceImages) ? inputParams.referenceImages : [];
+  const gptImageProReferenceImages = isGptImagePro
+    ? referenceImages.filter((value): value is string => typeof value === "string" && /^(https?:|data:image\/)/i.test(value))
+    : [];
+  if ((model as any).model_key === FOXAPI_BACKUP_MODEL_KEY) {
+    const httpRefs = referenceImages.filter((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u));
+    const result = httpRefs.length === 0
+      ? await submitFoxApiImageGenerationTask({ prompt })
+      : await submitFoxApiImageEdit({ prompt, imageUrl: httpRefs[0] });
+    if (!result.ok) throw new Error(result.message);
+    return {
+      status: "running",
+      resultImageUrl: null,
+      resultPayload: {
+        providerTaskId: result.taskId,
+        providerStatus: "submitted",
+        provider: "foxapi",
+        requestFormat: "async_id",
+        requestId: task.request_id,
+      },
+    };
+  }
+
+  const httpReferenceImages = referenceImages.filter((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u));
+  if ((model as any).model_key === GPT_IMAGE_2_BACKUP_MODEL_KEY && httpReferenceImages.length > 0) {
+    const result = await submitGptImage2BackupEdit({
+      model,
+      prompt,
+      aspectRatio,
+      resolution: sizeValue,
+      referenceImages: httpReferenceImages,
+      pureApiKey,
+      baseUrl: base_url,
+    });
+    return {
+      status: "succeeded",
+      resultImageUrl: result.imageUrl,
+      resultPayload: {
+        requestFormat: "sync_url",
+        providerStatus: "succeeded",
+        requestId: task.request_id,
+        upstreamCode: result.upstreamCode,
+        mode: "edit",
+      },
+    };
+  }
+  if (isGptImagePro && gptImageProReferenceImages.length > 0) {
+    const result = await submitGptImageProEdit({
+      model,
+      prompt,
+      aspectRatio,
+      resolution: sizeValue,
+      referenceImages: gptImageProReferenceImages,
+      pureApiKey,
+    });
+    return {
+      status: "succeeded",
+      resultImageUrl: result.imageUrl,
+      resultPayload: {
+        requestFormat: "sync_url",
+        providerStatus: "succeeded",
+        requestId: task.request_id,
+        upstreamCode: result.upstreamCode,
+        mode: "edit",
+      },
+    };
+  }
+
+  const requestFormat = (model as any).request_format || "async_id";
+  const body = buildAdminPreviewUpstreamBody({
+    model,
+    prompt,
+    aspectRatio,
+    size: sizeValue,
+    referenceImages,
+  });
+
+  const res = await fetchWithRetry(submitUrl, {
+    method: "POST",
+    headers: buildUpstreamHeaders(pureApiKey),
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  const json = parseUpstreamResponse(text);
+  if (!res.ok) throw new Error(friendlyUpstreamError(res.status));
+  if (Number(json?.code) >= 400) throw new Error(friendlyUpstreamError(Number(json?.code) || 500));
+
+  if (requestFormat === "sync_url") {
+    const imageUrl = extractImageUrl(json ?? text);
+    if (!imageUrl) throw new Error(friendlyUpstreamError(502));
+    return {
+      status: "succeeded",
+      resultImageUrl: imageUrl,
+      resultPayload: {
+        requestFormat,
+        providerStatus: "succeeded",
+        requestId: task.request_id,
+        upstreamCode: json?.code ?? null,
+      },
+    };
+  }
+
+  const providerTaskId = json?.data?.id ?? json?.id ?? json?.task_id ?? (typeof json?.data === "string" ? json.data : null);
+  if (!providerTaskId) throw new Error(friendlyUpstreamError(502));
+  return {
+    status: "running",
+    resultImageUrl: null,
+    resultPayload: {
+      providerTaskId,
+      providerStatus: "submitted",
+      requestFormat: "async_id",
+      requestId: task.request_id,
+      upstreamCode: json?.code ?? null,
+    },
+  };
+}
+
+function firstConfiguredHttpUrl(value: unknown, fallback: string): string {
+  if (typeof value !== "string") return fallback;
+  const match = value.match(/https?:\/\/[^\s)\]'"<>]+/i);
+  return (match?.[0] ?? fallback).replace(/[。.,]+$/u, "");
+}
+
+function imageFilename(index: number, contentType: string): string {
+  const normalized = contentType.toLowerCase();
+  const extension = normalized.includes("jpeg") || normalized.includes("jpg")
+    ? "jpg"
+    : normalized.includes("webp")
+    ? "webp"
+    : "png";
+  return `reference-${index + 1}.${extension}`;
+}
+
+function resolveGptImage2BackupSize(aspectRatio?: string, resolution?: string): string {
+  const ratio = String(aspectRatio ?? "").trim();
+  const normalizedResolution = String(resolution ?? "1K").trim().toUpperCase();
+  const sizeMaps: Record<string, Record<string, string>> = {
+    "1K": {
+      "1:1": "1024x1024",
+      "3:4": "1024x1536",
+      "4:3": "1536x1024",
+      "9:16": "1024x1536",
+      "16:9": "1536x1024",
+      "2:3": "1024x1536",
+      "3:2": "1536x1024",
+    },
+    "2K": {
+      "1:1": "2048x2048",
+      "3:4": "1664x2496",
+      "4:3": "2496x1664",
+      "9:16": "1440x2560",
+      "16:9": "2560x1440",
+      "2:3": "1664x2496",
+      "3:2": "2496x1664",
+    },
+    "4K": {
+      "1:1": "4096x4096",
+      "3:4": "3072x4096",
+      "4:3": "4096x3072",
+      "9:16": "2224x3712",
+      "16:9": "3712x2224",
+      "2:3": "2224x3712",
+      "3:2": "3712x2224",
+    },
+  };
+  const fallbackByResolution: Record<string, string> = {
+    "1K": "1024x1024",
+    "2K": "2048x2048",
+    "4K": "4096x4096",
+  };
+  const map = sizeMaps[normalizedResolution] ?? sizeMaps["1K"];
+  return map[ratio] ?? fallbackByResolution[normalizedResolution] ?? fallbackByResolution["1K"];
+}
+
+async function fetchReferenceImageBlob(imageUrl: string, index: number): Promise<{ blob: Blob; filename: string }> {
+  try {
+    const response = await fetch(imageUrl, {
+      headers: { accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8" },
+      redirect: "follow",
+    });
+    if (!response.ok) throw new Error("reference image fetch failed");
+    const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
+    if (!contentType.startsWith("image/")) throw new Error("reference image content-type invalid");
+    const blob = await response.blob();
+    if (!blob.size) throw new Error("reference image empty");
+    return { blob, filename: imageFilename(index, contentType) };
+  } catch {
+    throw new Error("参考图读取失败，请更换图片后重试");
+  }
+}
+
+async function submitGptImage2BackupEdit(params: {
+  model: any;
+  prompt: string;
+  aspectRatio?: string;
+  resolution?: string;
+  referenceImages: string[];
+  pureApiKey: string;
+  baseUrl: string;
+}): Promise<{ imageUrl: string; upstreamCode: unknown }> {
+  const extra = sanitizeUpstreamExtraParams(params.model?.extra_params) as Record<string, unknown>;
+  const editUrl = firstConfiguredHttpUrl(extra.edit_api_url, GPT_IMAGE_2_BACKUP_EDIT_URL);
+  const form = new FormData();
+  form.append("model", String(extra.model ?? "gpt-image-2"));
+  form.append("prompt", params.prompt);
+  form.append("size", resolveGptImage2BackupSize(params.aspectRatio, params.resolution));
+  form.append("quality", String(extra.quality ?? "standard"));
+  form.append("n", String(extra.n ?? 1));
+  form.append("response_format", String(extra.response_format ?? "url"));
+
+  const imageField = params.referenceImages.length === 1 ? "image" : "image[]";
+  const images = await Promise.all(params.referenceImages.map(fetchReferenceImageBlob));
+  for (const image of images) {
+    form.append(imageField, image.blob, image.filename);
+  }
+
+  const response = await fetchWithRetry(resolveUrl(params.baseUrl, editUrl), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${params.pureApiKey}` },
+    body: form,
+  });
+  const text = await response.text();
+  const json = parseUpstreamResponse(text);
+  if (!response.ok) throw new Error(friendlyUpstreamError(response.status));
+  if (Number(json?.code) >= 400) throw new Error(friendlyUpstreamError(Number(json?.code) || 500));
+  const imageUrl = extractImageUrl(json ?? text);
+  if (!imageUrl) throw new Error(friendlyUpstreamError(502));
+  return { imageUrl, upstreamCode: json?.code ?? null };
+}
+
+async function submitGptImageProEdit(params: {
+  model: any;
+  prompt: string;
+  aspectRatio?: string;
+  resolution?: string;
+  referenceImages: string[];
+  pureApiKey: string;
+}): Promise<{ imageUrl: string; upstreamCode: unknown }> {
+  const payload = buildGptImageProProviderPayload({
+    prompt: params.prompt,
+    aspectRatio: params.aspectRatio,
+    resolution: params.resolution,
+    providerOptions: sanitizeUpstreamExtraParams(params.model?.extra_params),
+  });
+  validateGptImageProProviderPayload(payload, params.referenceImages.length);
+
+  const form = new FormData();
+  form.append("model", payload.model);
+  form.append("prompt", payload.prompt);
+  form.append("size", payload.size);
+  form.append("quality", payload.quality);
+  form.append("n", String(payload.n));
+  form.append("response_format", payload.response_format);
+  form.append("output_format", payload.output_format);
+
+  const imageField = params.referenceImages.length === 1 ? "image" : "image[]";
+  const images = await Promise.all(params.referenceImages.map(fetchReferenceImageBlob));
+  for (const image of images) form.append(imageField, image.blob, image.filename);
+
+  console.info("[gpt-image-pro] provider request", {
+    route: "/v1/images/edits",
+    model: payload.model,
+    quality: payload.quality,
+    size: payload.size,
+    referenceImageCount: images.length,
+  });
+  const response = await fetchWithRetry(GPT_IMAGE_PRO_VBL_EDITS_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${params.pureApiKey}` },
+    body: form,
+  });
+  const text = await response.text();
+  const json = parseUpstreamResponse(text);
+  if (!response.ok) throw new Error(friendlyUpstreamError(response.status));
+  if (Number(json?.code) >= 400) throw new Error(friendlyUpstreamError(Number(json?.code) || 500));
+  const imageUrl = extractImageUrl(json ?? text);
+  if (!imageUrl) throw new Error(friendlyUpstreamError(502));
+  return { imageUrl, upstreamCode: json?.code ?? null };
+}
+
+function buildAdminPreviewUpstreamBody(params: {
+  model: any;
+  prompt: string;
+  aspectRatio: string;
+  size: string;
+  referenceImages: unknown[];
+}): Record<string, any> {
+  if (params.model?.model_key === GPT_IMAGE_PRO_MODEL_KEY) {
+    return buildGptImageProProviderPayload({
+      prompt: params.prompt,
+      aspectRatio: params.aspectRatio,
+      resolution: params.size,
+      providerOptions: sanitizeUpstreamExtraParams(params.model?.extra_params),
+    });
+  }
+  const promptKey = params.model?.prompt_key || "prompt";
+  const modelKey = params.model?.model_key;
+  const size = VALID_SIZES.has(params.aspectRatio) ? params.aspectRatio : "auto";
+  const textOnlyModels = new Set(["wan26", "gpt_image_2_backup"]);
+  const httpRefs = textOnlyModels.has(modelKey)
+    ? []
+    : params.referenceImages.filter((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u));
+  const urlToken = "__LOVABLE_URLS_ARRAY__";
+  const wanSizeMap: Record<string, string> = {
+    "1:1": "1280*1280",
+    "3:4": "1104*1472",
+    "4:3": "1472*1104",
+    "9:16": "960*1696",
+    "16:9": "1696*960",
+  };
+  const wanSize = wanSizeMap[params.aspectRatio] ?? "1280*1280";
+  const grokAllowed = new Set(["2:3", "3:2", "1:1", "16:9", "9:16"]);
+  const grokFallback: Record<string, string> = {
+    "3:4": "2:3", "4:3": "3:2", "4:5": "2:3", "5:4": "3:2",
+    "9:21": "9:16", "21:9": "16:9", "1:2": "9:16", "2:1": "16:9",
+    "1:3": "9:16", "3:1": "16:9", "auto": "1:1",
+  };
+  const grokAspect = grokAllowed.has(params.aspectRatio)
+    ? params.aspectRatio
+    : (grokFallback[params.aspectRatio] ?? "1:1");
+  const substitute = (v: any): any => {
+    if (typeof v === "string") {
+      const trimmed = v.trim();
+      if (/^\{\{\s*urls\s*\}\}$/.test(trimmed)) return urlToken;
+      return v
+        .replace(/\{\{\s*wan_size\s*\}\}/g, wanSize)
+        .replace(/\{\{\s*grok_aspect\s*\}\}/g, grokAspect)
+        .replace(/\{\{\s*size\s*\}\}/g, params.size)
+        .replace(/\{\{\s*aspect\s*\}\}/g, size)
+        .replace(/\{\{\s*prompt\s*\}\}/g, params.prompt);
+    }
+    if (Array.isArray(v)) return v.map(substitute);
+    if (v && typeof v === "object") {
+      const o: Record<string, any> = {};
+      for (const k of Object.keys(v)) o[k] = substitute(v[k]);
+      return o;
+    }
+    return v;
+  };
+  const extra = substitute(sanitizeUpstreamExtraParams(params.model?.extra_params)) as Record<string, any>;
+  let urlsHandledByExtra = false;
+  for (const [key, val] of Object.entries(extra)) {
+    if (val === urlToken) {
+      if (httpRefs.length > 0) extra[key] = httpRefs;
+      else delete extra[key];
+      urlsHandledByExtra = true;
+    }
+  }
+  if (modelKey === "grok_imagine" && httpRefs.length > 0) {
+    delete (extra as any).aspect_ratio;
+  }
+  const body: Record<string, any> = {
+    [promptKey]: params.prompt,
+    ...extra,
+  };
+  if (modelKey === GPT_IMAGE_2_BACKUP_MODEL_KEY) {
+    body.size = resolveGptImage2BackupSize(params.aspectRatio, params.size);
+    body.quality = String(extra.quality ?? "standard");
+  }
+  if (!urlsHandledByExtra && httpRefs.length > 0) {
+    body.urls = httpRefs;
+  }
+  return body;
+}
+
+async function pollAdminPreviewProviderTask(db: BusinessDatabase, providerTaskId: string, modelKey?: string | null): Promise<
+  | { status: "running"; resultImageUrl: null; errorMessage: null; resultPayload: Record<string, any> }
+  | { status: "succeeded"; resultImageUrl: string; errorMessage: null; resultPayload: Record<string, any> }
+  | { status: "failed"; resultImageUrl: null; errorMessage: string; resultPayload: Record<string, any> }
+> {
+  if (modelKey === FOXAPI_BACKUP_MODEL_KEY) {
+    const result = await pollFoxApiTask(providerTaskId);
+    const resultPayload = {
+      providerTaskId,
+      provider: "foxapi",
+      providerStatus: result.providerStatus ?? result.status,
+      message: result.message,
+    };
+    if (result.status === "succeeded") {
+      return { status: "succeeded", resultImageUrl: result.imageUrl, errorMessage: null, resultPayload };
+    }
+    if (result.status === "failed") {
+      return { status: "failed", resultImageUrl: null, errorMessage: result.message, resultPayload };
+    }
+    return { status: "running", resultImageUrl: null, errorMessage: null, resultPayload };
+  }
+
+  const { global_api_key } = await loadGlobalConfig(db);
+  const pureApiKey = normalizeUpstreamApiKey(global_api_key);
+  if (!pureApiKey) throw new Error("尚未配置全局 API Key，请联系管理员");
+
+  const detailUrl = `https://api.wuyinkeji.com/api/async/detail?id=${encodeURIComponent(providerTaskId)}`;
+  const res = await fetchWithRetry(detailUrl, {
+    method: "GET",
+    headers: buildUpstreamHeaders(pureApiKey),
+  });
+  const text = await res.text();
+  const json = parseUpstreamResponse(text);
+  const code = Number(json?.code);
+  const taskStatus = Number.isFinite(Number(json?.data?.status)) ? Number(json?.data?.status) : null;
+  const rawMsg = (json?.data?.message ?? json?.msg ?? json?.message ?? null) as string | null;
+  const resultPayload = {
+    providerTaskId,
+    code: Number.isFinite(code) ? code : null,
+    taskStatus,
+    message: rawMsg,
+  };
+
+  if (!res.ok) {
+    return { status: "running", resultImageUrl: null, errorMessage: null, resultPayload: { ...resultPayload, httpStatus: res.status } };
+  }
+  if (code >= 400) {
+    console.error("[generation-task] upstream detail code", {
+      stage: "detail",
+      modelKey,
+      providerTaskId,
+      upstreamCode: code,
+      code: json?.code ?? null,
+      message: rawMsg,
+    });
+    return { status: "failed", resultImageUrl: null, errorMessage: friendlyUpstreamError(code), resultPayload };
+  }
+  if (taskStatus === 3) {
+    console.error("[generation-task] upstream detail failed", {
+      stage: "detail",
+      modelKey,
+      providerTaskId,
+      upstreamCode: Number.isFinite(code) ? code : null,
+      code: json?.code ?? null,
+      message: rawMsg,
+    });
+    return { status: "failed", resultImageUrl: null, errorMessage: rawMsg || "任务被拒绝", resultPayload };
+  }
+  if (taskStatus === 2) {
+    const url = extractImageUrl(json?.data) ?? extractImageUrl(json);
+    if (url) return { status: "succeeded", resultImageUrl: url, errorMessage: null, resultPayload };
+    return { status: "running", resultImageUrl: null, errorMessage: null, resultPayload: { ...resultPayload, message: rawMsg ?? "成功但URL未就绪" } };
+  }
+  return { status: "running", resultImageUrl: null, errorMessage: null, resultPayload };
+}
 
 // --- NEW: Dynamic upstream image generation (per-model API routing) ---
 function extractImageUrl(payload: any): string | null {
@@ -385,28 +1652,55 @@ function extractImageUrl(payload: any): string | null {
    } catch {
      return submitUrl.replace(/\/[^/]*$/, "/fetch_result");
    }
- }
+  }
 
- const VALID_SIZES = new Set(["auto","1:1","2:3","16:9","9:16","4:3","3:4","21:9","9:21","1:3","3:1","1:2"]);
+  // 对上游 429 / 5xx / 网络错误做一次带退避的自动重试。
+  async function fetchWithRetry(url: string, init: RequestInit, opts?: { retries?: number; backoffMs?: number }): Promise<Response> {
+    const retries = opts?.retries ?? 1;
+    const backoffMs = opts?.backoffMs ?? 800;
+    let lastErr: any = null;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const res = await fetch(url, init);
+        if ((res.status === 429 || res.status >= 500) && attempt < retries) {
+          await new Promise((r) => setTimeout(r, backoffMs * (attempt + 1)));
+          continue;
+        }
+        return res;
+      } catch (e) {
+        lastErr = e;
+        if (attempt < retries) {
+          await new Promise((r) => setTimeout(r, backoffMs * (attempt + 1)));
+          continue;
+        }
+        throw e;
+      }
+    }
+    if (lastErr) throw lastErr;
+    throw new Error("upstream request failed");
+  }
+
+  // 生成对用户友好的统一上游错误文案，不暴露上游细节。
+  function friendlyUpstreamError(code: string | number): string {
+    return `错误代码 ${code}，模型繁忙，请稍后再试`;
+  }
+
+  const VALID_SIZES = new Set(["auto","1:1","2:3","16:9","9:16","4:3","3:4","21:9","9:21","1:3","3:1","1:2"]);
 
  // --- Global upstream config (Base URL + global API key) ---
- async function loadGlobalConfig(): Promise<{ base_url: string; global_api_key: string | null }> {
-   const { data } = await supabaseAdmin
-     .from("global_config")
-     .select("base_url, global_api_key")
-     .eq("id", 1)
-     .maybeSingle();
-   return {
-     base_url: (data?.base_url || "https://api.wuyinkeji.com").replace(/\/+$/, ""),
-     global_api_key: data?.global_api_key ?? null,
-   };
+ async function loadGlobalConfig(db?: BusinessDatabase): Promise<{ base_url: string; global_api_key: string | null }> {
+   const data = await (db ?? getBusinessDb(undefined)).getGlobalConfig();
+    return {
+      base_url: String((data?.base_url as string | undefined) || "https://api.wuyinkeji.com").replace(/\/+$/, ""),
+      global_api_key: (data?.global_api_key as string | undefined) ?? process.env.WUYIN_API_KEY ?? null,
+    };
  }
 
  export const adminGetGlobalConfig = createServerFn({ method: "POST" })
    .middleware([requireSupabaseAuth])
    .handler(async ({ context }) => {
      await assertAdmin(context.userId);
-     return await loadGlobalConfig();
+     return await loadGlobalConfig(getBusinessDb(context));
    });
 
  export const adminUpdateGlobalConfig = createServerFn({ method: "POST" })
@@ -419,6 +1713,7 @@ function extractImageUrl(payload: any): string | null {
    )
    .handler(async ({ data, context }) => {
      await assertAdmin(context.userId);
+     assertLovableOnlyLegacyWrite(context, "adminUpdateGlobalConfig");
      const { error } = await supabaseAdmin
        .from("global_config")
        .upsert({
@@ -511,27 +1806,32 @@ export const generateImage = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
+    const { userId } = context;
+    const db = getBusinessDb(context);
+    const cloudflareEnv = getCloudflareEnvFromServerContext(context);
 
-    const { base_url, global_api_key } = await loadGlobalConfig();
+    // 服务端违规词二次校验，防止绕过前端
+    const safety = checkPromptSafety(data.prompt);
+    if (!safety.allowed) {
+      console.warn("[generateImage] blocked by safety filter", {
+        userId,
+        category: safety.category,
+        at: new Date().toISOString(),
+      });
+      throw new Error(SAFETY_SERVER_BLOCK_MESSAGE);
+    }
 
-    const { data: model, error: mErr } = await supabaseAdmin
-      .from("models_config")
-      .select("id, model_key, name, cost, api_url, api_key, request_format, prompt_key, fetch_url, extra_params, is_enabled")
-      .eq("model_key", data.modelKey)
-      .maybeSingle();
-    if (mErr) throw new Error(mErr.message);
+    const { base_url, global_api_key } = await loadGlobalConfig(db);
+
+    const model = await getBusinessModel(db, data.modelKey, true);
     if (!model) throw new Error("模型不存在");
     if (model.is_enabled === false) throw new Error("该模型已被管理员停用");
-    if (!model.api_url) throw new Error("该模型尚未配置 API 接口地址，请联系管理员");
+    if (!model.api_url && model.model_key !== FOXAPI_BACKUP_MODEL_KEY) throw new Error("该模型尚未配置 API 接口地址，请联系管理员");
 
-    const { data: prof, error: pErr } = await supabase
-      .from("profiles").select("credits").eq("id", userId).maybeSingle();
-    if (pErr) throw new Error(pErr.message);
-    if (!prof || Number(prof.credits) < Number(model.cost)) {
+    const currentCredits = await db.getCredits(userId);
+    if (currentCredits < Number(model.cost)) {
       throw new Error("您的算力余额不足，请联系老板兑换充值卡密");
     }
-    const currentCredits = Number(prof.credits ?? 0) || 0;
     const failGeneration = (message: string) => ({
       success: false,
       imageUrl: null,
@@ -541,27 +1841,17 @@ export const generateImage = createServerFn({ method: "POST" })
       message,
     });
 
-    // 最终 prompt = 用户原文 + （若选择了风格模板）模板提示词
-    // 灵感广场的提示词在前端已直接写入用户输入框，这里无需重复追加。
-    // 商品保护提示 / 后台 system_prompt 不再自动并入请求。
-    let stylePromptStr = "";
-    if (data.styleId && data.styleId !== "none") {
-      const { data: tpl } = await supabaseAdmin
-        .from("style_templates")
-        .select("prompt")
-        .eq("id", data.styleId)
-        .maybeSingle();
-      stylePromptStr = (tpl?.prompt ?? "").trim();
-    }
-    const finalPrompt = [data.prompt.trim(), stylePromptStr]
-      .filter(Boolean)
-      .join("\n\n");
+    // 风格模板已迁移为前端本地预设：客户端会自行把 promptSuffix 追加到 prompt 后再提交。
+    // 这里直接使用客户端传入的 prompt，不再查询 style_templates 表。
+    // styleId 字段仅作为可选元数据保留（兼容旧客户端），不参与提示词拼接。
+    const finalPrompt = data.prompt.trim();
 
 
-
-    const targetKey = normalizeUpstreamApiKey((model as any).api_key) || normalizeUpstreamApiKey(global_api_key);
+    const targetKey = model.model_key === FOXAPI_BACKUP_MODEL_KEY
+      ? ""
+      : normalizeUpstreamApiKey((model as any).api_key) || normalizeUpstreamApiKey(global_api_key);
     const pureApiKey = String(targetKey).replace(/Bearer\s+/i, "").trim();
-    if (!pureApiKey) {
+    if (!pureApiKey && model.model_key !== FOXAPI_BACKUP_MODEL_KEY) {
       throw new Error("该模型或全局接口设置尚未配置 API Key，请联系管理员");
     }
 
@@ -569,12 +1859,40 @@ export const generateImage = createServerFn({ method: "POST" })
       "Content-Type": "application/json",
       "Authorization": pureApiKey,
     };
-    const submitUrl = resolveUrl(base_url, model.api_url);
+    const isGptImagePro = model.model_key === GPT_IMAGE_PRO_MODEL_KEY;
+    let submitUrl = model.model_key === FOXAPI_BACKUP_MODEL_KEY
+      ? ""
+      : isGptImagePro
+        ? GPT_IMAGE_PRO_VBL_GENERATIONS_URL
+        : resolveUrl(base_url, model.api_url || "");
 
     const size = VALID_SIZES.has(data.aspectRatio) ? data.aspectRatio : "auto";
-    const httpRefs = (data.referenceImages ?? []).filter((u) => /^https?:\/\//i.test(u));
+    // 后端硬性限制：仅文生图模型不允许带参考图
+    const TEXT_ONLY_MODELS = new Set(["wan26"]);
+    const isTextOnly = TEXT_ONLY_MODELS.has(model.model_key);
+    const httpRefs = isTextOnly
+      ? []
+      : (data.referenceImages ?? []).filter((u) => /^https?:\/\//i.test(u));
+    const gptImageProReferenceImages = isGptImagePro
+      ? (data.referenceImages ?? []).filter((u) => /^(https?:|data:image\/)/i.test(u))
+      : [];
     const promptKey = (model as any).prompt_key || "prompt";
     const requestFormat = (model as any).request_format || "async_id";
+
+    if (model.model_key === FOXAPI_BACKUP_MODEL_KEY) {
+      const result = httpRefs.length === 0
+        ? await submitFoxApiImageGenerationTask({ prompt: finalPrompt })
+        : await submitFoxApiImageEdit({ prompt: finalPrompt, imageUrl: httpRefs[0] });
+      if (!result.ok) return failGeneration(result.message);
+      return {
+        success: true,
+        imageUrl: null,
+        taskId: result.taskId,
+        cost: 0,
+        credits: currentCredits,
+        modelName: model.name,
+      };
+    }
 
     // 占位符：{{aspect}} / {{prompt}} 替换为字符串；{{urls}} 替换为整个参考图数组（用 __URLS__ 标记）
     const URLS_TOKEN = "__LOVABLE_URLS_ARRAY__";
@@ -597,7 +1915,7 @@ export const generateImage = createServerFn({ method: "POST" })
     const grokAspect = GROK_ALLOWED.has(data.aspectRatio)
       ? data.aspectRatio
       : (GROK_FALLBACK[data.aspectRatio] ?? "1:1");
-    const rawExtra = (model as any).extra_params ?? {};
+    const rawExtra = sanitizeUpstreamExtraParams((model as any).extra_params);
     const substitute = (v: any): any => {
       if (typeof v === "string") {
         const trimmed = v.trim();
@@ -631,7 +1949,12 @@ export const generateImage = createServerFn({ method: "POST" })
       }
     }
 
-    const body: Record<string, unknown> = {
+    // grok_imagine：带参考图时 aspect_ratio 会被上游忽略，主动清掉以降低 400 风险
+    if (model.model_key === "grok_imagine" && httpRefs.length > 0) {
+      delete (extra as any).aspect_ratio;
+    }
+
+    let body: Record<string, unknown> = {
       [promptKey]: finalPrompt,
       ...extra, // 每个模型自定义参数（如 size、image_weight、aspect_ratio 等）
     };
@@ -639,63 +1962,119 @@ export const generateImage = createServerFn({ method: "POST" })
     if (!urlsHandledByExtra && Array.isArray(httpRefs) && httpRefs.length > 0) {
       body.urls = httpRefs;
     }
-    console.log("[generateImage] submit body →", JSON.stringify({ url: submitUrl, body }, null, 2));
+    if (isGptImagePro) {
+      body = buildGptImageProProviderPayload({
+        prompt: finalPrompt,
+        aspectRatio: data.aspectRatio,
+        resolution: data.size,
+        providerOptions: extra,
+      });
+      console.info("[gpt-image-pro] provider request", {
+        route: "/v1/images/generations",
+        model: body.model,
+        quality: body.quality,
+        size: body.size,
+        referenceImageCount: gptImageProReferenceImages.length,
+      });
+    } else {
+      console.log("[generateImage] submit body →", JSON.stringify({ url: submitUrl, body }, null, 2));
+    }
 
 
     let imageUrl: string | null = null;
     let taskId: string | null = null;
 
-    if (requestFormat === "sync_url") {
-      let res: Response;
+    if (isGptImagePro && gptImageProReferenceImages.length > 0) {
       try {
-        res = await fetch(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
-      } catch (e: any) {
-        return failGeneration(`请求上游失败: ${e?.message ?? "网络错误"}`);
-      }
-      const text = await res.text();
-      const json: any = parseUpstreamResponse(text);
-      if (!res.ok) return failGeneration(`上游接口返回 ${res.status}: ${(json?.msg ?? json?.error?.message ?? text).slice(0, 200)}`);
-      if (Number(json?.code) >= 400) return failGeneration(`上游接口失败: ${json?.msg ?? "当前模型接口拒绝了请求，请检查模型配置、密钥权限或额度"}`);
-      imageUrl = extractImageUrl(json ?? text);
-      if (!imageUrl) return failGeneration("上游未返回图片地址");
-    } else {
-      try {
-        const res = await fetch(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
-        const text = await res.text();
-        const json = parseUpstreamResponse(text);
-        console.log("[generateImage] upstream response →", { status: res.status, ok: res.ok, body: text?.slice(0, 1000) });
-        const upstreamMsg = (json?.msg ?? json?.message ?? json?.error?.message ?? "").toString().trim();
-        const rawTail = text?.slice(0, 300) || "";
-        if (!res.ok) {
-          return failGeneration(`上游提交失败 ${res.status}: ${upstreamMsg || rawTail || "(空响应)"}`);
-        }
-        if (Number(json?.code) >= 400) {
-          return failGeneration(`上游提交失败 [code=${json?.code}]: ${upstreamMsg || "当前模型接口拒绝了请求，请检查模型配置、密钥权限或额度"}`);
-        }
-        taskId = json?.data?.id ?? json?.id ?? json?.task_id ?? (typeof json?.data === "string" ? json.data : null);
-        if (!taskId) return failGeneration(`上游未返回任务ID，原始响应: ${rawTail || "(空)"}`);
-      } catch (e: any) {
-        return failGeneration(e?.message ?? "提交任务失败");
+        const result = await submitGptImageProEdit({
+          model,
+          prompt: finalPrompt,
+          aspectRatio: data.aspectRatio,
+          resolution: data.size,
+          referenceImages: gptImageProReferenceImages,
+          pureApiKey,
+        });
+        imageUrl = result.imageUrl;
+      } catch (error) {
+        console.error("[gpt-image-pro] edit request failed", error);
+        return failGeneration(friendlyUpstreamError(502));
       }
     }
 
-    // 任务已成功提交，立即扣费记账
-    const { data: rpcRes, error: rpcErr } = await supabase.rpc("consume_credits_for_generation", {
-      _model_key: data.modelKey,
-      _prompt: data.prompt,
-    });
-    if (rpcErr) throw new Error(rpcErr.message);
-    const row: any = Array.isArray(rpcRes) ? rpcRes?.[0] : rpcRes;
-    if (!row?.success) throw new Error(row?.message ?? "扣费失败");
+    if (imageUrl === null && requestFormat === "sync_url") {
+      let res: Response;
+      try {
+        res = await fetchWithRetry(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
+      } catch (e: any) {
+        console.error("[generateImage] sync upstream network error", e);
+        return failGeneration(friendlyUpstreamError(0));
+      }
+      const text = await res.text();
+      const json: any = parseUpstreamResponse(text);
+      if (!res.ok) {
+        console.error("[generateImage] sync upstream HTTP", res.status, text?.slice(0, 500));
+        return failGeneration(friendlyUpstreamError(res.status));
+      }
+      if (Number(json?.code) >= 400) {
+        console.error("[generateImage] sync upstream code", json?.code, json?.msg);
+        return failGeneration(friendlyUpstreamError(Number(json?.code) || 500));
+      }
+      imageUrl = extractImageUrl(json ?? text);
+      if (!imageUrl) return failGeneration(friendlyUpstreamError(502));
+    } else if (imageUrl === null) {
+      try {
+        const res = await fetchWithRetry(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
+        const text = await res.text();
+        const json = parseUpstreamResponse(text);
+        console.log("[generateImage] upstream response →", { status: res.status, ok: res.ok, body: text?.slice(0, 1000) });
+        if (!res.ok) {
+          console.error("[generateImage] async upstream HTTP", res.status, text?.slice(0, 500));
+          return failGeneration(friendlyUpstreamError(res.status));
+        }
+        if (Number(json?.code) >= 400) {
+          console.error("[generateImage] async upstream code", json?.code, json?.msg);
+          return failGeneration(friendlyUpstreamError(Number(json?.code) || 500));
+        }
+        taskId = json?.data?.id ?? json?.id ?? json?.task_id ?? (typeof json?.data === "string" ? json.data : null);
+        if (!taskId) {
+          console.error("[generateImage] async no taskId", text?.slice(0, 500));
+          return failGeneration(friendlyUpstreamError(502));
+        }
+      } catch (e: any) {
+        console.error("[generateImage] async upstream network error", e);
+        return failGeneration(friendlyUpstreamError(0));
+      }
+    }
 
-    const safeCost = Number(row?.cost ?? 0) || 0;
-    const safeCredits = Number(row?.credits ?? 0) || 0;
-
-    // sync 模型立即拿到图片 URL，直接回填到最新一条历史
+    // 仅在已经成功拿到图片（sync 模型）时立即扣费并记账。
+    // 异步模型在 checkImageStatus 拿到最终图片后再扣费，避免上游失败仍扣点。
+    let safeCost = 0;
+    let safeCredits = currentCredits;
+    let syncHistoryId: string | null = null;
     if (imageUrl) {
-      await supabase.rpc("set_latest_history_image", {
-        _model: model.name,
-        _image_url: imageUrl,
+      const charge = await db.consumeCreditsForGeneration({
+        userId,
+        modelKey: data.modelKey,
+        prompt: data.prompt,
+        idempotencyKey: `legacy-sync:${userId}:${data.modelKey}:${await stableTextHash(`${finalPrompt}\n${imageUrl}`)}`,
+      });
+      if (!charge.success) throw new Error(charge.message || "扣费失败");
+      safeCost = Number(charge.cost ?? 0) || 0;
+      safeCredits = Number(charge.credits ?? 0) || 0;
+      syncHistoryId = charge.history_id;
+
+      imageUrl = await archiveSuccessfulImageUrl(imageUrl, {
+        taskId: `legacy_${crypto.randomUUID()}`,
+        userId,
+        modelKey: data.modelKey,
+        cloudflareEnv,
+      });
+      await attachImageToConsumedHistory({
+        db,
+        userId,
+        modelName: model.name,
+        imageUrl,
+        historyId: charge.history_id,
       });
     }
 
@@ -703,6 +2082,7 @@ export const generateImage = createServerFn({ method: "POST" })
       success: true,
       imageUrl,            // sync 模型直接返回，async 模型为 null
       taskId,              // async 模型返回 taskId 供前端轮询
+      historyId: syncHistoryId,
       cost: safeCost,
       credits: safeCredits,
       modelName: model.name,
@@ -717,16 +2097,70 @@ export const checkImageStatus = createServerFn({ method: "POST" })
     z.object({
       taskId: z.string().min(1).max(128),
       modelName: z.string().max(128).optional(),
+      modelKey: z.string().max(64).optional(),
+      prompt: z.string().max(4000).optional(),
     }).parse(d),
   )
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
-    const { global_api_key } = await loadGlobalConfig();
+    const { userId } = context;
+    const db = getBusinessDb(context);
+    const cloudflareEnv = getCloudflareEnvFromServerContext(context);
+    if (data.modelKey === FOXAPI_BACKUP_MODEL_KEY) {
+      const result = await pollFoxApiTask(data.taskId);
+      if (result.status === "running") {
+        return { status: "pending" as const, reason: null as null, imageUrl: null as string | null, message: result.message, code: null as number | null, taskStatus: result.providerStatus, rawMsg: result.message, debug: null as null };
+      }
+      if (result.status === "failed") {
+        const message = result.message === "FoxAPI returned base64 result, not supported yet"
+          ? "Backup model returned an unsupported result format. Please switch to another model."
+          : result.message;
+        return { status: "failed" as const, reason: "upstream" as const, imageUrl: null as string | null, message, code: null as number | null, taskStatus: result.providerStatus, rawMsg: result.message, debug: null as null };
+      }
+      const url = result.imageUrl;
+      let historyId: string | null = null;
+      // 上游成功返回图片后再扣费记账，避免失败也扣点
+      let chargeHistoryId: string | null = null;
+      if (data.modelKey && data.prompt) {
+        try {
+          const charge = await db.consumeCreditsForGeneration({
+            userId,
+            modelKey: data.modelKey,
+            prompt: data.prompt,
+            idempotencyKey: `legacy-provider:${userId}:${data.modelKey}:${data.taskId}`,
+          });
+          if (charge.success) {
+            chargeHistoryId = charge.history_id;
+          } else {
+            console.error("[foxapi-backup]", { modelKey: data.modelKey, stage: "deduction_not_charged", taskId: data.taskId, providerStatus: result.providerStatus, elapsedMs: result.elapsedMs });
+          }
+        } catch {
+          console.error("[foxapi-backup]", { modelKey: data.modelKey, stage: "deduction_exception", taskId: data.taskId, providerStatus: result.providerStatus, elapsedMs: result.elapsedMs });
+        }
+      }
+      const archivedUrl = await archiveSuccessfulImageUrl(url, {
+        taskId: data.taskId,
+        userId,
+        modelKey: data.modelKey ?? null,
+        cloudflareEnv,
+      });
+      if (data.modelName) {
+        await attachImageToConsumedHistory({
+          db,
+          userId,
+          modelName: data.modelName,
+          imageUrl: archivedUrl,
+          historyId: chargeHistoryId,
+        });
+      }
+      return { status: "success" as const, reason: null as null, imageUrl: archivedUrl, historyId, message: null as string | null, code: null as number | null, taskStatus: result.providerStatus, rawMsg: null as string | null, debug: null as null };
+    }
+
+    const { global_api_key } = await loadGlobalConfig(db);
     const pureApiKey = normalizeUpstreamApiKey(global_api_key);
     if (!pureApiKey) throw new Error("尚未配置全局 API Key，请联系管理员");
 
     const detailUrl = `https://api.wuyinkeji.com/api/async/detail?id=${encodeURIComponent(data.taskId)}`;
-    const r = await fetch(detailUrl, {
+    const r = await fetchWithRetry(detailUrl, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
@@ -745,7 +2179,8 @@ export const checkImageStatus = createServerFn({ method: "POST" })
     }
     const code = Number(j?.code);
     if (code >= 400) {
-      return { status: "failed" as const, reason: "upstream" as const, imageUrl: null as string | null, message: rawMsg ?? "上游查询失败", code, taskStatus, rawMsg, debug: rawDebug };
+      console.error("[checkImageStatus] upstream code", code, rawMsg);
+      return { status: "failed" as const, reason: "upstream" as const, imageUrl: null as string | null, message: friendlyUpstreamError(code), code, taskStatus, rawMsg, debug: rawDebug };
     }
     if (taskStatus === 3) {
       const detailMsg: string = String(j?.data?.message ?? rawMsg ?? "");
@@ -759,13 +2194,42 @@ export const checkImageStatus = createServerFn({ method: "POST" })
     if (taskStatus === 2) {
       const url = extractImageUrl(j?.data) ?? extractImageUrl(j);
       if (url) {
+        // 上游成功返回图片后再扣费记账，避免失败也扣点
+        let chargeHistoryId: string | null = null;
+        if (data.modelKey && data.prompt) {
+          try {
+            const charge = await db.consumeCreditsForGeneration({
+              userId,
+              modelKey: data.modelKey,
+              prompt: data.prompt,
+              idempotencyKey: `legacy-provider:${userId}:${data.modelKey}:${data.taskId}`,
+            });
+            if (charge.success) {
+              chargeHistoryId = charge.history_id;
+            } else {
+              console.error("[checkImageStatus] 扣费返回失败", { message: charge.message });
+            }
+          } catch (e) {
+            console.error("[checkImageStatus] 扣费异常", e);
+            return { status: "failed" as const, reason: "deduction" as const, imageUrl: null as string | null, message: "扣费失败，请稍后重试", code, taskStatus, rawMsg, debug: rawDebug };
+          }
+        }
+        const archivedUrl = await archiveSuccessfulImageUrl(url, {
+          taskId: data.taskId,
+          userId,
+          modelKey: data.modelKey ?? null,
+          cloudflareEnv,
+        });
         if (data.modelName) {
-          await supabase.rpc("set_latest_history_image", {
-            _model: data.modelName,
-            _image_url: url,
+          await attachImageToConsumedHistory({
+            db,
+            userId,
+            modelName: data.modelName,
+            imageUrl: archivedUrl,
+            historyId: chargeHistoryId,
           });
         }
-        return { status: "success" as const, reason: null as null, imageUrl: url, message: null as string | null, code, taskStatus, rawMsg, debug: rawDebug };
+        return { status: "success" as const, reason: null as null, imageUrl: archivedUrl, historyId: chargeHistoryId, message: null as string | null, code, taskStatus, rawMsg, debug: rawDebug };
       }
       return { status: "pending" as const, reason: null as null, imageUrl: null as string | null, message: "成功但URL未就绪", code, taskStatus, rawMsg, debug: rawDebug };
     }
@@ -795,69 +2259,51 @@ export const adminGetAnalytics = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    const sod = startOfDay.toISOString();
+    const { startUtc, endUtc } = getBeijingDayRange();
+    const db = getBusinessDb(context);
+    if (db.primary !== "d1" || !db.getAdminAnalyticsData) throw new Error("admin analytics requires D1 primary");
+    const analytics = await db.getAdminAnalyticsData();
+    const todayProfiles = analytics.profiles.filter((profile) => profile.created_at >= startUtc && profile.created_at < endUtc);
+    const todayUsage = analytics.usage.filter((row) => row.created_at >= startUtc && row.created_at < endUtc);
+    const allUsage = analytics.usage;
+    const todayCostSum = todayUsage.reduce((s, r) => s + Number(r.amount ?? 0), 0);
 
-    const [
-      todayUsersQ,
-      totalUsersQ,
-      unusedCouponsQ,
-      todayHistoryQ,
-      allHistoryQ,
-      todayRegsQ,
-    ] = await Promise.all([
-      supabaseAdmin.from("profiles").select("id", { count: "exact", head: true }).gte("created_at", sod),
-      supabaseAdmin.from("profiles").select("id", { count: "exact", head: true }),
-      supabaseAdmin.from("coupons").select("id", { count: "exact", head: true }).eq("is_used", false),
-      supabaseAdmin.from("generation_history").select("model, cost").gte("created_at", sod),
-      supabaseAdmin.from("generation_history").select("model, cost"),
-      supabaseAdmin.from("profiles").select("id, email, credits, created_at").gte("created_at", sod).order("created_at", { ascending: false }).limit(50),
-    ]);
-
-    const todayHistory = (todayHistoryQ.data ?? []) as Array<{ model: string; cost: number | string }>;
-    const allHistory = (allHistoryQ.data ?? []) as Array<{ model: string; cost: number | string }>;
-    const todayCostSum = todayHistory.reduce((s, r) => s + Number(r.cost ?? 0), 0);
-
-    const groupBy = (rows: Array<{ model: string; cost: number | string }>) => {
+    const groupBy = (rows: Array<{ model_key: string | null; model_name: string | null; amount: number | string }>) => {
       const map = new Map<string, { count: number; cost: number }>();
       for (const r of rows) {
-        const k = r.model || "未知";
+        const k = r.model_name || r.model_key || "未知";
         const cur = map.get(k) ?? { count: 0, cost: 0 };
         cur.count += 1;
-        cur.cost += Number(r.cost ?? 0);
+        cur.cost += Number(r.amount ?? 0);
         map.set(k, cur);
       }
       return map;
     };
-    const todayMap = groupBy(todayHistory);
-    const allMap = groupBy(allHistory);
+    const todayMap = groupBy(todayUsage);
+    const allMap = groupBy(allUsage);
 
     const modelKeys = new Set<string>([...todayMap.keys(), ...allMap.keys()]);
-    let models = Array.from(modelKeys).map((m) => ({
+    const models = Array.from(modelKeys).map((m) => ({
       model: m,
       todayCount: todayMap.get(m)?.count ?? 0,
       totalCount: allMap.get(m)?.count ?? 0,
       totalCost: allMap.get(m)?.cost ?? 0,
     }));
 
-    if (models.length === 0) {
-      models = [
-        { model: "Flux.1 Pro", todayCount: 48, totalCount: 1820, totalCost: 364 },
-        { model: "Midjourney V6", todayCount: 31, totalCount: 910, totalCost: 182 },
-        { model: "SDXL Turbo", todayCount: 22, totalCount: 305, totalCost: 61 },
-      ];
-    }
-
     return {
       metrics: {
-        todayUsers: todayUsersQ.count ?? 0,
+        todayUsers: todayProfiles.length,
         todayCost: todayCostSum,
-        totalUsers: totalUsersQ.count ?? 0,
-        unusedCoupons: unusedCouponsQ.count ?? 0,
+        totalUsers: analytics.profiles.length,
+        unusedCoupons: analytics.unusedCoupons,
       },
       models,
-      todayRegistrations: (todayRegsQ.data ?? []).map((r: any) => ({
+      dayRange: {
+        timezone: "Asia/Shanghai",
+        startUtc,
+        endUtc,
+      },
+      todayRegistrations: todayProfiles.slice(0, 50).map((r) => ({
         id: r.id,
         email: r.email,
         credits: Number(r.credits ?? 0),
@@ -866,17 +2312,176 @@ export const adminGetAnalytics = createServerFn({ method: "POST" })
     };
   });
 
+// --- Recharge packages ---
+function normalizeRechargeFeatures(features: unknown): string[] {
+  if (!Array.isArray(features)) return [];
+  return features
+    .map((item) => String(item ?? "").trim())
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
+function assertHttpPurchaseUrl(purchaseUrl: string | null | undefined) {
+  const trimmed = String(purchaseUrl ?? "").trim();
+  if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+    throw new Error("购买链接必须以 http:// 或 https:// 开头");
+  }
+  return trimmed;
+}
+
+function mapRechargePackage(row: any) {
+  const configuredPackage = getConfiguredRechargePackage(String(row.id));
+  const isConfiguredVersion = Boolean(
+    configuredPackage &&
+    String(row.price) === configuredPackage.price &&
+    Number(row.credits ?? 0) === configuredPackage.credits,
+  );
+  return {
+    id: row.id as string,
+    title: row.title as string,
+    subtitle: (row.subtitle ?? "") as string,
+    price: row.price as string,
+    credits: Number(row.credits ?? 0),
+    features: normalizeRechargeFeatures(row.features),
+    badgeText: (row.badge_text ?? "") as string,
+    isPopular: Boolean(row.is_popular),
+    highlighted: Boolean(row.highlighted),
+    isVisible: Boolean(row.is_visible),
+    sortOrder: Number(row.sort_order ?? 0),
+    buttonText: (row.button_text ?? "立即购买") as string,
+    purchaseUrl: (row.purchase_url ?? "") as string,
+    baseCredits: isConfiguredVersion ? configuredPackage!.baseCredits : Number(row.credits ?? 0),
+    bonusCredits: isConfiguredVersion ? configuredPackage!.bonusCredits : 0,
+    doubleCredits: isConfiguredVersion ? configuredPackage!.doubleCredits : false,
+    note: isConfiguredVersion ? configuredPackage!.note : undefined,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+}
+
+const rechargePackageInput = z.object({
+  id: z.string().uuid().optional(),
+  title: z.string().min(1).max(120),
+  subtitle: z.string().max(300).nullable().optional(),
+  price: z.string().min(1).max(40),
+  credits: z.number().int().min(0).max(100000000),
+  features: z.array(z.string().max(300)).max(20).optional().default([]),
+  badgeText: z.string().max(80).nullable().optional(),
+  isPopular: z.boolean().optional().default(false),
+  highlighted: z.boolean().optional().default(false),
+  isVisible: z.boolean().optional().default(true),
+  sortOrder: z.number().int().min(-999999).max(999999).optional().default(0),
+  buttonText: z.string().min(1).max(40).optional().default("立即购买"),
+  purchaseUrl: z.string().max(1000).nullable().optional(),
+});
+
+export const listVisibleRechargePackages = createServerFn({ method: "GET" })
+  .handler(async ({ context }) => {
+    const db = getBusinessDb(context);
+    const rows = await db.listRechargePackages();
+    return rows.map(mapRechargePackage);
+  });
+
+export const listAdminRechargePackages = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context.userId);
+    const { data, error } = await (supabaseAdmin as any)
+      .from("recharge_packages")
+      .select("*")
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(mapRechargePackage);
+  });
+
+export const upsertAdminRechargePackage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => rechargePackageInput.parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "upsertAdminRechargePackage");
+    const title = data.title.trim();
+    const price = data.price.trim();
+    if (!title) throw new Error("套餐名称不能为空");
+    if (!price) throw new Error("价格不能为空");
+
+    const features = normalizeRechargeFeatures(data.features);
+    const purchaseUrl = assertHttpPurchaseUrl(data.purchaseUrl);
+    const payload = {
+      title,
+      subtitle: data.subtitle?.trim() || null,
+      price,
+      credits: data.credits,
+      features,
+      badge_text: data.badgeText?.trim() || null,
+      is_popular: data.isPopular,
+      highlighted: data.highlighted,
+      is_visible: data.isVisible,
+      sort_order: data.sortOrder,
+      button_text: data.buttonText.trim() || "立即购买",
+      purchase_url: purchaseUrl,
+    };
+
+    if (data.id) {
+      const { error } = await (supabaseAdmin as any)
+        .from("recharge_packages")
+        .update(payload)
+        .eq("id", data.id);
+      if (error) throw new Error(error.message);
+      return { ok: true, id: data.id };
+    }
+
+    const { data: inserted, error } = await (supabaseAdmin as any)
+      .from("recharge_packages")
+      .insert(payload)
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    return { ok: true, id: inserted?.id };
+  });
+
+export const hideAdminRechargePackage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "hideAdminRechargePackage");
+    const { error } = await (supabaseAdmin as any)
+      .from("recharge_packages")
+      .update({ is_visible: false })
+      .eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const deleteAdminRechargePackage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "deleteAdminRechargePackage");
+    const { error } = await (supabaseAdmin as any)
+      .from("recharge_packages")
+      .delete()
+      .eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 // --- Ads ---
 export const listActiveAds = createServerFn({ method: "GET" })
-  .handler(async () => {
-    const { data, error } = await supabaseAdmin
-      .from("ads")
-      .select("id, title, link_url, sort_order")
-      .eq("is_active", true)
-      .order("sort_order", { ascending: true })
-      .order("created_at", { ascending: false });
-    if (error) throw new Error(error.message);
-    return data ?? [];
+  .handler(async ({ context }) => {
+    const db = getBusinessDb(context);
+    const rows = await db.listAds();
+    return rows
+      .filter((row) => Boolean(row.is_active))
+      .map((row) => ({
+        id: String(row.id ?? ""),
+        title: String(row.title ?? ""),
+        link_url: (row.link_url ?? null) as string | null,
+        sort_order: Number(row.sort_order ?? 0),
+      }));
   });
 
 export const adminListAds = createServerFn({ method: "POST" })
@@ -905,6 +2510,7 @@ export const adminUpsertAd = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminUpsertAd");
     if (data.id) {
       const { error } = await supabaseAdmin.from("ads").update({
         title: data.title, link_url: data.link_url ?? null,
@@ -926,7 +2532,92 @@ export const adminDeleteAd = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminDeleteAd");
     const { error } = await supabaseAdmin.from("ads").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+// --- Announcements / 公告通知 ---
+export const listAnnouncements = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const db = getBusinessDb(context);
+    return (await db.listAnnouncements())
+      .filter((row) => Boolean(row.is_published))
+      .sort((a, b) => Number(Boolean(b.is_pinned)) - Number(Boolean(a.is_pinned)) || String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))
+      .slice(0, 50)
+      .map((row) => ({
+        id: String(row.id ?? ""),
+        title: String(row.title ?? ""),
+        content: String(row.content ?? ""),
+        type: String(row.type ?? "info"),
+        image_url: (row.image_url ?? null) as string | null,
+        link_url: (row.link_url ?? null) as string | null,
+        link_label: (row.link_label ?? null) as string | null,
+        is_pinned: Boolean(row.is_pinned),
+        created_at: String(row.created_at ?? ""),
+      }));
+  });
+
+export const adminListAnnouncements = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context.userId);
+    const { data, error } = await supabaseAdmin
+      .from("announcements")
+      .select("*")
+      .order("is_pinned", { ascending: false })
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+
+export const adminUpsertAnnouncement = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      id: z.string().uuid().optional(),
+      title: z.string().min(1).max(200),
+      content: z.string().max(5000).default(""),
+      type: z.enum(["info", "success", "warning", "promo"]).default("info"),
+      image_url: z.string().max(1000).nullable().optional(),
+      link_url: z.string().max(1000).nullable().optional(),
+      link_label: z.string().max(100).nullable().optional(),
+      is_pinned: z.boolean().default(false),
+      is_published: z.boolean().default(true),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminUpsertAnnouncement");
+    const payload = {
+      title: data.title,
+      content: data.content ?? "",
+      type: data.type,
+      image_url: data.image_url ?? null,
+      link_url: data.link_url ?? null,
+      link_label: data.link_label ?? null,
+      is_pinned: data.is_pinned,
+      is_published: data.is_published,
+    };
+    if (data.id) {
+      const { error } = await supabaseAdmin.from("announcements").update(payload).eq("id", data.id);
+      if (error) throw new Error(error.message);
+    } else {
+      const { error } = await supabaseAdmin.from("announcements").insert(payload);
+      if (error) throw new Error(error.message);
+    }
+    return { ok: true };
+  });
+
+export const adminDeleteAnnouncement = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminDeleteAnnouncement");
+    const { error } = await supabaseAdmin.from("announcements").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
@@ -996,13 +2687,8 @@ export const verifyAdminAccessPassword = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ password: z.string().min(1).max(200) }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    const { data: row, error } = await supabaseAdmin
-      .from("admin_settings")
-      .select("access_password")
-      .eq("id", 1)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    const current = (row?.access_password ?? "888888").trim();
+    const row = await getBusinessDb(context).getAdminSettings();
+    const current = String(row?.access_password ?? "888888").trim();
     if (data.password.trim() !== current) throw new Error("访问密码错误");
     return { ok: true };
   });
@@ -1011,12 +2697,7 @@ export const founderGetAccessPassword = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await assertFounder(context.userId);
-    const { data, error } = await supabaseAdmin
-      .from("admin_settings")
-      .select("access_password, updated_at")
-      .eq("id", 1)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
+    const data = await getBusinessDb(context).getAdminSettings();
     return { password: data?.access_password ?? "888888", updated_at: data?.updated_at ?? null };
   });
 
@@ -1025,6 +2706,7 @@ export const founderSetAccessPassword = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ password: z.string().min(1).max(200) }).parse(d))
   .handler(async ({ data, context }) => {
     await assertFounder(context.userId);
+    assertLovableOnlyLegacyWrite(context, "founderSetAccessPassword");
     const { error } = await supabaseAdmin
       .from("admin_settings")
       .upsert({ id: 1, access_password: data.password.trim(), updated_at: new Date().toISOString() });
@@ -1036,13 +2718,13 @@ export const founderSetAccessPassword = createServerFn({ method: "POST" })
 export const listStyleTemplates = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { supabase } = context;
-    const { data, error } = await supabase
-      .from("style_templates")
-      .select("id, name, image_url, sort_order")
-      .order("sort_order", { ascending: true });
-    if (error) throw new Error(error.message);
-    return data ?? [];
+    const db = getBusinessDb(context);
+    return (await db.listStyleTemplates()).map((row) => ({
+      id: String(row.id ?? ""),
+      name: String(row.name ?? ""),
+      image_url: (row.image_url ?? null) as string | null,
+      sort_order: Number(row.sort_order ?? 0),
+    }));
   });
 
 export const adminListStyleTemplates = createServerFn({ method: "POST" })
@@ -1069,9 +2751,52 @@ export const adminUpdateStyleTemplate = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminUpdateStyleTemplate");
     const { id, ...rest } = data;
     const patch: Record<string, unknown> = { ...rest, updated_at: new Date().toISOString() };
     const { error } = await supabaseAdmin.from("style_templates").update(patch as never).eq("id", id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const adminCreateStyleTemplate = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      name: z.string().min(1).max(64),
+      prompt: z.string().max(4000).optional().default(""),
+      image_url: z.string().max(1000).nullable().optional(),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminCreateStyleTemplate");
+    const id = `tpl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+    const { data: maxRow } = await supabaseAdmin
+      .from("style_templates")
+      .select("sort_order")
+      .order("sort_order", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const sort_order = ((maxRow?.sort_order as number | undefined) ?? 0) + 10;
+    const { error } = await supabaseAdmin.from("style_templates").insert({
+      id,
+      name: data.name,
+      prompt: data.prompt ?? "",
+      image_url: data.image_url ?? null,
+      sort_order,
+    } as never);
+    if (error) throw new Error(error.message);
+    return { ok: true, id };
+  });
+
+export const adminDeleteStyleTemplate = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ id: z.string().min(1).max(64) }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminDeleteStyleTemplate");
+    const { error } = await supabaseAdmin.from("style_templates").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
@@ -1080,12 +2805,7 @@ export const adminGetSystemPrompt = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
-    const { data, error } = await supabaseAdmin
-      .from("admin_settings")
-      .select("system_prompt, updated_at")
-      .eq("id", 1)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
+    const data = await getBusinessDb(context).getAdminSettings();
     return { system_prompt: data?.system_prompt ?? "", updated_at: data?.updated_at ?? null };
   });
 
@@ -1094,6 +2814,7 @@ export const adminSetSystemPrompt = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ system_prompt: z.string().max(4000) }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminSetSystemPrompt");
     const { error } = await supabaseAdmin
       .from("admin_settings")
       .upsert({ id: 1, system_prompt: data.system_prompt, updated_at: new Date().toISOString() });
@@ -1103,12 +2824,8 @@ export const adminSetSystemPrompt = createServerFn({ method: "POST" })
 
 // Public: anyone (including unauthenticated) can fetch contact info to display
 export const getContactInfo = createServerFn({ method: "GET" })
-  .handler(async () => {
-    const { data } = await supabaseAdmin
-      .from("admin_settings")
-      .select("contact_wechat, contact_qq")
-      .eq("id", 1)
-      .maybeSingle();
+  .handler(async ({ context }) => {
+    const data = await getBusinessDb(context).getAdminSettings();
     return {
       wechat: ((data as any)?.contact_wechat ?? "") as string,
       qq: ((data as any)?.contact_qq ?? "") as string,
@@ -1119,12 +2836,7 @@ export const adminGetContactInfo = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
-    const { data, error } = await supabaseAdmin
-      .from("admin_settings")
-      .select("contact_wechat, contact_qq, updated_at")
-      .eq("id", 1)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
+    const data = await getBusinessDb(context).getAdminSettings();
     return {
       wechat: ((data as any)?.contact_wechat ?? "") as string,
       qq: ((data as any)?.contact_qq ?? "") as string,
@@ -1142,6 +2854,7 @@ export const adminSetContactInfo = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    assertLovableOnlyLegacyWrite(context, "adminSetContactInfo");
     const { error } = await supabaseAdmin
       .from("admin_settings")
       .upsert({
@@ -1154,43 +2867,234 @@ export const adminSetContactInfo = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-// Generate a random creative prompt via Lovable AI Gateway
+// Generate a random creative prompt from local templates. No external AI Gateway credits required.
 export const generateRandomPrompt = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async () => {
-    const apiKey = process.env.LOVABLE_API_KEY;
-    if (!apiKey) throw new Error("AI 服务未配置");
-    const themes = [
-      "电商产品", "时尚人像", "未来科幻", "自然风光", "复古胶片",
-      "美食摄影", "极简静物", "建筑空间", "梦幻插画", "国风山水",
-      "赛博朋克", "ins 极简", "小红书风", "工业摄影", "宠物萌宠",
-    ];
-    const seed = themes[Math.floor(Math.random() * themes.length)];
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
-        messages: [
-          {
-            role: "system",
-            content:
-              "你是顶级 AI 绘画提示词专家。每次只输出一条中文提示词，描述具体场景、主体、光影、镜头、色调、氛围，60-120字，不要使用引号、序号、Markdown、解释，也不要写比例或分辨率。",
-          },
-          { role: "user", content: `请围绕「${seed}」随机生成一条全新的高质量绘画提示词。` },
-        ],
-        temperature: 1.1,
-      }),
-    });
-    if (!res.ok) {
-      const t = await res.text().catch(() => "");
-      throw new Error(`生成失败：${res.status} ${t.slice(0, 200)}`);
+    const pick = (items: readonly string[]) =>
+      items[Math.floor(Math.random() * items.length)] ?? items[0] ?? "";
+
+    const subjects = [
+      "一只毛茸茸的小猫在阳光卧室里安静望向镜头",
+      "一款高级感护肤品摆放在水波纹玻璃台面上",
+      "一位穿黑色西装的年轻人在霓虹街头回眸",
+      "一辆未来感电动跑车停在雨夜城市道路中央",
+      "一杯冰镇气泡饮料放在夏日海边木桌上",
+      "一组珠宝首饰陈列在深色丝绒与金色光影中",
+      "一间极简风客厅被清晨自然光照亮",
+      "一座赛博朋克城市在夜色中闪烁蓝紫色灯光",
+      "一份精致甜点摆在高级餐厅的大理石桌面上",
+      "一位国风少女站在烟雨山水与古建筑之间",
+    ] as const;
+
+    const scenes = [
+      "背景干净留白，主体突出，适合商业海报",
+      "环境充满电影感层次，远景有柔和虚化",
+      "画面具有小红书封面质感，精致、明亮、耐看",
+      "构图稳定，视觉中心明确，适合电商主图",
+      "空间纵深明显，前景和背景形成自然层次",
+    ] as const;
+
+    const lighting = [
+      "柔和自然光，边缘带一点金色轮廓光",
+      "高级棚拍布光，明暗对比细腻",
+      "雨夜霓虹反光，蓝紫色高光点缀",
+      "清晨窗边光线，温暖通透",
+      "低饱和柔光，质感安静克制",
+    ] as const;
+
+    const camera = [
+      "85mm 人像镜头效果，浅景深，细节清晰",
+      "微距摄影质感，材质纹理清楚可见",
+      "广角空间摄影，线条干净，透视自然",
+      "电影镜头语言，画面有故事感",
+      "产品摄影视角，光泽、阴影和体积感突出",
+    ] as const;
+
+    const colors = [
+      "整体色调高级灰与暖白结合",
+      "配色以蓝紫霓虹和深黑为主",
+      "奶油色、浅棕色和柔和金色搭配",
+      "低饱和复古胶片色调",
+      "清透明亮的自然色彩，干净不杂乱",
+    ] as const;
+
+    const details = [
+      "主体边缘清晰，材质真实，画面无杂乱文字",
+      "保留丰富细节，质感真实，适合高端品牌视觉",
+      "氛围精致、有呼吸感，画面干净高级",
+      "细节丰富但不过度复杂，适合直接用于宣传图",
+      "构图有留白，方便后期添加标题和卖点文案",
+    ] as const;
+
+    const prompt = [
+      pick(subjects),
+      pick(scenes),
+      pick(lighting),
+      pick(camera),
+      pick(colors),
+      pick(details),
+    ].join("，") + "。";
+
+    return { prompt };
+  });
+
+export const adminTestModel = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      modelKey: z.string().min(1).max(64),
+      prompt: z.string().min(1).max(500).optional(),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const startedAt = Date.now();
+    await assertAdmin(context.userId);
+    const db = getBusinessDb(context);
+
+    const { base_url, global_api_key } = await loadGlobalConfig(db);
+    const model = await getBusinessModel(db, data.modelKey, true);
+    if (!model) throw new Error("模型不存在");
+    if ((model as any).model_key === FOXAPI_BACKUP_MODEL_KEY) {
+      const extraParams = sanitizeUpstreamExtraParams((model as any).extra_params) as Record<string, unknown>;
+      const testImageUrl = [extraParams.testImageUrl, extraParams.test_image_url, extraParams.referenceImageUrl, extraParams.reference_image_url]
+        .find((value): value is string => typeof value === "string" && /^https?:\/\//i.test(value));
+      if (!testImageUrl) {
+        return { ok: false, stage: "config", message: "Backup model test requires extra_params.testImageUrl.", elapsedMs: Date.now() - startedAt, imageUrl: null as string | null };
+      }
+      const submit = await submitFoxApiImageEdit({ prompt: (data.prompt && data.prompt.trim()) || "a high quality product photo edit", imageUrl: testImageUrl });
+      if (!submit.ok) {
+        return { ok: false, stage: "submit", message: submit.message, elapsedMs: Date.now() - startedAt, imageUrl: null as string | null };
+      }
+      const deadline = Date.now() + 300_000;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2500));
+        const poll = await pollFoxApiTask(submit.taskId);
+        if (poll.status === "succeeded") {
+          return { ok: true, stage: "result", message: "Test succeeded", elapsedMs: Date.now() - startedAt, imageUrl: poll.imageUrl };
+        }
+        if (poll.status === "failed") {
+          return { ok: false, stage: "result", message: poll.message, elapsedMs: Date.now() - startedAt, imageUrl: null as string | null };
+        }
+      }
+      return { ok: false, stage: "timeout", message: `Task submitted (taskId=${submit.taskId}), but did not complete within 300 seconds`, elapsedMs: Date.now() - startedAt, imageUrl: null as string | null };
     }
-    const data = await res.json();
-    const text = (data?.choices?.[0]?.message?.content ?? "").toString().trim().replace(/^["「『]+|["」』]+$/g, "");
-    if (!text) throw new Error("AI 未返回内容");
-    return { prompt: text };
+    if (!model.api_url) {
+      return { ok: false, stage: "config", message: "未配置 API 接口地址", elapsedMs: Date.now() - startedAt, imageUrl: null as string | null };
+    }
+
+    const targetKey = normalizeUpstreamApiKey((model as any).api_key) || normalizeUpstreamApiKey(global_api_key);
+    const pureApiKey = String(targetKey).replace(/Bearer\s+/i, "").trim();
+    if (!pureApiKey) {
+      return { ok: false, stage: "config", message: "未配置该模型或全局 API Key", elapsedMs: Date.now() - startedAt, imageUrl: null };
+    }
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "Authorization": pureApiKey,
+    };
+    const isGptImagePro = model.model_key === GPT_IMAGE_PRO_MODEL_KEY;
+    const submitUrl = isGptImagePro
+      ? GPT_IMAGE_PRO_VBL_GENERATIONS_URL
+      : resolveUrl(base_url, model.api_url);
+    const promptKey = (model as any).prompt_key || "prompt";
+    const requestFormat = (model as any).request_format || "async_id";
+    const testPrompt = (data.prompt && data.prompt.trim()) || "a cute orange tabby kitten sitting in a sunny garden, soft natural light, high detail";
+
+    // 占位符替换（同 generateImage 的精简版，不带参考图）
+    const WAN_SIZE_MAP: Record<string, string> = { "1:1": "1280*1280" };
+    const wanSize = WAN_SIZE_MAP["1:1"];
+    const substitute = (v: any): any => {
+      if (typeof v === "string") {
+        return v
+          .replace(/\{\{\s*wan_size\s*\}\}/g, wanSize)
+          .replace(/\{\{\s*grok_aspect\s*\}\}/g, "1:1")
+          .replace(/\{\{\s*size\s*\}\}/g, "1K")
+          .replace(/\{\{\s*aspect\s*\}\}/g, "1:1")
+          .replace(/\{\{\s*prompt\s*\}\}/g, testPrompt)
+          .replace(/\{\{\s*urls\s*\}\}/g, "");
+      }
+      if (Array.isArray(v)) return v.map(substitute);
+      if (v && typeof v === "object") {
+        const o: Record<string, any> = {};
+        for (const k of Object.keys(v)) o[k] = substitute(v[k]);
+        return o;
+      }
+      return v;
+    };
+    const extra = substitute(sanitizeUpstreamExtraParams((model as any).extra_params)) as Record<string, unknown>;
+    // 清掉空字符串占位（urls）
+    for (const k of Object.keys(extra)) {
+      if (extra[k] === "" || (Array.isArray(extra[k]) && (extra[k] as any[]).length === 0)) {
+        delete extra[k];
+      }
+    }
+    const body: Record<string, unknown> = isGptImagePro
+      ? buildGptImageProProviderPayload({
+        prompt: testPrompt,
+        aspectRatio: "1:1",
+        resolution: "1K",
+        providerOptions: extra,
+      })
+      : { [promptKey]: testPrompt, ...extra };
+    if (isGptImagePro) {
+      console.info("[gpt-image-pro] provider request", {
+        route: "/v1/images/generations",
+        model: body.model,
+        quality: body.quality,
+        size: body.size,
+        referenceImageCount: 0,
+      });
+    }
+
+    // 提交
+    let res: Response;
+    try {
+      res = await fetch(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
+    } catch (e: any) {
+      return { ok: false, stage: "submit", message: `网络错误：${e?.message ?? "fetch 失败"}`, elapsedMs: Date.now() - startedAt, imageUrl: null };
+    }
+    const text = await res.text();
+    const json: any = parseUpstreamResponse(text);
+    if (!res.ok) {
+      const msg = (json?.msg ?? json?.error?.message ?? text ?? "").toString().slice(0, 300);
+      return { ok: false, stage: "submit", message: `HTTP ${res.status}: ${msg || "(空响应)"}`, elapsedMs: Date.now() - startedAt, imageUrl: null };
+    }
+    if (Number(json?.code) >= 400) {
+      return { ok: false, stage: "submit", message: `上游 code=${json?.code}: ${(json?.msg ?? "").toString().slice(0, 200)}`, elapsedMs: Date.now() - startedAt, imageUrl: null };
+    }
+
+    if (requestFormat === "sync_url") {
+      const url = extractImageUrl(json ?? text);
+      if (!url) return { ok: false, stage: "result", message: "上游未返回图片 URL", elapsedMs: Date.now() - startedAt, imageUrl: null };
+      return { ok: true, stage: "result", message: "测试成功", elapsedMs: Date.now() - startedAt, imageUrl: url };
+    }
+
+    // 异步：轮询任务
+    const taskId: string | null =
+      json?.data?.id ?? json?.id ?? json?.task_id ?? (typeof json?.data === "string" ? json.data : null);
+    if (!taskId) {
+      return { ok: false, stage: "submit", message: `提交成功但未返回任务 ID：${text.slice(0, 200)}`, elapsedMs: Date.now() - startedAt, imageUrl: null };
+    }
+
+    const deadline = Date.now() + 300_000; // 最多轮询 300s
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 2500));
+      const detailUrl = `https://api.wuyinkeji.com/api/async/detail?id=${encodeURIComponent(taskId)}`;
+      try {
+        const r = await fetch(detailUrl, { method: "GET", headers });
+        const t = await r.text();
+        const j: any = parseUpstreamResponse(t);
+        if (!r.ok) continue;
+        const status = Number(j?.data?.status);
+        if (status === 2) {
+          const url = extractImageUrl(j?.data) ?? extractImageUrl(j);
+          if (url) return { ok: true, stage: "result", message: "测试成功", elapsedMs: Date.now() - startedAt, imageUrl: url };
+        }
+        if (status === 3) {
+          return { ok: false, stage: "result", message: `任务失败：${(j?.data?.message ?? j?.msg ?? "").toString().slice(0, 200) || "上游拒绝"}`, elapsedMs: Date.now() - startedAt, imageUrl: null };
+        }
+      } catch { /* keep polling */ }
+    }
+    return { ok: false, stage: "timeout", message: `任务已提交（taskId=${taskId}），但 300 秒内未生成完成`, elapsedMs: Date.now() - startedAt, imageUrl: null };
   });

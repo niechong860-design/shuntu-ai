@@ -1,0 +1,109 @@
+[
+  {
+    "results": [
+      {
+        "id": "b5c1dce9-6742-4340-9149-93cee49a1e12",
+        "title": "试用套餐",
+        "subtitle": "适合偶尔使用客户",
+        "price": "9.9",
+        "credits": 100000,
+        "features": "[\"1,000 积分\",\"基础图像模型\",\"标准排队速度\"]",
+        "badge_text": null,
+        "is_popular": 0,
+        "highlighted": 0,
+        "is_visible": 1,
+        "sort_order": 10,
+        "button_text": "立即购买",
+        "purchase_url": "https://www.kufaka.com/item/dhmljk",
+        "created_at": "2026-06-13T10:51:12.455466+00:00",
+        "updated_at": "2026-08-20T18:55:27.789575+00:00"
+      },
+      {
+        "id": "52d12003-fc30-4705-8daa-ceaf18d15915",
+        "title": "入门套餐",
+        "subtitle": "轻量级创作者的首选",
+        "price": "29.9",
+        "credits": 318000,
+        "features": "[\"3,180 积分\",\"含 180 赠送积分\",\"所有基础模型\",\"标准排队速度\"]",
+        "badge_text": null,
+        "is_popular": 0,
+        "highlighted": 0,
+        "is_visible": 1,
+        "sort_order": 20,
+        "button_text": "立即购买",
+        "purchase_url": "https://www.kufaka.com/item/661nyd",
+        "created_at": "2026-06-13T10:51:12.455466+00:00",
+        "updated_at": "2026-08-20T18:55:27.789575+00:00"
+      },
+      {
+        "id": "aaaa2b94-855c-4b2a-b6ea-e149fd15c834",
+        "title": "主力套餐",
+        "subtitle": "性价比之王，适合日常创作",
+        "price": "69.9",
+        "credits": 756000,
+        "features": "[\"7,560 积分\",\"含 560 赠送积分\",\"解锁高级模型\",\"优先生成队列\"]",
+        "badge_text": "最受欢迎",
+        "is_popular": 1,
+        "highlighted": 1,
+        "is_visible": 1,
+        "sort_order": 30,
+        "button_text": "立即购买",
+        "purchase_url": "https://www.kufaka.com/item/2tig9e",
+        "created_at": "2026-06-13T10:51:12.455466+00:00",
+        "updated_at": "2026-08-20T18:55:27.789575+00:00"
+      },
+      {
+        "id": "be1e3e6d-b5a1-41ff-82d4-dca10da91a59",
+        "title": "专业套餐",
+        "subtitle": "为高频重度使用者打造",
+        "price": "129",
+        "credits": 1417000,
+        "features": "[\"14,170 积分\",\"含 1,170 赠送积分\",\"极速极享队列\",\"专属客服支持\"]",
+        "badge_text": null,
+        "is_popular": 0,
+        "highlighted": 0,
+        "is_visible": 1,
+        "sort_order": 40,
+        "button_text": "立即购买",
+        "purchase_url": "https://www.kufaka.com/item/fk4jmd",
+        "created_at": "2026-06-13T10:51:12.455466+00:00",
+        "updated_at": "2026-08-20T18:55:27.789575+00:00"
+      },
+      {
+        "id": "73d892b5-b0d4-4c19-a588-fccde05b6792",
+        "title": "高端套餐",
+        "subtitle": "工作室与商业变现必备",
+        "price": "199",
+        "credits": 2200000,
+        "features": "[\"22,000 积分\",\"含 2,000 赠送积分\",\"最高优先级算力\",\"客服24小时在线服务\",\"可联系客服定制专属积分套餐\"]",
+        "badge_text": null,
+        "is_popular": 0,
+        "highlighted": 0,
+        "is_visible": 1,
+        "sort_order": 50,
+        "button_text": "立即购买",
+        "purchase_url": "https://www.kufaka.com/item/9a7qf1",
+        "created_at": "2026-06-13T10:51:12.455466+00:00",
+        "updated_at": "2026-08-20T18:55:27.789575+00:00"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "HKG",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.4697
+      },
+      "duration": 0.4697,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 111046656,
+      "rows_read": 10,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

@@ -10,7 +10,12 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as InspirationRouteImport } from './routes/inspiration'
+import { Route as DisclaimerRouteImport } from './routes/disclaimer'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as PaymentReturnRouteImport } from './routes/payment/return'
+import { Route as ApiDownloadImageRouteImport } from './routes/api/download-image'
+import { Route as ApiXunhupayNotifyRouteImport } from './routes/api/xunhupay/notify'
+import { Route as ApiHistoryThumbnailIdRouteImport } from './routes/api/history-thumbnail.$id'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth.$'
 
 const InspirationRoute = InspirationRouteImport.update({
@@ -18,9 +23,34 @@ const InspirationRoute = InspirationRouteImport.update({
   path: '/inspiration',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DisclaimerRoute = DisclaimerRouteImport.update({
+  id: '/disclaimer',
+  path: '/disclaimer',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PaymentReturnRoute = PaymentReturnRouteImport.update({
+  id: '/payment/return',
+  path: '/payment/return',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDownloadImageRoute = ApiDownloadImageRouteImport.update({
+  id: '/api/download-image',
+  path: '/api/download-image',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiXunhupayNotifyRoute = ApiXunhupayNotifyRouteImport.update({
+  id: '/api/xunhupay/notify',
+  path: '/api/xunhupay/notify',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiHistoryThumbnailIdRoute = ApiHistoryThumbnailIdRouteImport.update({
+  id: '/api/history-thumbnail/$id',
+  path: '/api/history-thumbnail/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
@@ -31,32 +61,77 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/disclaimer': typeof DisclaimerRoute
   '/inspiration': typeof InspirationRoute
+  '/api/download-image': typeof ApiDownloadImageRoute
+  '/payment/return': typeof PaymentReturnRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/history-thumbnail/$id': typeof ApiHistoryThumbnailIdRoute
+  '/api/xunhupay/notify': typeof ApiXunhupayNotifyRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/disclaimer': typeof DisclaimerRoute
   '/inspiration': typeof InspirationRoute
+  '/api/download-image': typeof ApiDownloadImageRoute
+  '/payment/return': typeof PaymentReturnRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/history-thumbnail/$id': typeof ApiHistoryThumbnailIdRoute
+  '/api/xunhupay/notify': typeof ApiXunhupayNotifyRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/disclaimer': typeof DisclaimerRoute
   '/inspiration': typeof InspirationRoute
+  '/api/download-image': typeof ApiDownloadImageRoute
+  '/payment/return': typeof PaymentReturnRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/history-thumbnail/$id': typeof ApiHistoryThumbnailIdRoute
+  '/api/xunhupay/notify': typeof ApiXunhupayNotifyRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/inspiration' | '/api/auth/$'
+  fullPaths:
+    | '/'
+    | '/disclaimer'
+    | '/inspiration'
+    | '/api/download-image'
+    | '/payment/return'
+    | '/api/auth/$'
+    | '/api/history-thumbnail/$id'
+    | '/api/xunhupay/notify'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/inspiration' | '/api/auth/$'
-  id: '__root__' | '/' | '/inspiration' | '/api/auth/$'
+  to:
+    | '/'
+    | '/disclaimer'
+    | '/inspiration'
+    | '/api/download-image'
+    | '/payment/return'
+    | '/api/auth/$'
+    | '/api/history-thumbnail/$id'
+    | '/api/xunhupay/notify'
+  id:
+    | '__root__'
+    | '/'
+    | '/disclaimer'
+    | '/inspiration'
+    | '/api/download-image'
+    | '/payment/return'
+    | '/api/auth/$'
+    | '/api/history-thumbnail/$id'
+    | '/api/xunhupay/notify'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DisclaimerRoute: typeof DisclaimerRoute
   InspirationRoute: typeof InspirationRoute
+  ApiDownloadImageRoute: typeof ApiDownloadImageRoute
+  PaymentReturnRoute: typeof PaymentReturnRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiHistoryThumbnailIdRoute: typeof ApiHistoryThumbnailIdRoute
+  ApiXunhupayNotifyRoute: typeof ApiXunhupayNotifyRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -68,11 +143,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InspirationRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/disclaimer': {
+      id: '/disclaimer'
+      path: '/disclaimer'
+      fullPath: '/disclaimer'
+      preLoaderRoute: typeof DisclaimerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/payment/return': {
+      id: '/payment/return'
+      path: '/payment/return'
+      fullPath: '/payment/return'
+      preLoaderRoute: typeof PaymentReturnRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/download-image': {
+      id: '/api/download-image'
+      path: '/api/download-image'
+      fullPath: '/api/download-image'
+      preLoaderRoute: typeof ApiDownloadImageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/xunhupay/notify': {
+      id: '/api/xunhupay/notify'
+      path: '/api/xunhupay/notify'
+      fullPath: '/api/xunhupay/notify'
+      preLoaderRoute: typeof ApiXunhupayNotifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/history-thumbnail/$id': {
+      id: '/api/history-thumbnail/$id'
+      path: '/api/history-thumbnail/$id'
+      fullPath: '/api/history-thumbnail/$id'
+      preLoaderRoute: typeof ApiHistoryThumbnailIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
@@ -87,8 +197,13 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DisclaimerRoute: DisclaimerRoute,
   InspirationRoute: InspirationRoute,
+  ApiDownloadImageRoute: ApiDownloadImageRoute,
+  PaymentReturnRoute: PaymentReturnRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiHistoryThumbnailIdRoute: ApiHistoryThumbnailIdRoute,
+  ApiXunhupayNotifyRoute: ApiXunhupayNotifyRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

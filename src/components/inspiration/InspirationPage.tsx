@@ -14,9 +14,11 @@ import {
   toggleCaseLike, toggleCaseFavorite, addCaseComment, publishCase,
   type CaseRow,
 } from "@/lib/inspiration.functions";
-import { listStyleTemplates, listModelsConfig } from "@/lib/admin.functions";
+import { listModelsConfig } from "@/lib/admin.functions";
+import { STYLE_TEMPLATES } from "@/lib/style-templates";
 import { setStudioPrefill } from "@/lib/studio-prefill";
 import { useAuth } from "@/hooks/use-auth";
+import { thumbUrl, preloadImages } from "@/lib/image-url";
 import { supabase } from "@/integrations/supabase/client";
 import { processImage, validateImageFile } from "@/lib/image-processing";
 
@@ -27,7 +29,6 @@ export function InspirationPage() {
   const { session } = useAuth();
   const fetchList = useServerFn(listCases);
   const fetchFacets = useServerFn(listCaseFacets);
-  const fetchStyles = useServerFn(listStyleTemplates);
 
   const fetchModels = useServerFn(listModelsConfig);
 
@@ -39,7 +40,9 @@ export function InspirationPage() {
   const [tag, setTag] = useState("");
   const [modelKey, setModelKey] = useState("");
   const [sort, setSort] = useState<"latest" | "hot" | "views">("latest");
-  const [styles, setStyles] = useState<StyleTpl[]>([]);
+  const [styles] = useState<StyleTpl[]>(
+    STYLE_TEMPLATES.map((s) => ({ id: s.id, name: s.name, image_url: s.previewImage })),
+  );
   const [allModels, setAllModels] = useState<{ key: string; name: string }[]>([]);
   const [facets, setFacets] = useState<{ hotTags: { name: string; count: number }[]; models: { key: string; name: string }[] }>({ hotTags: [], models: [] });
   const [openId, setOpenId] = useState<string | null>(null);
@@ -47,7 +50,6 @@ export function InspirationPage() {
 
   useEffect(() => {
     if (!session) return;
-    fetchStyles({}).then((d) => setStyles((d ?? []) as StyleTpl[])).catch(() => {});
     fetchFacets({}).then((d) => setFacets(d as any)).catch(() => {});
     fetchModels({}).then((d) => {
       const list = (d ?? []) as { model_key: string; name: string }[];
@@ -68,7 +70,12 @@ export function InspirationPage() {
         limit: 40,
       },
     })
-      .then((d) => setItems((d ?? []) as CaseItem[]))
+      .then((d) => {
+        const list = (d ?? []) as CaseItem[];
+        setItems(list);
+        // Idle-preload below-the-fold cards so the first scroll has no jank.
+        preloadImages(list.slice(8, 24).map((c) => thumbUrl(c.image_url, { quality: 65 })));
+      })
       .catch((e) => toast.error(e?.message ?? "加载失败"))
       .finally(() => setLoading(false));
   }, [session, search, styleId, tag, modelKey, sort]);
@@ -165,8 +172,8 @@ export function InspirationPage() {
           </div>
         ) : (
           <div className="[column-fill:_balance] columns-2 gap-4 sm:columns-3 lg:columns-4 xl:columns-5">
-            {items.map((c) => (
-              <CaseCard key={c.id} item={c} onOpen={() => setOpenId(c.id)} />
+            {items.map((c, i) => (
+              <CaseCard key={c.id} item={c} priority={i < 8} onOpen={() => setOpenId(c.id)} />
             ))}
           </div>
         )}
@@ -225,7 +232,7 @@ function ChipRow({
   );
 }
 
-function CaseCard({ item, onOpen }: { item: CaseItem; onOpen: () => void }) {
+function CaseCard({ item, onOpen, priority = false }: { item: CaseItem; onOpen: () => void; priority?: boolean }) {
   return (
     <button
       onClick={onOpen}
@@ -233,9 +240,11 @@ function CaseCard({ item, onOpen }: { item: CaseItem; onOpen: () => void }) {
     >
       <div className="relative">
         <img
-          src={item.image_url}
+          src={thumbUrl(item.image_url, { quality: 65 })}
           alt={item.title || "case"}
-          loading="lazy"
+          loading={priority ? "eager" : "lazy"}
+          decoding="async"
+          fetchPriority={priority ? "high" : "auto"}
           className="block w-full transition-transform duration-500 group-hover:scale-[1.03]"
         />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
@@ -527,14 +536,14 @@ function PublishDialog({
       const processed = await processImage(f, "community");
       const path = `${uid}/cases/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${processed.ext}`;
       const { error: upErr } = await supabase.storage
-        .from("reference-images")
+        .from("case-images")
         .upload(path, processed.blob, {
           cacheControl: "3600",
           contentType: processed.contentType,
           upsert: false,
         });
       if (upErr) throw upErr;
-      const { data: pub } = supabase.storage.from("reference-images").getPublicUrl(path);
+      const { data: pub } = supabase.storage.from("case-images").getPublicUrl(path);
       setImageUrl(pub.publicUrl);
       console.log(
         `[case upload] ${(processed.originalSize / 1024).toFixed(0)}KB → ${(processed.processedSize / 1024).toFixed(0)}KB`,

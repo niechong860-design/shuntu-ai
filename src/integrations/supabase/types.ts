@@ -71,6 +71,48 @@ export type Database = {
         }
         Relationships: []
       }
+      announcements: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          image_url: string | null
+          is_pinned: boolean
+          is_published: boolean
+          link_label: string | null
+          link_url: string | null
+          title: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          content?: string
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          is_pinned?: boolean
+          is_published?: boolean
+          link_label?: string | null
+          link_url?: string | null
+          title: string
+          type?: string
+          updated_at?: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          is_pinned?: boolean
+          is_published?: boolean
+          link_label?: string | null
+          link_url?: string | null
+          title?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       case_comments: {
         Row: {
           case_id: string
@@ -191,10 +233,53 @@ export type Database = {
         }
         Relationships: []
       }
+      credit_usage_logs: {
+        Row: {
+          amount: number
+          created_at: string
+          generation_history_id: string | null
+          generation_task_id: string | null
+          id: string
+          idempotency_key: string
+          metadata: Json | null
+          model_key: string | null
+          model_name: string | null
+          source: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          generation_history_id?: string | null
+          generation_task_id?: string | null
+          id?: string
+          idempotency_key: string
+          metadata?: Json | null
+          model_key?: string | null
+          model_name?: string | null
+          source: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          generation_history_id?: string | null
+          generation_task_id?: string | null
+          id?: string
+          idempotency_key?: string
+          metadata?: Json | null
+          model_key?: string | null
+          model_name?: string | null
+          source?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       generation_history: {
         Row: {
           cost: number
           created_at: string
+          generation_task_id: string | null
           id: string
           image_url: string | null
           model: string
@@ -204,6 +289,7 @@ export type Database = {
         Insert: {
           cost?: number
           created_at?: string
+          generation_task_id?: string | null
           id?: string
           image_url?: string | null
           model: string
@@ -213,10 +299,80 @@ export type Database = {
         Update: {
           cost?: number
           created_at?: string
+          generation_task_id?: string | null
           id?: string
           image_url?: string | null
           model?: string
           prompt?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      generation_tasks: {
+        Row: {
+          charged_at: string | null
+          completed_at: string | null
+          created_at: string
+          credits_required: number
+          deduction_id: string | null
+          deduction_status: string
+          error_code: string | null
+          error_message: string | null
+          id: string
+          input_params: Json
+          model_id: string
+          prompt: string | null
+          refunded_at: string | null
+          request_id: string
+          result_image_url: string | null
+          result_payload: Json | null
+          started_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          charged_at?: string | null
+          completed_at?: string | null
+          created_at?: string
+          credits_required?: number
+          deduction_id?: string | null
+          deduction_status?: string
+          error_code?: string | null
+          error_message?: string | null
+          id?: string
+          input_params?: Json
+          model_id: string
+          prompt?: string | null
+          refunded_at?: string | null
+          request_id: string
+          result_image_url?: string | null
+          result_payload?: Json | null
+          started_at?: string | null
+          status: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          charged_at?: string | null
+          completed_at?: string | null
+          created_at?: string
+          credits_required?: number
+          deduction_id?: string | null
+          deduction_status?: string
+          error_code?: string | null
+          error_message?: string | null
+          id?: string
+          input_params?: Json
+          model_id?: string
+          prompt?: string | null
+          refunded_at?: string | null
+          request_id?: string
+          result_image_url?: string | null
+          result_payload?: Json | null
+          started_at?: string | null
+          status?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
@@ -386,6 +542,90 @@ export type Database = {
         }
         Relationships: []
       }
+      recharge_packages: {
+        Row: {
+          badge_text: string | null
+          button_text: string
+          created_at: string
+          credits: number
+          features: Json
+          highlighted: boolean
+          id: string
+          is_popular: boolean
+          is_visible: boolean
+          price: string
+          purchase_url: string | null
+          sort_order: number
+          subtitle: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          badge_text?: string | null
+          button_text?: string
+          created_at?: string
+          credits?: number
+          features?: Json
+          highlighted?: boolean
+          id?: string
+          is_popular?: boolean
+          is_visible?: boolean
+          price: string
+          purchase_url?: string | null
+          sort_order?: number
+          subtitle?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          badge_text?: string | null
+          button_text?: string
+          created_at?: string
+          credits?: number
+          features?: Json
+          highlighted?: boolean
+          id?: string
+          is_popular?: boolean
+          is_visible?: boolean
+          price?: string
+          purchase_url?: string | null
+          sort_order?: number
+          subtitle?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      redeem_logs: {
+        Row: {
+          amount: number
+          code: string
+          error_message: string | null
+          id: string
+          redeemed_at: string
+          success: boolean
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          code: string
+          error_message?: string | null
+          id?: string
+          redeemed_at?: string
+          success?: boolean
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          code?: string
+          error_message?: string | null
+          id?: string
+          redeemed_at?: string
+          success?: boolean
+          user_id?: string
+        }
+        Relationships: []
+      }
       style_templates: {
         Row: {
           id: string
@@ -410,6 +650,48 @@ export type Database = {
           prompt?: string
           sort_order?: number
           updated_at?: string
+        }
+        Relationships: []
+      }
+      user_orders: {
+        Row: {
+          amount: number
+          created_at: string
+          credits: number
+          id: string
+          out_trade_no: string
+          paid_at: string | null
+          pay_type: string | null
+          status: string
+          trade_no: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          credits?: number
+          id?: string
+          out_trade_no: string
+          paid_at?: string | null
+          pay_type?: string | null
+          status?: string
+          trade_no?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          credits?: number
+          id?: string
+          out_trade_no?: string
+          paid_at?: string | null
+          pay_type?: string | null
+          status?: string
+          trade_no?: string | null
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -439,6 +721,21 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_credit_usage_totals: {
+        Args: never
+        Returns: {
+          total_spent: number
+          user_id: string
+        }[]
+      }
+      complete_paid_order: {
+        Args: { _out_trade_no: string; _trade_no: string }
+        Returns: {
+          applied: boolean
+          credits: number
+          user_id: string
+        }[]
+      }
       consume_credits_for_generation: {
         Args: { _model_key: string; _prompt: string }
         Returns: {
@@ -446,6 +743,42 @@ export type Database = {
           credits: number
           message: string
           success: boolean
+        }[]
+      }
+      consume_credits_for_generation_v2: {
+        Args: { _model_key: string; _prompt: string }
+        Returns: {
+          cost: number
+          credits: number
+          history_id: string | null
+          message: string
+          success: boolean
+        }[]
+      }
+      finalize_generation_task_once: {
+        Args: { p_image_url: string; p_task_id: string }
+        Returns: {
+          cost: number
+          credits: number
+          deduction_status: string
+          history_id: string
+          message: string
+          status: string
+          success: boolean
+          task_id: string
+        }[]
+      }
+      finalize_user_generation_task_once: {
+        Args: { p_image_url: string; p_task_id: string }
+        Returns: {
+          cost: number
+          credits: number
+          deduction_status: string
+          history_id: string
+          message: string
+          status: string
+          success: boolean
+          task_id: string
         }[]
       }
       get_contact_info: {
@@ -466,6 +799,14 @@ export type Database = {
       increment_case_view: { Args: { _case_id: string }; Returns: undefined }
       redeem_coupon: {
         Args: { _code: string }
+        Returns: {
+          amount: number
+          message: string
+          success: boolean
+        }[]
+      }
+      redeem_gift_card: {
+        Args: { input_code: string }
         Returns: {
           amount: number
           message: string
