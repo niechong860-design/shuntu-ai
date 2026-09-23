@@ -7,6 +7,7 @@ import { updateCurrentProfile } from "@/lib/profile.functions";
 import { Loader2, Upload, Lock, User as UserIcon } from "lucide-react";
 import { toast } from "sonner";
 import { thumbUrl } from "@/lib/image-url";
+import { uploadImageToR2 } from "@/lib/r2-upload-client";
 
 export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const { user, profile, refreshProfile } = useAuth();
@@ -49,12 +50,8 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
     if (!user) return;
     setUploading(true);
     try {
-      const ext = file.name.split(".").pop() || "png";
-      const path = `${user.id}/${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
-      if (upErr) throw upErr;
-      const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
-      await updateCurrentProfile({ data: { avatarUrl: publicUrl } });
+      const { url } = await uploadImageToR2(file, "avatar");
+      await updateCurrentProfile({ data: { avatarUrl: url } });
       await refreshProfile();
       toast.success("头像已更新");
     } catch (err) {

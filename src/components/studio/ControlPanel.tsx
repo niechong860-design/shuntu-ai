@@ -11,7 +11,7 @@ import { Slider } from "@/components/ui/slider";
 import { useServerFn } from "@tanstack/react-start";
 import { listModelsConfig, generateImage, checkImageStatus, generateRandomPrompt } from "@/lib/admin.functions";
 import { useAuth } from "@/hooks/use-auth";
-import { supabase } from "@/integrations/supabase/client";
+import { uploadImageToR2 } from "@/lib/r2-upload-client";
 import { consumeStudioPrefill } from "@/lib/studio-prefill";
 import { processImage, validateImageFile } from "@/lib/image-processing";
 import { thumbUrl } from "@/lib/image-url";
@@ -358,24 +358,11 @@ export function ControlPanel({
 
   const uploadingRef = refs.some((item) => item.status === "uploading");
 
-  const uploadReferenceFile = async (file: File, item: ReferenceImageItem, uid: string) => {
+  const uploadReferenceFile = async (file: File, item: ReferenceImageItem) => {
     try {
       const processed = await processImage(file, "ai-model");
       if (processed.previewUrl !== item.previewUrl) URL.revokeObjectURL(processed.previewUrl);
-      const path = `${uid}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${processed.ext}`;
-      const { error: upErr } = await supabase.storage
-        .from("reference-images")
-        .upload(path, processed.blob, {
-          cacheControl: "3600",
-          contentType: processed.contentType,
-          upsert: false,
-        });
-      if (upErr) throw upErr;
-      const { data: signed, error: signErr } = await supabase.storage
-        .from("reference-images")
-        .createSignedUrl(path, 60 * 60 * 24 * 7); // 7 days, long enough for generation
-      if (signErr) throw signErr;
-      const url = signed.signedUrl;
+      const { url } = await uploadImageToR2(new File([processed.blob], `reference.${processed.ext}`, { type: processed.contentType }), "reference-image");
       console.log(
         `[ref upload] ${(processed.originalSize / 1024).toFixed(0)}KB → ${(processed.processedSize / 1024).toFixed(0)}KB →`,
         url,
@@ -440,7 +427,7 @@ export function ControlPanel({
     if (pending.length === 0) return;
 
     updateReferenceItems((items) => [...items, ...pending.map(({ item }) => item)]);
-    for (const { file, item } of pending) void uploadReferenceFile(file, item, uid);
+    for (const { file, item } of pending) void uploadReferenceFile(file, item);
   };
 
   const addRef = (e: React.ChangeEvent<HTMLInputElement>) => {
