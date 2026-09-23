@@ -28,5 +28,8 @@
       "database_name": "shuntu-prod",
       "database_id": "a475419e-3878-4ede-84d0-75fad8ebd5cd"
     }
-  ]
+  ],
+  "images": {
+    "binding": "IMAGES"
+  }
 }

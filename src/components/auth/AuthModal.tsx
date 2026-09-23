@@ -43,8 +43,13 @@ function isWeakSignupPassword(password: string) {
 function translateAuthError(err: unknown, tab: Tab): string {
   const raw = err instanceof Error ? err.message : typeof err === "string" ? err : "";
   // 新版 Supabase 错误把详情放在 code/status 字段，message 可能是通用文案
-  const errObj = (err && typeof err === "object" ? err : {}) as { code?: string; status?: number; name?: string };
-  const code = (errObj.code ?? "").toLowerCase();
+  const errObj = (err && typeof err === "object" ? err : {}) as {
+    code?: string;
+    error_code?: string;
+    status?: number;
+    name?: string;
+  };
+  const code = (errObj.code ?? errObj.error_code ?? "").toLowerCase();
   const status = errObj.status ?? 0;
   const m = (raw + " " + code).toLowerCase();
 
@@ -58,7 +63,12 @@ function translateAuthError(err: unknown, tab: Tab): string {
     ) {
       return EMAIL_REGISTERED_MSG;
     }
-    if (code === "email_address_invalid" || m.includes("invalid email")) {
+    if (
+      code === "email_address_invalid" ||
+      code === "validation_failed" ||
+      m.includes("invalid email") ||
+      m.includes("unable to validate email")
+    ) {
       return INVALID_EMAIL_MSG;
     }
     if (
@@ -93,7 +103,12 @@ function translateAuthError(err: unknown, tab: Tab): string {
     return PASSWORD_TOO_SHORT_MSG;
   if (code === "weak_password")
     return PASSWORD_TOO_SIMPLE_MSG;
-  if (code === "over_request_rate_limit" || code === "over_email_send_rate_limit" || status === 429)
+  if (
+    code === "over_request_rate_limit" ||
+    code === "over_email_send_rate_limit" ||
+    code === "over_sms_send_rate_limit" ||
+    status === 429
+  )
     return "操作太频繁，请稍后再试";
   if (code === "validation_failed" || code === "email_address_invalid")
     return "请输入正确的邮箱地址";
@@ -145,7 +160,8 @@ function translateAuthError(err: unknown, tab: Tab): string {
     m.includes("error sending confirmation email") ||
     m.includes("error sending email") ||
     m.includes("smtp") ||
-    m.includes("email send failed")
+    m.includes("email send failed") ||
+    m.includes("error sending recovery email")
   )
     return "验证邮件发送失败，请稍后重试";
   if (m.includes("email rate limit") || m.includes("over_email_send_rate_limit"))
@@ -160,8 +176,14 @@ function translateAuthError(err: unknown, tab: Tab): string {
     return "链接已失效，请重新发送";
 
   // —— 网络 ——
-  if (m.includes("failed to fetch") || m.includes("network") || m.includes("networkerror"))
-    return "网络连接不稳定，请稍后重试";
+  if (
+    m.includes("failed to fetch") ||
+    m.includes("network") ||
+    m.includes("networkerror") ||
+    m.includes("load failed") ||
+    m.includes("fetch failed")
+  )
+    return "连接认证服务失败，请检查网络、浏览器代理或稍后重试";
   if (m.includes("timeout") || m.includes("timed out"))
     return "网络连接不稳定，请稍后重试";
 
@@ -183,8 +205,8 @@ function translateAuthError(err: unknown, tab: Tab): string {
 /** 提取一个非敏感的错误代码用于前端 console（不输出 message / email / token） */
 function safeErrorCode(err: unknown): string {
   if (!err || typeof err !== "object") return "unknown";
-  const e = err as { code?: string; status?: number; name?: string };
-  return e.code ?? (e.status ? `http_${e.status}` : e.name ?? "unknown");
+  const e = err as { code?: string; error_code?: string; status?: number; name?: string };
+  return e.code ?? e.error_code ?? (e.status ? `http_${e.status}` : e.name ?? "unknown");
 }
 
 const DISCLAIMER_AGREED_KEY = "shuntu:disclaimer_agreed:v1";

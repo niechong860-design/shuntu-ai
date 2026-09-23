@@ -5,6 +5,8 @@ import type { Database } from './types';
 function createSupabaseClient() {
   // Use import.meta.env for client-side (Vite build-time replacement)
   // Fall back to process.env for SSR (server-side rendering)
+  // Route browser auth through the app's Worker so clients do not need direct
+  // connectivity to the Supabase project hostname.
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
   const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
 
@@ -18,7 +20,22 @@ function createSupabaseClient() {
     throw new Error(message);
   }
 
+  const fetchWithAuthProxy: typeof fetch = (input, init) => {
+    if (typeof window === "undefined") return fetch(input, init);
+
+    const requestUrl = new URL(input instanceof Request ? input.url : String(input));
+    const authBaseUrl = new URL(SUPABASE_URL);
+    if (requestUrl.origin !== authBaseUrl.origin || !requestUrl.pathname.startsWith("/auth/v1/")) {
+      return fetch(input, init);
+    }
+
+    requestUrl.pathname = `/api/auth${requestUrl.pathname.slice("/auth/v1".length)}`;
+    if (input instanceof Request) return fetch(new Request(requestUrl, input), init);
+    return fetch(requestUrl, init);
+  };
+
   return createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    global: { fetch: fetchWithAuthProxy },
     auth: {
       storage: typeof window !== 'undefined' ? localStorage : undefined,
       persistSession: true,

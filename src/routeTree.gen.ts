@@ -16,6 +16,7 @@ import { Route as PaymentReturnRouteImport } from './routes/payment/return'
 import { Route as ApiDownloadImageRouteImport } from './routes/api/download-image'
 import { Route as ApiXunhupayNotifyRouteImport } from './routes/api/xunhupay/notify'
 import { Route as ApiHistoryThumbnailIdRouteImport } from './routes/api/history-thumbnail.$id'
+import { Route as ApiAuthSplatRouteImport } from './routes/api/auth.$'
 
 const InspirationRoute = InspirationRouteImport.update({
   id: '/inspiration',
@@ -52,6 +53,11 @@ const ApiHistoryThumbnailIdRoute = ApiHistoryThumbnailIdRouteImport.update({
   path: '/api/history-thumbnail/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
+  id: '/api/auth/$',
+  path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -59,6 +65,7 @@ export interface FileRoutesByFullPath {
   '/inspiration': typeof InspirationRoute
   '/api/download-image': typeof ApiDownloadImageRoute
   '/payment/return': typeof PaymentReturnRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/history-thumbnail/$id': typeof ApiHistoryThumbnailIdRoute
   '/api/xunhupay/notify': typeof ApiXunhupayNotifyRoute
 }
@@ -68,6 +75,7 @@ export interface FileRoutesByTo {
   '/inspiration': typeof InspirationRoute
   '/api/download-image': typeof ApiDownloadImageRoute
   '/payment/return': typeof PaymentReturnRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/history-thumbnail/$id': typeof ApiHistoryThumbnailIdRoute
   '/api/xunhupay/notify': typeof ApiXunhupayNotifyRoute
 }
@@ -78,6 +86,7 @@ export interface FileRoutesById {
   '/inspiration': typeof InspirationRoute
   '/api/download-image': typeof ApiDownloadImageRoute
   '/payment/return': typeof PaymentReturnRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/history-thumbnail/$id': typeof ApiHistoryThumbnailIdRoute
   '/api/xunhupay/notify': typeof ApiXunhupayNotifyRoute
 }
@@ -89,6 +98,7 @@ export interface FileRouteTypes {
     | '/inspiration'
     | '/api/download-image'
     | '/payment/return'
+    | '/api/auth/$'
     | '/api/history-thumbnail/$id'
     | '/api/xunhupay/notify'
   fileRoutesByTo: FileRoutesByTo
@@ -98,6 +108,7 @@ export interface FileRouteTypes {
     | '/inspiration'
     | '/api/download-image'
     | '/payment/return'
+    | '/api/auth/$'
     | '/api/history-thumbnail/$id'
     | '/api/xunhupay/notify'
   id:
@@ -107,6 +118,7 @@ export interface FileRouteTypes {
     | '/inspiration'
     | '/api/download-image'
     | '/payment/return'
+    | '/api/auth/$'
     | '/api/history-thumbnail/$id'
     | '/api/xunhupay/notify'
   fileRoutesById: FileRoutesById
@@ -117,6 +129,7 @@ export interface RootRouteChildren {
   InspirationRoute: typeof InspirationRoute
   ApiDownloadImageRoute: typeof ApiDownloadImageRoute
   PaymentReturnRoute: typeof PaymentReturnRoute
+  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiHistoryThumbnailIdRoute: typeof ApiHistoryThumbnailIdRoute
   ApiXunhupayNotifyRoute: typeof ApiXunhupayNotifyRoute
 }
@@ -172,6 +185,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiHistoryThumbnailIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/auth/$': {
+      id: '/api/auth/$'
+      path: '/api/auth/$'
+      fullPath: '/api/auth/$'
+      preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -181,6 +201,7 @@ const rootRouteChildren: RootRouteChildren = {
   InspirationRoute: InspirationRoute,
   ApiDownloadImageRoute: ApiDownloadImageRoute,
   PaymentReturnRoute: PaymentReturnRoute,
+  ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiHistoryThumbnailIdRoute: ApiHistoryThumbnailIdRoute,
   ApiXunhupayNotifyRoute: ApiXunhupayNotifyRoute,
 }
