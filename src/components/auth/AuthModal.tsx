@@ -7,36 +7,15 @@ import { getContactInfo } from "@/lib/admin.functions";
 
 type Tab = "login" | "signup" | "forgot";
 
-const PASSWORD_TOO_SHORT_MSG = "密码长度不足，请至少设置 8 位密码";
-const PASSWORD_TOO_SIMPLE_MSG = "密码过于简单，请使用字母、数字或符号组合";
+const PASSWORD_TOO_SHORT_MSG = "密码长度不足，请至少设置 6 位密码";
+const PASSWORD_TOO_SIMPLE_MSG = "密码不可用，请更换一个不常见的密码";
 const PASSWORD_MISMATCH_MSG = "两次输入的密码不一致";
 const INVALID_EMAIL_MSG = "请输入正确的邮箱地址";
 const EMAIL_REGISTERED_MSG = "该邮箱已注册，请直接登录";
 const SIGNUP_FAILED_MSG = "注册失败，请稍后重试";
 
-const COMMON_WEAK_PASSWORDS = new Set([
-  "12345678",
-  "11111111",
-  "00000000",
-  "abcdefgh",
-  "password",
-  "password123",
-  "qwerty123",
-  "qwertyuiop",
-  "abc123456",
-  "123456789",
-]);
-
 function isWeakSignupPassword(password: string) {
-  const normalized = password.trim().toLowerCase();
-  if (!normalized) return true;
-  if (COMMON_WEAK_PASSWORDS.has(normalized)) return true;
-  if (/^(.)\1+$/.test(normalized)) return true;
-
-  const hasLetter = /[a-z]/i.test(password);
-  const hasNumber = /\d/.test(password);
-  const hasSymbol = /[^a-zA-Z0-9]/.test(password);
-  return [hasLetter, hasNumber, hasSymbol].filter(Boolean).length < 2;
+  return password.trim().length < 6;
 }
 
 /** 把 Supabase 返回的英文错误翻成更明确的中文提示 */
@@ -148,8 +127,8 @@ function translateAuthError(err: unknown, tab: Tab): string {
     return PASSWORD_TOO_SHORT_MSG;
   if (m.includes("weak_password"))
     return PASSWORD_TOO_SIMPLE_MSG;
-  if (m.includes("password") && m.includes("weak"))
-    return "密码强度不足，请加入字母、数字或符号";
+  if (m.includes("password") && (m.includes("weak") || m.includes("easy") || m.includes("simple") || m.includes("strength")))
+    return PASSWORD_TOO_SIMPLE_MSG;
   if (m.includes("pwned") || m.includes("compromised"))
     return "该密码已在公开泄露库中，请更换更安全的密码";
   if (m.includes("signup") && m.includes("disabled"))
@@ -266,16 +245,12 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
       return;
     }
     if (tab === "signup") {
-      if (password.length < 8) {
+      if (password.length < 6) {
         toast.error(PASSWORD_TOO_SHORT_MSG);
         return;
       }
       if (password !== confirm) {
         toast.error(PASSWORD_MISMATCH_MSG);
-        return;
-      }
-      if (isWeakSignupPassword(password)) {
-        toast.error(PASSWORD_TOO_SIMPLE_MSG);
         return;
       }
     }
@@ -408,7 +383,7 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
                 <input
                   type="password"
                   required
-                  minLength={tab === "signup" ? 8 : 1}
+                  minLength={tab === "signup" ? 6 : 1}
                   placeholder="密码"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -422,7 +397,7 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
                 <input
                   type="password"
                   required
-                  minLength={8}
+                  minLength={6}
                   placeholder="确认密码"
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
