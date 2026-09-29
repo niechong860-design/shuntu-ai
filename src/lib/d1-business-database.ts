@@ -961,9 +961,9 @@ export class D1BusinessDatabase implements BusinessDatabase {
     return await this.first<RawRow>("SELECT * FROM admin_settings WHERE id = 1 LIMIT 1");
   }
 
-  async updateAdminSettings(patch: { access_password?: string; system_prompt?: string; contact_wechat?: string; contact_qq?: string }): Promise<void> {
+  async updateAdminSettings(patch: { access_password?: string; system_prompt?: string; contact_wechat?: string; contact_qq?: string; image_preview_mode?: "auto" | "preview_only" | "original_only" }): Promise<void> {
     await this.db.prepare("INSERT OR IGNORE INTO admin_settings (id) VALUES (1)").run();
-    const entries = Object.entries(patch).filter(([key]) => ["access_password", "system_prompt", "contact_wechat", "contact_qq"].includes(key));
+    const entries = Object.entries(patch).filter(([key]) => ["access_password", "system_prompt", "contact_wechat", "contact_qq", "image_preview_mode"].includes(key));
     if (!entries.length) return;
     await this.db.prepare(`UPDATE admin_settings SET ${entries.map(([key]) => `${key} = ?`).join(", ")}, updated_at = ? WHERE id = 1`)
       .bind(...entries.map(([, value]) => bindValue(value)), nowIso()).run();

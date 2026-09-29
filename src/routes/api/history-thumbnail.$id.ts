@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { authenticateSupabaseRequest } from "@/lib/supabase-request-auth";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { createBusinessDatabaseFromContext } from "@/lib/business-database-router";
+import type { ImagePreviewMode } from "@/lib/business-database";
 import {
   GENERATED_PREVIEW_CACHE_CONTROL,
   GENERATED_PREVIEW_CONTENT_TYPE,
@@ -54,6 +55,14 @@ async function getOriginalImageResponse(imageUrl: string | null | undefined): Pr
   }
 }
 
+function getImagePreviewMode(value: unknown): ImagePreviewMode {
+  return value === "auto" || value === "preview_only" || value === "original_only" ? value : "original_only";
+}
+
+function previewUnavailableResponse(): Response {
+  return new Response("Preview unavailable", { status: 502 });
+}
+
 export const Route = createFileRoute("/api/history-thumbnail/$id")({
   server: {
     handlers: {
@@ -78,21 +87,29 @@ export const Route = createFileRoute("/api/history-thumbnail/$id")({
           if (!roles?.length) return new Response("Not found", { status: 404 });
         }
 
+        let mode: ImagePreviewMode = "original_only";
+        try {
+          mode = getImagePreviewMode((await db.getAdminSettings())?.image_preview_mode);
+        } catch {
+          mode = "original_only";
+        }
+        if (mode === "original_only") return getOriginalImageResponse(row.image_url);
+
         const previewKey = getGeneratedPreviewKeyFromPublicUrl(row.image_url);
-        if (!previewKey) return getOriginalImageResponse(row.image_url);
+        if (!previewKey) return mode === "preview_only" ? previewUnavailableResponse() : getOriginalImageResponse(row.image_url);
 
         try {
           const cloudflareEnv = getCloudflareEnv();
           let preview = await getGeneratedPreviewObject(previewKey, cloudflareEnv);
           if (!preview) {
             const ensured = await ensureGeneratedPreviewFromOriginalUrl(row.image_url ?? "", cloudflareEnv);
-            if (!ensured) return getOriginalImageResponse(row.image_url);
+            if (!ensured) return mode === "preview_only" ? previewUnavailableResponse() : getOriginalImageResponse(row.image_url);
             preview = await getGeneratedPreviewObject(previewKey, cloudflareEnv);
           }
 
-          return preview ? getPreviewResponse(request, preview) : getOriginalImageResponse(row.image_url);
+          return preview ? getPreviewResponse(request, preview) : mode === "preview_only" ? previewUnavailableResponse() : getOriginalImageResponse(row.image_url);
         } catch {
-          return getOriginalImageResponse(row.image_url);
+          return mode === "preview_only" ? previewUnavailableResponse() : getOriginalImageResponse(row.image_url);
         }
       },
     },

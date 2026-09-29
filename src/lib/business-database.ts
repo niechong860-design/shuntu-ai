@@ -4,6 +4,7 @@ export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue
 export type BusinessDatabasePrimary = "lovable" | "d1";
 export type GenerationTaskStatus = "queued" | "running" | "succeeded" | "failed" | "canceled";
 export type DeductionStatus = "not_charged" | "charged" | "refund_pending" | "refunded" | "charge_failed";
+export type ImagePreviewMode = "auto" | "preview_only" | "original_only";
 
 export type Profile = {
   id: string;
@@ -334,7 +335,7 @@ export interface BusinessDatabase {
   deleteModel?(id: string): Promise<void>;
   getGlobalConfig(): Promise<Record<string, unknown> | null>;
   getAdminSettings(): Promise<Record<string, unknown> | null>;
-  updateAdminSettings?(patch: { access_password?: string; system_prompt?: string; contact_wechat?: string; contact_qq?: string }): Promise<void>;
+  updateAdminSettings?(patch: { access_password?: string; system_prompt?: string; contact_wechat?: string; contact_qq?: string; image_preview_mode?: ImagePreviewMode }): Promise<void>;
   listAnnouncements(): Promise<Record<string, unknown>[]>;
   upsertAnnouncement?(input: { id?: string; title: string; content: string; type: string; image_url: string | null; link_url: string | null; link_label: string | null; is_pinned: boolean; is_published: boolean }): Promise<{ id: string }>;
   deleteAnnouncement?(id: string): Promise<void>;
