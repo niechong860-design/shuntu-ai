@@ -18,7 +18,6 @@ import { thumbUrl } from "@/lib/image-url";
 import { checkPromptSafety, SAFETY_BLOCK_MESSAGE } from "@/lib/promptSafety";
 import { STYLE_TEMPLATES, applyStyleSuffix, type StyleTemplate } from "@/lib/style-templates";
 import { toast } from "sonner";
-import { loadHistoryPreview } from "@/lib/preview-cache";
 
 type ModelCfg = {
   id: string; model_key: string; name: string; description: string | null; cost: number;
@@ -479,11 +478,10 @@ export function ControlPanel({
       }
       pendingGeneratedReferenceTokensRef.current.add(generatedDragToken);
       try {
-        const previewUrl = await loadHistoryPreview(session.user.id, generatedHistoryId);
         updateReferenceItems((items) => [...items, {
           id,
           sourceUrl: url,
-          previewUrl,
+          previewUrl: url,
           status: "ready",
           ownsPreviewUrl: false,
           generatedDragToken,

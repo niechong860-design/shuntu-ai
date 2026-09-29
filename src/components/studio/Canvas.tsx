@@ -6,186 +6,14 @@ import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { getMyGenerationHistory } from "@/lib/admin.functions";
 import { getCachedHistoryFirstPage, setCachedHistoryFirstPage } from "@/lib/history-metadata-cache";
-import { getCachedPreview, loadHistoryPreview, subscribePreview } from "@/lib/preview-cache";
 import type { GenProgress } from "./ControlPanel";
 
 const PAGE_SIZE = 20;
 const HISTORY_RESET_CACHE_MS = 60_000;
 
-function getGeneratedPreviewPublicUrlFromOriginalUrl(imageUrl: string | null | undefined): string | null {
-  if (!imageUrl) return null;
-  try {
-    const url = new URL(imageUrl);
-    if (url.protocol !== "https:" || url.hostname !== "img.shuntu.cc" || url.search || url.hash) return null;
-    const match = url.pathname.match(/^\/generated\/(.+)\.(png|jpe?g|webp)$/i);
-    if (!match) return null;
-    return `https://img.shuntu.cc/previews/generated/${match[1]}.jpg`;
-  } catch {
-    return null;
-  }
-}
-
-function isArchivedGeneratedImageUrl(value: string | null | undefined): value is string {
-  if (!value) return false;
-  try {
-    const url = new URL(value);
-    return (
-      url.protocol === "https:" &&
-      url.hostname === "img.shuntu.cc" &&
-      url.pathname.startsWith("/generated/") &&
-      !url.search &&
-      !url.hash
-    );
-  } catch {
-    return false;
-  }
-}
-
-const thumbnailQueue: Array<() => void> = [];
-let activeThumbnailLoads = 0;
-const MAX_THUMBNAIL_LOADS = 4;
-const PREWARM_PREVIEW_CONCURRENCY = 4;
-
-function pumpThumbnailQueue() {
-  while (activeThumbnailLoads < MAX_THUMBNAIL_LOADS && thumbnailQueue.length > 0) {
-    thumbnailQueue.shift()?.();
-  }
-}
-
-function enqueueThumbnailLoad(start: () => void, finish: () => void) {
-  let cancelled = false;
-  let started = false;
-  const job = () => {
-    if (cancelled) return;
-    started = true;
-    activeThumbnailLoads += 1;
-    start();
-  };
-  thumbnailQueue.push(job);
-  pumpThumbnailQueue();
-  return () => {
-    cancelled = true;
-    if (started) finish();
-  };
-}
-
-function HistoryThumbnail({ historyId, userId }: { historyId: string; userId: string }) {
-  const hostRef = useRef<HTMLDivElement | null>(null);
-  const cachedSrc = getCachedPreview(userId, historyId);
-  const [load, setLoad] = useState(!!cachedSrc);
-  const [started, setStarted] = useState(!!cachedSrc);
-  const [failed, setFailed] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
-  const [resolvedSrc, setResolvedSrc] = useState<string | null>(cachedSrc);
-  const finishedRef = useRef(false);
-  const finish = useCallback(() => {
-    if (finishedRef.current) return;
-    finishedRef.current = true;
-    activeThumbnailLoads = Math.max(0, activeThumbnailLoads - 1);
-    pumpThumbnailQueue();
-  }, []);
-
-  useEffect(() => subscribePreview(userId, historyId, (nextPreview) => {
-    setResolvedSrc(nextPreview);
-    setStarted(true);
-    setFailed(false);
-  }), [historyId, userId]);
-
-  useEffect(() => {
-    const element = hostRef.current;
-    if (!element) return;
-    if (getCachedPreview(userId, historyId)) {
-      setLoad(true);
-      return;
-    }
-    if (typeof IntersectionObserver === "undefined") {
-      setLoad(true);
-      return;
-    }
-    const root = element.closest("[data-history-scroll-container]") as HTMLElement | null;
-    const rootMargin = 400;
-    const isNearViewport = () => {
-      const rect = element.getBoundingClientRect();
-      const viewport = root?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight };
-      return rect.bottom >= viewport.top - rootMargin && rect.top <= viewport.bottom + rootMargin;
-    };
-    if (isNearViewport()) {
-      setLoad(true);
-      return;
-    }
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry?.isIntersecting) {
-          setLoad(true);
-          observer.disconnect();
-        }
-      },
-      {
-        root,
-        rootMargin: `${rootMargin}px 0px`,
-        threshold: 0,
-      },
-    );
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [historyId, userId]);
-
-  useEffect(() => {
-    if (!load || started) return;
-    finishedRef.current = false;
-    let cancelled = false;
-    const cancel = enqueueThumbnailLoad(() => {
-      setStarted(true);
-      void (async () => {
-        try {
-          const nextPreview = await loadHistoryPreview(userId, historyId);
-          if (cancelled) return;
-          setResolvedSrc(nextPreview);
-          finish();
-        } catch {
-          if (cancelled) return;
-          finish();
-          setFailed(true);
-          if (retryCount < 2) {
-            window.setTimeout(() => {
-              if (cancelled) return;
-              setFailed(false);
-              setStarted(false);
-              setRetryCount((count) => count + 1);
-            }, 1200 * (retryCount + 1));
-          }
-        }
-      })();
-    }, finish);
-    return () => {
-      cancelled = true;
-      cancel();
-    };
-  }, [finish, historyId, load, retryCount, started, userId]);
-
+function HistoryThumbnail({ imageUrl }: { imageUrl: string }) {
   return (
-    <div ref={hostRef} className="h-full w-full">
-      {started && resolvedSrc && !failed ? (
-        <img
-          src={resolvedSrc}
-          alt=""
-          width={1024}
-          height={1024}
-          loading="lazy"
-          decoding="async"
-          onLoad={finish}
-          onError={() => {
-            finish();
-            setFailed(true);
-          }}
-          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-        />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center text-[10px] text-white/55">
-          {failed ? "预览重试中…" : "图片加载中…"}
-        </div>
-      )}
-    </div>
+    <img src={imageUrl} alt="" width={1024} height={1024} loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
   );
 }
 
@@ -317,11 +145,7 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
   const [loadingMore, setLoadingMore] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
-  const thumbnailUrl = currentHistoryId && isArchivedGeneratedImageUrl(generatedUrl)
-    ? `/api/history-thumbnail/${encodeURIComponent(String(currentHistoryId))}`
-    : null;
-  const generatedPreviewUrl = currentHistoryId ? null : getGeneratedPreviewPublicUrlFromOriginalUrl(generatedUrl);
-  const { blobUrl: thumbnailBlobUrl, loading: thumbnailLoading } = useAuthenticatedThumbnail(thumbnailUrl, userId);
+  const generatedPreviewUrl = generatedUrl;
   const fetchHistory = useServerFn(getMyGenerationHistory);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const historySentinelRef = useRef<HTMLDivElement | null>(null);
@@ -382,15 +206,8 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
         };
         if (cancelled) return;
         setCachedHistoryFirstPage(userId, firstPage);
-        const items = (firstPage.items ?? []).slice(0, PAGE_SIZE);
-        for (let offset = 0; offset < items.length; offset += PREWARM_PREVIEW_CONCURRENCY) {
-          if (cancelled) return;
-          await Promise.all(items.slice(offset, offset + PREWARM_PREVIEW_CONCURRENCY).map((item) =>
-            loadHistoryPreview(userId, item.id).catch(() => null),
-          ));
-        }
       } catch {
-        // Drawer loading remains the fallback when background prewarm is unavailable.
+        // History loading remains the fallback when the cache warm-up is unavailable.
       }
     })();
     return () => { cancelled = true; };
@@ -524,8 +341,6 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
             >
               <GeneratedPreviewImage
                 previewSrc={generatedPreviewUrl}
-                thumbnailSrc={thumbnailBlobUrl}
-                thumbnailLoading={thumbnailLoading}
                 alt="生成结果"
                 className="absolute inset-0"
               />
@@ -616,7 +431,7 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
                           }}
                           className="absolute inset-0"
                         >
-                          <HistoryThumbnail historyId={item.id} userId={userId ?? ""} />
+                          <HistoryThumbnail imageUrl={item.originalImageUrl} />
                         </button>
                         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/0 opacity-0 transition-opacity group-hover:opacity-100" />
                         {isAdmin && (
@@ -675,8 +490,7 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
       {lightbox && (
         <Lightbox
           downloadSrc={lightbox.originalImageUrl}
-          userId={userId}
-          historyId={lightbox.id}
+          previewUrl={lightbox.originalImageUrl}
           prompt={lightbox.prompt ?? ""}
           model={lightbox.model}
           filename={`lovable-${lightbox.model}-${lightbox.id}.png`}
@@ -687,10 +501,8 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
         <Lightbox
           downloadSrc={generatedUrl}
           previewUrl={generatedPreviewUrl}
-          userId={userId}
-          historyId={currentHistoryId ?? undefined}
-          thumbnailSrc={thumbnailBlobUrl ?? undefined}
-          thumbnailLoading={thumbnailLoading}
+          thumbnailSrc={generatedUrl}
+          thumbnailLoading={false}
           prompt={heroPrompt}
           model={heroModel}
           filename={`lovable-${Date.now()}.png`}
@@ -967,55 +779,6 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
   );
 }
 
-function useAuthenticatedThumbnail(url: string | null, userId?: string | null) {
-  const historyId = url?.split("/").pop() ?? null;
-  const validScope = !!url && !!historyId && !!userId;
-  const cached = validScope ? getCachedPreview(userId!, historyId!) : null;
-  const [blobUrl, setBlobUrl] = useState<string | null>(cached);
-  const [loading, setLoading] = useState(validScope && !cached);
-  const [failed, setFailed] = useState(false);
-  const requestVersionRef = useRef(0);
-
-  useEffect(() => {
-    requestVersionRef.current += 1;
-    const requestVersion = requestVersionRef.current;
-    if (!validScope) {
-      setBlobUrl(null);
-      setLoading(false);
-      setFailed(false);
-      return;
-    }
-    const existing = getCachedPreview(userId!, historyId!);
-    if (existing) {
-      setBlobUrl(existing);
-      setLoading(false);
-      setFailed(false);
-      return;
-    }
-    let cancelled = false;
-    setBlobUrl(null);
-    setLoading(true);
-    setFailed(false);
-    void loadHistoryPreview(userId!, historyId!).then((nextBlobUrl) => {
-      if (!cancelled && requestVersion === requestVersionRef.current) {
-        setBlobUrl(nextBlobUrl);
-        setLoading(false);
-      }
-    }).catch(() => {
-      if (!cancelled && requestVersion === requestVersionRef.current) {
-        setBlobUrl(null);
-        setLoading(false);
-        setFailed(true);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [historyId, userId, validScope]);
-
-  return { blobUrl, loading, failed };
-}
-
 function GeneratedPreviewImage({ previewSrc, thumbnailSrc, thumbnailLoading = false, alt, className, imageClassName }: { previewSrc?: string | null; thumbnailSrc?: string | null; thumbnailLoading?: boolean; alt: string; className?: string; imageClassName?: string }) {
   const src = thumbnailSrc ?? (thumbnailLoading ? null : previewSrc);
   const [loading, setLoading] = useState(!!src || thumbnailLoading);
@@ -1047,39 +810,15 @@ function GeneratedPreviewImage({ previewSrc, thumbnailSrc, thumbnailLoading = fa
   );
 }
 
-function Lightbox({ downloadSrc, previewUrl, userId, historyId, thumbnailSrc, thumbnailLoading = false, prompt, model, filename, onClose }: { downloadSrc: string; previewUrl?: string | null; userId?: string | null; historyId?: string | null; thumbnailSrc?: string; thumbnailLoading?: boolean; prompt: string; model: string; filename: string; onClose: () => void }) {
-  const [previewSrc, setPreviewSrc] = useState<string | null>(() =>
-    userId && historyId ? getCachedPreview(userId, historyId) : thumbnailSrc ?? previewUrl ?? null,
-  );
+function Lightbox({ downloadSrc, previewUrl, thumbnailSrc, thumbnailLoading = false, prompt, model, filename, onClose }: { downloadSrc: string; previewUrl?: string | null; thumbnailSrc?: string; thumbnailLoading?: boolean; prompt: string; model: string; filename: string; onClose: () => void }) {
+  const [previewSrc, setPreviewSrc] = useState<string | null>(thumbnailSrc ?? previewUrl ?? null);
   const [previewLoading, setPreviewLoading] = useState(!previewSrc);
 
   useEffect(() => {
-    if (!userId || !historyId) {
-      setPreviewSrc(thumbnailSrc ?? previewUrl ?? null);
-      setPreviewLoading(!thumbnailSrc && !previewUrl);
-      return;
-    }
-    const cached = getCachedPreview(userId, historyId);
-    if (cached) {
-      setPreviewSrc(cached);
-      setPreviewLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setPreviewLoading(true);
-    void loadHistoryPreview(userId, historyId).then((value) => {
-      if (!cancelled) {
-        setPreviewSrc(value);
-        setPreviewLoading(false);
-      }
-    }).catch(() => {
-      if (!cancelled) {
-        setPreviewSrc(null);
-        setPreviewLoading(false);
-      }
-    });
-    return () => { cancelled = true; };
-  }, [historyId, previewUrl, thumbnailSrc, userId]);
+    const nextSrc = thumbnailSrc ?? previewUrl ?? null;
+    setPreviewSrc(nextSrc);
+    setPreviewLoading(!nextSrc);
+  }, [previewUrl, thumbnailSrc]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
