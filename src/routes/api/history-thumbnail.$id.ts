@@ -40,6 +40,20 @@ function getPreviewResponse(request: Request, object: Awaited<ReturnType<typeof 
   return new Response(object.body, { status: 200, headers });
 }
 
+async function getOriginalImageResponse(imageUrl: string | null | undefined): Promise<Response> {
+  if (!imageUrl) return new Response("Preview unavailable", { status: 502 });
+  try {
+    const response = await fetch(imageUrl);
+    if (!response.ok || !response.body) return new Response("Preview unavailable", { status: 502 });
+    const headers = new Headers(response.headers);
+    headers.set("Cache-Control", GENERATED_PREVIEW_CACHE_CONTROL);
+    headers.set("Vary", "Authorization");
+    return new Response(response.body, { status: 200, headers });
+  } catch {
+    return new Response("Preview unavailable", { status: 502 });
+  }
+}
+
 export const Route = createFileRoute("/api/history-thumbnail/$id")({
   server: {
     handlers: {
@@ -65,17 +79,21 @@ export const Route = createFileRoute("/api/history-thumbnail/$id")({
         }
 
         const previewKey = getGeneratedPreviewKeyFromPublicUrl(row.image_url);
-        if (!previewKey) return new Response("Preview unavailable", { status: 404 });
+        if (!previewKey) return getOriginalImageResponse(row.image_url);
 
-        const cloudflareEnv = getCloudflareEnv();
-        let preview = await getGeneratedPreviewObject(previewKey, cloudflareEnv);
-        if (!preview) {
-          const ensured = await ensureGeneratedPreviewFromOriginalUrl(row.image_url ?? "", cloudflareEnv);
-          if (!ensured) return new Response("Preview unavailable", { status: 502 });
-          preview = await getGeneratedPreviewObject(previewKey, cloudflareEnv);
+        try {
+          const cloudflareEnv = getCloudflareEnv();
+          let preview = await getGeneratedPreviewObject(previewKey, cloudflareEnv);
+          if (!preview) {
+            const ensured = await ensureGeneratedPreviewFromOriginalUrl(row.image_url ?? "", cloudflareEnv);
+            if (!ensured) return getOriginalImageResponse(row.image_url);
+            preview = await getGeneratedPreviewObject(previewKey, cloudflareEnv);
+          }
+
+          return preview ? getPreviewResponse(request, preview) : getOriginalImageResponse(row.image_url);
+        } catch {
+          return getOriginalImageResponse(row.image_url);
         }
-
-        return getPreviewResponse(request, preview);
       },
     },
   },
