@@ -13,7 +13,7 @@ import {
   validateGptImageProProviderPayload,
 } from "@/lib/gpt-image-pro-provider-contract";
 import { archiveGeneratedImageToR2, deleteGeneratedImageFromR2Url } from "@/lib/r2-image-archive";
-import type { AdminConfigDatabase, BusinessDatabase, GenerationTask, ModelConfig } from "@/lib/business-database";
+import type { AdminConfigDatabase, BusinessDatabase, GenerationTask, ImagePreviewMode, ModelConfig } from "@/lib/business-database";
 import { creditsToCentiCredit } from "@/lib/business-database";
 import { createBusinessDatabaseFromContext } from "@/lib/business-database-router";
 import { assertLovableOnlyLegacyWrite } from "@/lib/legacy-lovable-guard";
@@ -2735,6 +2735,27 @@ export const adminSetSystemPrompt = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
     await getD1ConfigDb(context).updateAdminSettings({ system_prompt: data.system_prompt });
+    return { ok: true };
+  });
+
+export const adminGetImagePreviewMode = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context.userId);
+    const data = await getBusinessDb(context).getAdminSettings();
+    const mode = data?.image_preview_mode;
+    return {
+      image_preview_mode: mode === "auto" || mode === "preview_only" || mode === "original_only" ? mode : "original_only",
+      updated_at: data?.updated_at ?? null,
+    } as { image_preview_mode: ImagePreviewMode; updated_at: string | null };
+  });
+
+export const adminSetImagePreviewMode = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ image_preview_mode: z.enum(["auto", "preview_only", "original_only"]) }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    await getD1ConfigDb(context).updateAdminSettings({ image_preview_mode: data.image_preview_mode });
     return { ok: true };
   });
 

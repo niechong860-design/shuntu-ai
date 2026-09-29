@@ -12,11 +12,14 @@ import {
   adminSetSystemPrompt,
   adminGetContactInfo,
   adminSetContactInfo,
+  adminGetImagePreviewMode,
+  adminSetImagePreviewMode,
 } from "@/lib/admin.functions";
 import { uploadImageToR2 } from "@/lib/r2-upload-client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
-import { Save, Upload, RefreshCw, ImageIcon, FileText, Palette, Headphones, Plus, Trash2 } from "lucide-react";
+import { Save, Upload, RefreshCw, ImageIcon, FileText, Palette, Headphones, Plus, Trash2, SlidersHorizontal } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { thumbUrl } from "@/lib/image-url";
 
 type Tpl = {
@@ -33,6 +36,61 @@ export function StyleTemplatesPanel() {
     <div className="space-y-6">
       <ContactInfoCard />
       <SystemPromptCard />
+      <ImagePreviewModeCard />
+    </div>
+  );
+}
+
+type ImagePreviewMode = "auto" | "preview_only" | "original_only";
+
+function ImagePreviewModeCard() {
+  const getFn = useServerFn(adminGetImagePreviewMode);
+  const setFn = useServerFn(adminSetImagePreviewMode);
+  const [mode, setMode] = useState<ImagePreviewMode>("original_only");
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = async () => {
+    try {
+      const r = await getFn({});
+      setMode(r.image_preview_mode);
+      setUpdatedAt(r.updated_at ?? null);
+    } catch (e: any) { toast.error(e.message); }
+  };
+  useEffect(() => { load(); }, []);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await setFn({ data: { image_preview_mode: mode } });
+      toast.success("已保存图片展示模式");
+      load();
+    } catch (e: any) { toast.error(e.message); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="rounded-lg border border-border/60 bg-white/[0.03] p-4 space-y-3">
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <SlidersHorizontal className="h-4 w-4 text-primary" />
+        图片展示策略
+      </div>
+      <p className="text-xs text-muted-foreground">控制历史图片和当前生成结果的预览来源，不影响原图下载。</p>
+      <Select value={mode} onValueChange={(value) => setMode(value as ImagePreviewMode)}>
+        <SelectTrigger className="w-full sm:w-[260px]"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="auto">自动：优先压缩图，失败回退原图</SelectItem>
+          <SelectItem value="preview_only">仅压缩图：失败时显示错误</SelectItem>
+          <SelectItem value="original_only">仅原图：跳过压缩图</SelectItem>
+        </SelectContent>
+      </Select>
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] text-muted-foreground">{updatedAt ? `最后更新：${new Date(updatedAt).toLocaleString()}` : ""}</span>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={load}><RefreshCw className="mr-1.5 h-3.5 w-3.5" />刷新</Button>
+          <Button size="sm" onClick={save} disabled={busy}><Save className="mr-1.5 h-3.5 w-3.5" />保存</Button>
+        </div>
+      </div>
     </div>
   );
 }
