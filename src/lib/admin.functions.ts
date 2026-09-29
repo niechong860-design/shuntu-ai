@@ -13,7 +13,8 @@ import {
   validateGptImageProProviderPayload,
 } from "@/lib/gpt-image-pro-provider-contract";
 import { archiveGeneratedImageToR2, deleteGeneratedImageFromR2Url } from "@/lib/r2-image-archive";
-import type { BusinessDatabase, GenerationTask, ModelConfig } from "@/lib/business-database";
+import type { AdminConfigDatabase, BusinessDatabase, GenerationTask, ModelConfig } from "@/lib/business-database";
+import { creditsToCentiCredit } from "@/lib/business-database";
 import { createBusinessDatabaseFromContext } from "@/lib/business-database-router";
 import { assertLovableOnlyLegacyWrite } from "@/lib/legacy-lovable-guard";
 
@@ -39,6 +40,12 @@ type HistoryPruneRow = {
 
 function getBusinessDb(context: unknown): BusinessDatabase {
   return createBusinessDatabaseFromContext(context as Parameters<typeof createBusinessDatabaseFromContext>[0]);
+}
+
+function getD1ConfigDb(context: unknown): BusinessDatabase & AdminConfigDatabase {
+  const db = getBusinessDb(context);
+  if (db.primary !== "d1") throw new Error("后台配置写入需要 DATABASE_PRIMARY=d1");
+  return db as BusinessDatabase & AdminConfigDatabase;
 }
 
 async function stableTextHash(value: string): Promise<string> {
@@ -354,12 +361,7 @@ export const adminUpdateModelPrice = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    assertLovableOnlyLegacyWrite(context, "adminUpdateModelPrice");
-    const { error } = await supabaseAdmin
-      .from("models_config")
-      .update({ cost: data.cost, updated_at: new Date().toISOString() })
-      .eq("id", data.id);
-    if (error) throw new Error(error.message);
+    await getD1ConfigDb(context).updateModel({ id: data.id, patch: { cost: creditsToCentiCredit(data.cost) } });
     return { ok: true };
   });
 
@@ -384,11 +386,9 @@ export const adminUpdateModel = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    assertLovableOnlyLegacyWrite(context, "adminUpdateModel");
     const { id, ...rest } = data;
-    const patch = { ...rest, updated_at: new Date().toISOString() };
-    const { error } = await supabaseAdmin.from("models_config").update(patch as never).eq("id", id);
-    if (error) throw new Error(error.message);
+    const patch = { ...rest, ...(rest.cost === undefined ? {} : { cost: creditsToCentiCredit(rest.cost) }) };
+    await getD1ConfigDb(context).updateModel({ id, patch });
     return { ok: true };
   });
 
@@ -411,26 +411,19 @@ export const adminCreateModel = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    assertLovableOnlyLegacyWrite(context, "adminCreateModel");
-    const { data: row, error } = await supabaseAdmin
-      .from("models_config")
-      .insert({
-        name: data.name,
-        model_key: data.model_key,
-        description: data.description ?? null,
-        cost: data.cost,
-        api_url: data.api_url ?? null,
-        api_key: data.api_key ?? null,
-        request_format: data.request_format,
-        prompt_key: data.prompt_key,
-        fetch_url: data.fetch_url ?? null,
-        extra_params: data.extra_params ?? {},
-        sort_order: data.sort_order ?? 999,
-      })
-      .select("id")
-      .single();
-    if (error) throw new Error(error.message);
-    return row;
+    return await getD1ConfigDb(context).createModel({
+      name: data.name,
+      model_key: data.model_key,
+      description: data.description ?? null,
+      cost: creditsToCentiCredit(data.cost),
+      api_url: data.api_url ?? null,
+      api_key: data.api_key ?? null,
+      request_format: data.request_format,
+      prompt_key: data.prompt_key,
+      fetch_url: data.fetch_url ?? null,
+      extra_params: data.extra_params ?? {},
+      sort_order: data.sort_order ?? 999,
+    });
   });
 
 export const adminDeleteModel = createServerFn({ method: "POST" })
@@ -438,9 +431,7 @@ export const adminDeleteModel = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    assertLovableOnlyLegacyWrite(context, "adminDeleteModel");
-    const { error } = await supabaseAdmin.from("models_config").delete().eq("id", data.id);
-    if (error) throw new Error(error.message);
+    await getD1ConfigDb(context).deleteModel(data.id);
     return { ok: true };
   });
 
@@ -2400,7 +2391,6 @@ export const upsertAdminRechargePackage = createServerFn({ method: "POST" })
   .inputValidator((d) => rechargePackageInput.parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    assertLovableOnlyLegacyWrite(context, "upsertAdminRechargePackage");
     const title = data.title.trim();
     const price = data.price.trim();
     if (!title) throw new Error("套餐名称不能为空");
@@ -2423,22 +2413,8 @@ export const upsertAdminRechargePackage = createServerFn({ method: "POST" })
       purchase_url: purchaseUrl,
     };
 
-    if (data.id) {
-      const { error } = await (supabaseAdmin as any)
-        .from("recharge_packages")
-        .update(payload)
-        .eq("id", data.id);
-      if (error) throw new Error(error.message);
-      return { ok: true, id: data.id };
-    }
-
-    const { data: inserted, error } = await (supabaseAdmin as any)
-      .from("recharge_packages")
-      .insert(payload)
-      .select("id")
-      .single();
-    if (error) throw new Error(error.message);
-    return { ok: true, id: inserted?.id };
+    const result = await getD1ConfigDb(context).upsertRechargePackage(payload);
+    return { ok: true, id: result.id };
   });
 
 export const hideAdminRechargePackage = createServerFn({ method: "POST" })
@@ -2446,12 +2422,7 @@ export const hideAdminRechargePackage = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    assertLovableOnlyLegacyWrite(context, "hideAdminRechargePackage");
-    const { error } = await (supabaseAdmin as any)
-      .from("recharge_packages")
-      .update({ is_visible: false })
-      .eq("id", data.id);
-    if (error) throw new Error(error.message);
+    await getD1ConfigDb(context).hideRechargePackage(data.id);
     return { ok: true };
   });
 
@@ -2460,12 +2431,7 @@ export const deleteAdminRechargePackage = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    assertLovableOnlyLegacyWrite(context, "deleteAdminRechargePackage");
-    const { error } = await (supabaseAdmin as any)
-      .from("recharge_packages")
-      .delete()
-      .eq("id", data.id);
-    if (error) throw new Error(error.message);
+    await getD1ConfigDb(context).deleteRechargePackage(data.id);
     return { ok: true };
   });
 
@@ -2510,20 +2476,7 @@ export const adminUpsertAd = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    assertLovableOnlyLegacyWrite(context, "adminUpsertAd");
-    if (data.id) {
-      const { error } = await supabaseAdmin.from("ads").update({
-        title: data.title, link_url: data.link_url ?? null,
-        is_active: data.is_active, sort_order: data.sort_order,
-      }).eq("id", data.id);
-      if (error) throw new Error(error.message);
-    } else {
-      const { error } = await supabaseAdmin.from("ads").insert({
-        title: data.title, link_url: data.link_url ?? null,
-        is_active: data.is_active, sort_order: data.sort_order,
-      });
-      if (error) throw new Error(error.message);
-    }
+    await getD1ConfigDb(context).upsertAd({ id: data.id, title: data.title, link_url: data.link_url ?? null, is_active: data.is_active, sort_order: data.sort_order });
     return { ok: true };
   });
 
@@ -2532,9 +2485,7 @@ export const adminDeleteAd = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    assertLovableOnlyLegacyWrite(context, "adminDeleteAd");
-    const { error } = await supabaseAdmin.from("ads").delete().eq("id", data.id);
-    if (error) throw new Error(error.message);
+    await getD1ConfigDb(context).deleteAd(data.id);
     return { ok: true };
   });
 
@@ -2590,7 +2541,6 @@ export const adminUpsertAnnouncement = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    assertLovableOnlyLegacyWrite(context, "adminUpsertAnnouncement");
     const payload = {
       title: data.title,
       content: data.content ?? "",
@@ -2601,13 +2551,7 @@ export const adminUpsertAnnouncement = createServerFn({ method: "POST" })
       is_pinned: data.is_pinned,
       is_published: data.is_published,
     };
-    if (data.id) {
-      const { error } = await supabaseAdmin.from("announcements").update(payload).eq("id", data.id);
-      if (error) throw new Error(error.message);
-    } else {
-      const { error } = await supabaseAdmin.from("announcements").insert(payload);
-      if (error) throw new Error(error.message);
-    }
+    await getD1ConfigDb(context).upsertAnnouncement({ ...payload, id: data.id });
     return { ok: true };
   });
 
@@ -2616,9 +2560,7 @@ export const adminDeleteAnnouncement = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    assertLovableOnlyLegacyWrite(context, "adminDeleteAnnouncement");
-    const { error } = await supabaseAdmin.from("announcements").delete().eq("id", data.id);
-    if (error) throw new Error(error.message);
+    await getD1ConfigDb(context).deleteAnnouncement(data.id);
     return { ok: true };
   });
 
@@ -2706,11 +2648,7 @@ export const founderSetAccessPassword = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ password: z.string().min(1).max(200) }).parse(d))
   .handler(async ({ data, context }) => {
     await assertFounder(context.userId);
-    assertLovableOnlyLegacyWrite(context, "founderSetAccessPassword");
-    const { error } = await supabaseAdmin
-      .from("admin_settings")
-      .upsert({ id: 1, access_password: data.password.trim(), updated_at: new Date().toISOString() });
-    if (error) throw new Error(error.message);
+    await getD1ConfigDb(context).updateAdminSettings({ access_password: data.password.trim() });
     return { ok: true };
   });
 
@@ -2751,11 +2689,8 @@ export const adminUpdateStyleTemplate = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    assertLovableOnlyLegacyWrite(context, "adminUpdateStyleTemplate");
     const { id, ...rest } = data;
-    const patch: Record<string, unknown> = { ...rest, updated_at: new Date().toISOString() };
-    const { error } = await supabaseAdmin.from("style_templates").update(patch as never).eq("id", id);
-    if (error) throw new Error(error.message);
+    await getD1ConfigDb(context).updateStyleTemplate({ id, patch: rest });
     return { ok: true };
   });
 
@@ -2770,23 +2705,10 @@ export const adminCreateStyleTemplate = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    assertLovableOnlyLegacyWrite(context, "adminCreateStyleTemplate");
     const id = `tpl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
-    const { data: maxRow } = await supabaseAdmin
-      .from("style_templates")
-      .select("sort_order")
-      .order("sort_order", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const sort_order = ((maxRow?.sort_order as number | undefined) ?? 0) + 10;
-    const { error } = await supabaseAdmin.from("style_templates").insert({
-      id,
-      name: data.name,
-      prompt: data.prompt ?? "",
-      image_url: data.image_url ?? null,
-      sort_order,
-    } as never);
-    if (error) throw new Error(error.message);
+    const templates = await getBusinessDb(context).listStyleTemplates();
+    const sort_order = (Math.max(0, ...templates.map((row) => Number(row.sort_order ?? 0))) || 0) + 10;
+    await getD1ConfigDb(context).createStyleTemplate({ id, name: data.name, prompt: data.prompt ?? "", image_url: data.image_url ?? null, sort_order });
     return { ok: true, id };
   });
 
@@ -2795,9 +2717,7 @@ export const adminDeleteStyleTemplate = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ id: z.string().min(1).max(64) }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    assertLovableOnlyLegacyWrite(context, "adminDeleteStyleTemplate");
-    const { error } = await supabaseAdmin.from("style_templates").delete().eq("id", data.id);
-    if (error) throw new Error(error.message);
+    await getD1ConfigDb(context).deleteStyleTemplate(data.id);
     return { ok: true };
   });
 
@@ -2814,11 +2734,7 @@ export const adminSetSystemPrompt = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ system_prompt: z.string().max(4000) }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    assertLovableOnlyLegacyWrite(context, "adminSetSystemPrompt");
-    const { error } = await supabaseAdmin
-      .from("admin_settings")
-      .upsert({ id: 1, system_prompt: data.system_prompt, updated_at: new Date().toISOString() });
-    if (error) throw new Error(error.message);
+    await getD1ConfigDb(context).updateAdminSettings({ system_prompt: data.system_prompt });
     return { ok: true };
   });
 
@@ -2854,16 +2770,7 @@ export const adminSetContactInfo = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    assertLovableOnlyLegacyWrite(context, "adminSetContactInfo");
-    const { error } = await supabaseAdmin
-      .from("admin_settings")
-      .upsert({
-        id: 1,
-        contact_wechat: data.wechat.trim(),
-        contact_qq: data.qq.trim(),
-        updated_at: new Date().toISOString(),
-      } as never);
-    if (error) throw new Error(error.message);
+    await getD1ConfigDb(context).updateAdminSettings({ contact_wechat: data.wechat.trim(), contact_qq: data.qq.trim() });
     return { ok: true };
   });
 

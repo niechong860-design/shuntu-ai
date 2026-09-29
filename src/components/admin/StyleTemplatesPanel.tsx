@@ -13,7 +13,7 @@ import {
   adminGetContactInfo,
   adminSetContactInfo,
 } from "@/lib/admin.functions";
-import { supabase } from "@/integrations/supabase/client";
+import { uploadImageToR2 } from "@/lib/r2-upload-client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { Save, Upload, RefreshCw, ImageIcon, FileText, Palette, Headphones, Plus, Trash2 } from "lucide-react";
@@ -274,14 +274,8 @@ function TemplateCard({ tpl, onSaved }: { tpl: Tpl; onSaved: () => void }) {
     if (f.size > 5 * 1024 * 1024) return toast.error("图片大小请小于 5MB");
     setUploading(true);
     try {
-      const ext = (f.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
-      const path = `style-templates/${tpl.id}-${Date.now()}.${ext}`;
-      const { error } = await supabase.storage
-        .from("admin-assets")
-        .upload(path, f, { cacheControl: "3600", contentType: f.type, upsert: true });
-      if (error) throw error;
-      const { data: pub } = supabase.storage.from("admin-assets").getPublicUrl(path);
-      setImageUrl(pub.publicUrl);
+      const { url } = await uploadImageToR2(f, "style-template-image");
+      setImageUrl(url);
       toast.success("图片已上传，记得点保存");
     } catch (err: any) {
       toast.error(err.message ?? "上传失败");

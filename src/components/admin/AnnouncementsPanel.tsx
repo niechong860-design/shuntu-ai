@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { supabase } from "@/integrations/supabase/client";
+import { uploadImageToR2 } from "@/lib/r2-upload-client";
 import {
   adminListAnnouncements,
   adminUpsertAnnouncement,
@@ -49,15 +49,8 @@ export function AnnouncementsPanel() {
     if (file.size > 10 * 1024 * 1024) return toast.error("图片需小于 10MB");
     setUploading(true);
     try {
-      const ext = file.name.split(".").pop() || "png";
-      const path = `announcements/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-      const { error } = await supabase.storage.from("admin-assets").upload(path, file, {
-        cacheControl: "3600",
-        upsert: false,
-      });
-      if (error) throw error;
-      const { data } = supabase.storage.from("admin-assets").getPublicUrl(path);
-      setEditing((prev) => (prev ? { ...prev, image_url: data.publicUrl } : prev));
+      const { url } = await uploadImageToR2(file, "announcement-image");
+      setEditing((prev) => (prev ? { ...prev, image_url: url } : prev));
       toast.success("图片已上传");
     } catch (e: any) {
       toast.error(e.message || "上传失败");

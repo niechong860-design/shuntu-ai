@@ -1,0 +1,1 @@
+ALTER TABLE public.models_config ADD COLUMN IF NOT EXISTS extra_params jsonb NOT NULL DEFAULT '{}'::jsonb;
