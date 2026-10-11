@@ -131,7 +131,6 @@ export const adminListUsers = createServerFn({ method: "POST" })
     if (db.primary !== "d1" || !db.listAdminUserBusinessRows) throw new Error("admin user listing requires D1 primary");
     const profiles = await db.listAdminUserBusinessRows();
     const banMap = new Map<string, boolean>();
-    const authUsers: Array<{ id: string; email: string | null; created_at: string }> = [];
     try {
       let page = 1;
       while (page < 20) {
@@ -140,33 +139,16 @@ export const adminListUsers = createServerFn({ method: "POST" })
         for (const u of au?.users ?? []) {
           const until = (u as any).banned_until as string | null | undefined;
           banMap.set(u.id, !!until && new Date(until).getTime() > Date.now());
-          authUsers.push({ id: u.id, email: u.email ?? null, created_at: (u as any).created_at ?? new Date().toISOString() });
         }
         if (!au || au.users.length < 1000) break;
         page++;
       }
     } catch { /* ignore */ }
 
-    // 合并：以 auth.users 为基准，profile 缺失则用 auth 信息补齐（保证新注册用户也能显示）
-    const profileMap = new Map<string, any>();
-    for (const p of profiles) profileMap.set(p.id, p);
-    const authMap = new Map(authUsers.map((user) => [user.id, user]));
-    const userIds = new Set([...profileMap.keys(), ...authMap.keys()]);
-    const merged = Array.from(userIds).map((id) => {
-      const au = authMap.get(id);
-      const p = profileMap.get(id);
-      return {
-        id,
-        email: p?.email ?? au?.email ?? null,
-        display_name: p?.display_name ?? null,
-        credits: Number(p?.credits ?? 0),
-        created_at: p?.created_at ?? au?.created_at ?? new Date(0).toISOString(),
-        total_spent: Number(p?.total_spent ?? 0),
-        is_banned: banMap.get(id) ?? false,
-      };
-    });
-    merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    return merged;
+    return profiles.map((profile) => ({
+      ...profile,
+      is_banned: banMap.get(profile.id) ?? false,
+    }));
   });
 
 export const adminGetUserCreditUsageLogs = createServerFn({ method: "POST" })
@@ -2253,48 +2235,25 @@ export const adminGetAnalytics = createServerFn({ method: "POST" })
     const { startUtc, endUtc } = getBeijingDayRange();
     const db = getBusinessDb(context);
     if (db.primary !== "d1" || !db.getAdminAnalyticsData) throw new Error("admin analytics requires D1 primary");
-    const analytics = await db.getAdminAnalyticsData();
-    const todayProfiles = analytics.profiles.filter((profile) => profile.created_at >= startUtc && profile.created_at < endUtc);
-    const todayUsage = analytics.usage.filter((row) => row.created_at >= startUtc && row.created_at < endUtc);
-    const allUsage = analytics.usage;
-    const todayCostSum = todayUsage.reduce((s, r) => s + Number(r.amount ?? 0), 0);
-
-    const groupBy = (rows: Array<{ model_key: string | null; model_name: string | null; amount: number | string }>) => {
-      const map = new Map<string, { count: number; cost: number }>();
-      for (const r of rows) {
-        const k = r.model_name || r.model_key || "未知";
-        const cur = map.get(k) ?? { count: 0, cost: 0 };
-        cur.count += 1;
-        cur.cost += Number(r.amount ?? 0);
-        map.set(k, cur);
-      }
-      return map;
-    };
-    const todayMap = groupBy(todayUsage);
-    const allMap = groupBy(allUsage);
-
-    const modelKeys = new Set<string>([...todayMap.keys(), ...allMap.keys()]);
-    const models = Array.from(modelKeys).map((m) => ({
-      model: m,
-      todayCount: todayMap.get(m)?.count ?? 0,
-      totalCount: allMap.get(m)?.count ?? 0,
-      totalCost: allMap.get(m)?.cost ?? 0,
-    }));
+    const analytics = await db.getAdminAnalyticsData({ startUtc, endUtc });
 
     return {
       metrics: {
-        todayUsers: todayProfiles.length,
-        todayCost: todayCostSum,
-        totalUsers: analytics.profiles.length,
+        todayUsers: analytics.todayUsers,
+        todayCost: analytics.todayCost,
+        totalUsers: analytics.totalUsers,
+        totalIncome: analytics.totalIncome,
+        totalSpent: analytics.totalSpent,
+        totalBalance: analytics.totalBalance,
         unusedCoupons: analytics.unusedCoupons,
       },
-      models,
+      models: analytics.models,
       dayRange: {
         timezone: "Asia/Shanghai",
         startUtc,
         endUtc,
       },
-      todayRegistrations: todayProfiles.slice(0, 50).map((r) => ({
+      todayRegistrations: analytics.todayRegistrations.map((r) => ({
         id: r.id,
         email: r.email,
         credits: Number(r.credits ?? 0),

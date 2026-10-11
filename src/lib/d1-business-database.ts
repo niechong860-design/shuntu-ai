@@ -454,7 +454,11 @@ export class D1BusinessDatabase implements BusinessDatabase {
 
   async listAdminUserBusinessRows(): Promise<AdminUserBusinessRow[]> {
     const rows = await this.all<RawRow>(`
-      SELECT p.*, COALESCE(SUM(l.amount), 0) AS total_spent
+      SELECT p.*, COALESCE(SUM(CASE
+        WHEN l.source IN ('generation_task', 'legacy_generation', 'backfill_generation_history', 'admin_generation_task') THEN l.amount
+        WHEN l.source = 'admin_adjustment' AND CAST(json_extract(CASE WHEN json_valid(l.metadata) THEN l.metadata ELSE '{}' END, '$.delta') AS REAL) < 0 THEN l.amount
+        ELSE 0
+      END), 0) AS total_spent
       FROM profiles p
       LEFT JOIN credit_usage_logs l ON l.user_id = p.id
       GROUP BY p.id
@@ -466,7 +470,18 @@ export class D1BusinessDatabase implements BusinessDatabase {
   async listAdminCreditUsageLogs(input: { userId: string; limit: number; offset: number }): Promise<{ rows: AdminCreditUsageLogRow[]; total: number }> {
     const total = await this.first<{ count: number }>("SELECT COUNT(*) AS count FROM credit_usage_logs WHERE user_id = ?", input.userId);
     const rows = await this.all<RawRow>(`
-      SELECT l.*, h.image_url
+      SELECT l.*,
+        CASE
+          WHEN l.source IN ('payment', 'coupon_redeem') THEN l.amount
+          WHEN l.source = 'admin_adjustment' THEN CASE
+            WHEN CAST(json_extract(CASE WHEN json_valid(l.metadata) THEN l.metadata ELSE '{}' END, '$.delta') AS REAL) > 0 THEN l.amount
+            WHEN CAST(json_extract(CASE WHEN json_valid(l.metadata) THEN l.metadata ELSE '{}' END, '$.delta') AS REAL) < 0 THEN -l.amount
+            ELSE 0
+          END
+          WHEN l.source IN ('generation_task', 'legacy_generation', 'backfill_generation_history', 'admin_generation_task') THEN -l.amount
+          ELSE 0
+        END AS signed_amount,
+        h.image_url
       FROM credit_usage_logs l
       LEFT JOIN generation_history h ON h.id = l.generation_history_id AND h.user_id = l.user_id
       WHERE l.user_id = ?
@@ -477,7 +492,7 @@ export class D1BusinessDatabase implements BusinessDatabase {
       rows: rows.map((row) => ({
         id: String(row.id),
         user_id: String(row.user_id),
-        amount: centiCreditToCredits(row.amount as number),
+        amount: centiCreditToCredits(row.signed_amount as number),
         source: String(row.source),
         model_key: asNullableString(row.model_key),
         model_name: asNullableString(row.model_name),
@@ -492,20 +507,51 @@ export class D1BusinessDatabase implements BusinessDatabase {
     };
   }
 
-  async getAdminAnalyticsData(): Promise<AdminAnalyticsData> {
-    const [profiles, usage, coupons] = await Promise.all([
-      this.all<RawRow>("SELECT * FROM profiles ORDER BY created_at DESC"),
-      this.all<RawRow>("SELECT model_key, model_name, amount, created_at FROM credit_usage_logs"),
+  async getAdminAnalyticsData(input: { startUtc: string; endUtc: string }): Promise<AdminAnalyticsData> {
+    const [summary, usage, todayRegistrations, coupons] = await Promise.all([
+      this.first<RawRow>(`
+        SELECT
+          (SELECT COUNT(*) FROM profiles) AS total_users,
+          (SELECT COUNT(*) FROM profiles WHERE created_at >= ? AND created_at < ?) AS today_users,
+          (SELECT COALESCE(SUM(credits), 0) FROM profiles) AS total_balance,
+          (SELECT COALESCE(SUM(amount), 0) FROM credit_usage_logs
+            WHERE source IN ('payment', 'coupon_redeem')
+               OR (source = 'admin_adjustment' AND CAST(json_extract(CASE WHEN json_valid(metadata) THEN metadata ELSE '{}' END, '$.delta') AS REAL) > 0)) AS total_income,
+          (SELECT COALESCE(SUM(amount), 0) FROM credit_usage_logs
+            WHERE source IN ('generation_task', 'legacy_generation', 'backfill_generation_history', 'admin_generation_task')
+               OR (source = 'admin_adjustment' AND CAST(json_extract(CASE WHEN json_valid(metadata) THEN metadata ELSE '{}' END, '$.delta') AS REAL) < 0)) AS total_spent,
+          (SELECT COALESCE(SUM(amount), 0) FROM credit_usage_logs
+            WHERE created_at >= ? AND created_at < ? AND (
+              source IN ('generation_task', 'legacy_generation', 'backfill_generation_history', 'admin_generation_task')
+              OR (source = 'admin_adjustment' AND CAST(json_extract(CASE WHEN json_valid(metadata) THEN metadata ELSE '{}' END, '$.delta') AS REAL) < 0)
+            )) AS today_cost
+      `, input.startUtc, input.endUtc, input.startUtc, input.endUtc),
+      this.all<RawRow>(`
+        SELECT COALESCE(NULLIF(model_name, ''), NULLIF(model_key, ''), '未知') AS model,
+          COUNT(*) AS total_count,
+          SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END) AS today_count,
+          SUM(amount) AS total_cost
+        FROM credit_usage_logs
+        WHERE source IN ('generation_task', 'legacy_generation', 'backfill_generation_history', 'admin_generation_task')
+        GROUP BY COALESCE(NULLIF(model_name, ''), NULLIF(model_key, ''), '未知')
+      `, input.startUtc, input.endUtc),
+      this.all<RawRow>("SELECT * FROM profiles WHERE created_at >= ? AND created_at < ? ORDER BY created_at DESC LIMIT 50", input.startUtc, input.endUtc),
       this.first<{ count: number }>("SELECT COUNT(*) AS count FROM coupons WHERE is_used = 0"),
     ]);
     return {
-      profiles: profiles.map(mapProfile),
-      usage: usage.map((row) => ({
-        model_key: asNullableString(row.model_key),
-        model_name: asNullableString(row.model_name),
-        amount: centiCreditToCredits(row.amount as number),
-        created_at: String(row.created_at),
+      totalUsers: Number(summary?.total_users ?? 0),
+      todayUsers: Number(summary?.today_users ?? 0),
+      totalBalance: centiCreditToCredits(Number(summary?.total_balance ?? 0)),
+      totalIncome: centiCreditToCredits(Number(summary?.total_income ?? 0)),
+      totalSpent: centiCreditToCredits(Number(summary?.total_spent ?? 0)),
+      todayCost: centiCreditToCredits(Number(summary?.today_cost ?? 0)),
+      models: usage.map((row) => ({
+        model: String(row.model),
+        todayCount: Number(row.today_count ?? 0),
+        totalCount: Number(row.total_count ?? 0),
+        totalCost: centiCreditToCredits(Number(row.total_cost ?? 0)),
       })),
+      todayRegistrations: todayRegistrations.map(mapProfile),
       unusedCoupons: Number(coupons?.count ?? 0),
     };
   }

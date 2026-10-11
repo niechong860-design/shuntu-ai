@@ -5,7 +5,7 @@ import { TrendingUp, Users, Zap, Ticket, Sparkles, ArrowUpRight, RefreshCw, Wall
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
-type Metrics = { todayUsers: number; todayCost: number; totalUsers: number; unusedCoupons: number };
+type Metrics = { todayUsers: number; todayCost: number; totalUsers: number; totalIncome: number; totalSpent: number; totalBalance: number; unusedCoupons: number };
 type ModelStat = { model: string; todayCount: number; totalCount: number; totalCost: number };
 type Reg = { id: string; email: string | null; credits: number; created_at: string };
 type Data = {
@@ -44,9 +44,12 @@ export function AnalyticsPanel() {
       </div>
 
       {/* Metric cards */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard icon={<Users className="h-4 w-4" />} label="今日注册用户" value={m?.todayUsers ?? 0} trend />
-        <MetricCard icon={<Zap className="h-4 w-4" />} label="今日总消耗算力" value={(m?.todayCost ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} trend />
+        <MetricCard icon={<Wallet className="h-4 w-4" />} label="总充值" value={formatCredits(m?.totalIncome)} />
+        <MetricCard icon={<Zap className="h-4 w-4" />} label="总消耗" value={formatCredits(m?.totalSpent)} />
+        <MetricCard icon={<Wallet className="h-4 w-4" />} label="总余额" value={formatCredits(m?.totalBalance)} />
+        <MetricCard icon={<Zap className="h-4 w-4" />} label="今日积分消耗" value={formatCredits(m?.todayCost)} trend />
         <MetricCard icon={<Wallet className="h-4 w-4" />} label="今日上游成本" value="未记录" />
         <MetricCard icon={<Sparkles className="h-4 w-4" />} label="历史注册总用户" value={m?.totalUsers ?? 0} />
         <MetricCard icon={<Ticket className="h-4 w-4" />} label="剩余有效卡密" value={m?.unusedCoupons ?? 0} />
@@ -110,6 +113,10 @@ export function AnalyticsPanel() {
       </div>
     </div>
   );
+}
+
+function formatCredits(value: number | undefined) {
+  return Number(value ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 function MetricCard({
