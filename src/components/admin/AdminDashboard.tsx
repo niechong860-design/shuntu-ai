@@ -221,7 +221,7 @@ function UsersPanel() {
                       <Coins className="mr-1 h-3.5 w-3.5" />控制余额
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => openUsageLogs(u)}>
-                      消耗明细
+                      积分明细
                     </Button>
                     <Popover>
                       <PopoverTrigger asChild>
@@ -337,7 +337,7 @@ function UsersPanel() {
       >
         <DialogContent className="max-w-6xl border-border/70 bg-card/90 backdrop-blur-2xl">
           <DialogHeader>
-            <DialogTitle>消耗明细 - {usageOpen?.email ?? usageOpen?.id}</DialogTitle>
+            <DialogTitle>积分明细 - {usageOpen?.email ?? usageOpen?.id}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -366,8 +366,8 @@ function UsersPanel() {
                         <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                           {new Date(log.created_at).toLocaleString()}
                         </TableCell>
-                        <TableCell className="text-right font-mono tabular-nums text-primary">
-                          {Number(log.amount ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        <TableCell className={`text-right font-mono tabular-nums ${Number(log.amount ?? 0) < 0 ? "text-destructive" : "text-emerald-400"}`}>
+                          {Number(log.amount ?? 0) > 0 ? "+" : ""}{Number(log.amount ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                         </TableCell>
                         <TableCell className="font-mono text-xs">{log.source}</TableCell>
                         <TableCell className="max-w-[160px] truncate" title={log.model_name ?? ""}>

@@ -217,8 +217,14 @@ export type AdminCreditUsageLogRow = CreditUsageLog & {
 };
 
 export type AdminAnalyticsData = {
-  profiles: Profile[];
-  usage: Array<Pick<CreditUsageLog, "model_key" | "model_name" | "amount" | "created_at">>;
+  totalUsers: number;
+  todayUsers: number;
+  totalBalance: number;
+  totalIncome: number;
+  totalSpent: number;
+  todayCost: number;
+  models: Array<{ model: string; todayCount: number; totalCount: number; totalCost: number }>;
+  todayRegistrations: Profile[];
   unusedCoupons: number;
 };
 
@@ -305,7 +311,7 @@ export interface BusinessDatabase {
   adjustCreditsByAdmin(input: AdminAdjustCreditsInput): Promise<AdminAdjustCreditsResult>;
   listAdminUserBusinessRows?(): Promise<AdminUserBusinessRow[]>;
   listAdminCreditUsageLogs?(input: { userId: string; limit: number; offset: number }): Promise<{ rows: AdminCreditUsageLogRow[]; total: number }>;
-  getAdminAnalyticsData?(): Promise<AdminAnalyticsData>;
+  getAdminAnalyticsData?(input: { startUtc: string; endUtc: string }): Promise<AdminAnalyticsData>;
   finalizeUserGenerationTaskOnce(input: FinalizeGenerationTaskInput): Promise<FinalizeGenerationTaskResult>;
   getGenerationHistory(input: { historyId: string; userId?: string }): Promise<GenerationHistory | null>;
   listGenerationHistory(input: {
