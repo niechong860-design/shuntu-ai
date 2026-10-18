@@ -82,8 +82,14 @@ export const Route = createFileRoute("/api/history-thumbnail/$id")({
           let preview = await getGeneratedPreviewObject(previewKey, cloudflareEnv);
           if (!preview) {
             const ensured = await ensureGeneratedPreviewFromOriginalUrl(row.image_url ?? "", cloudflareEnv);
-            if (!ensured) return new Response("Preview unavailable", { status: 502 });
-            preview = await getGeneratedPreviewObject(previewKey, cloudflareEnv);
+            if (ensured) preview = await getGeneratedPreviewObject(previewKey, cloudflareEnv);
+          }
+
+          // Keep the large preview route compatible with old processor images
+          // while their 1536px variant is being generated or rolled out.
+          if (!preview && size === 1536) {
+            const fallbackKey = getGeneratedPreviewKeyFromPublicUrl(row.image_url, 1024);
+            if (fallbackKey) preview = await getGeneratedPreviewObject(fallbackKey, cloudflareEnv);
           }
 
           return preview ? getPreviewResponse(request, preview) : new Response("Preview unavailable", { status: 502 });

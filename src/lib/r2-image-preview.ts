@@ -263,7 +263,9 @@ async function createSharpPreviewBytes(
   const payload = await response.json() as Partial<SharpPreviewPayload>;
   const small = payload.variants?.['480'];
   const medium = payload.variants?.['1024'];
-  const large = payload.variants?.['1536'];
+  // Older container images only return 480/1024. Reuse the medium variant
+  // until the new image is active so existing generations remain viewable.
+  const large = payload.variants?.['1536'] ?? medium;
   if (
     payload.version !== 1 ||
     !small ||
