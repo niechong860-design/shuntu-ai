@@ -11,7 +11,7 @@ import {
   getGeneratedPreviewObject,
 } from "@/lib/r2-image-preview";
 
-type PreviewSize = 480 | 1024;
+type PreviewSize = 480 | 1024 | 1536;
 
 function getIfNoneMatch(request: Request): string | null {
   const value = request.headers.get("If-None-Match");
@@ -43,7 +43,10 @@ function getPreviewResponse(request: Request, object: Awaited<ReturnType<typeof 
 }
 
 function getPreviewSize(request: Request): PreviewSize {
-  return new URL(request.url).searchParams.get("size") === "1024" ? 1024 : 480;
+  const size = new URL(request.url).searchParams.get("size");
+  if (size === "1536") return 1536;
+  if (size === "1024") return 1024;
+  return 480;
 }
 
 export const Route = createFileRoute("/api/history-thumbnail/$id")({

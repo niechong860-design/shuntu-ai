@@ -8,7 +8,8 @@ const MAX_INPUT_BYTES = 30 * 1024 * 1024;
 const MAX_INPUT_PIXELS = 100_000_000;
 const VARIANTS = [
   { size: 480, quality: 78 },
-  { size: 1024, quality: 82 },
+  { size: 1024, quality: 88 },
+  { size: 1536, quality: 90 },
 ];
 const ALLOWED_CONTENT_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
@@ -75,7 +76,8 @@ export async function createPreviewPayload(imageBytes) {
         fit: "inside",
         withoutEnlargement: true,
       })
-      .jpeg({ quality: variant.quality, mozjpeg: true })
+      .sharpen(variant.size === 480 ? 0.4 : 0.65)
+      .jpeg({ quality: variant.quality, chromaSubsampling: "4:4:4", mozjpeg: true, progressive: true })
       .toBuffer({ resolveWithObject: true });
 
     variants[variant.size] = {

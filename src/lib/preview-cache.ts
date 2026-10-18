@@ -1,9 +1,9 @@
 import { supabase } from "@/integrations/supabase/client";
 
 const MAX_ENTRIES = 50;
-const PREVIEW_VERSION = "v2";
+const PREVIEW_VERSION = "v3";
 
-export type PreviewSize = 480 | 1024;
+export type PreviewSize = 480 | 1024 | 1536;
 
 type PreviewCacheEntry = {
   userId: string;

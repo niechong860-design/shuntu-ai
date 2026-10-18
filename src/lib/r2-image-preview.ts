@@ -5,6 +5,7 @@ const PUBLIC_IMAGE_HOST = "img.shuntu.cc";
 const GENERATED_IMAGE_KEY_PREFIX = "generated/";
 const PREVIEW_KEY_PREFIX = "previews/generated/";
 const THUMBNAIL_KEY_PREFIX = "previews/480/generated/";
+const LARGE_PREVIEW_KEY_PREFIX = "previews/1536/generated/";
 const PREVIEW_CONTENT_TYPE = "image/jpeg";
 const CLOUDFLARE_ENV_GLOBAL_KEY = "__SHUNTU_CLOUDFLARE_ENV__";
 
@@ -132,7 +133,7 @@ export function getGeneratedR2KeyFromPublicUrl(imageUrl: string | null | undefin
 
 export function getGeneratedPreviewKeyFromOriginalKey(
   originalKey: string | null | undefined,
-  size: 480 | 1024 = 1024,
+  size: 480 | 1024 | 1536 = 1024,
 ): string | null {
   if (!originalKey?.startsWith(GENERATED_IMAGE_KEY_PREFIX)) return null;
   const segments = originalKey.split("/");
@@ -147,13 +148,13 @@ export function getGeneratedPreviewKeyFromOriginalKey(
   const extension = filename.slice(extensionIndex + 1).toLowerCase();
   if (!stem || !/^(?:png|jpe?g|webp)$/i.test(extension)) return null;
   const directory = segments.slice(1, -1).join("/");
-  const prefix = size === 480 ? THUMBNAIL_KEY_PREFIX : PREVIEW_KEY_PREFIX;
+  const prefix = size === 480 ? THUMBNAIL_KEY_PREFIX : size === 1536 ? LARGE_PREVIEW_KEY_PREFIX : PREVIEW_KEY_PREFIX;
   return prefix + (directory ? directory + "/" : "") + stem + ".jpg";
 }
 
 export function getGeneratedPreviewKeyFromPublicUrl(
   imageUrl: string | null | undefined,
-  size: 480 | 1024 = 1024,
+  size: 480 | 1024 | 1536 = 1024,
 ): string | null {
   const originalKey = getGeneratedR2KeyFromPublicUrl(imageUrl);
   return getGeneratedPreviewKeyFromOriginalKey(originalKey, size);
@@ -161,7 +162,7 @@ export function getGeneratedPreviewKeyFromPublicUrl(
 
 export function getGeneratedPreviewPublicUrlFromOriginalUrl(
   imageUrl: string | null | undefined,
-  size: 480 | 1024 = 1024,
+  size: 480 | 1024 | 1536 = 1024,
 ): string | null {
   const previewKey = getGeneratedPreviewKeyFromPublicUrl(imageUrl, size);
   if (!previewKey) return null;
@@ -189,6 +190,7 @@ type SharpPreviewPayload = {
   variants: {
     "480": SharpPreviewVariant;
     "1024": SharpPreviewVariant;
+    "1536": SharpPreviewVariant;
   };
 };
 
@@ -212,7 +214,7 @@ async function createSharpPreviewBytes(
   originalKey: string,
   originalBytes: Uint8Array,
   env: CloudflareEnvLike,
-): Promise<{ "480": Uint8Array; "1024": Uint8Array } | null> {
+): Promise<{ "480": Uint8Array; "1024": Uint8Array; "1536": Uint8Array } | null> {
   const rawProcessorUrl = env.SHARP_IMAGE_PROCESSOR_URL?.trim();
   const token = env.SHARP_IMAGE_PROCESSOR_TOKEN?.trim();
   if (!token) {
@@ -260,22 +262,30 @@ async function createSharpPreviewBytes(
 
   const payload = await response.json() as Partial<SharpPreviewPayload>;
   const small = payload.variants?.['480'];
-  const large = payload.variants?.['1024'];
+  const medium = payload.variants?.['1024'];
+  const large = payload.variants?.['1536'];
   if (
     payload.version !== 1 ||
     !small ||
+    !medium ||
     !large ||
     small.contentType !== PREVIEW_CONTENT_TYPE ||
+    medium.contentType !== PREVIEW_CONTENT_TYPE ||
     large.contentType !== PREVIEW_CONTENT_TYPE ||
     !Number.isInteger(small.width) ||
     !Number.isInteger(small.height) ||
+    !Number.isInteger(medium.width) ||
+    !Number.isInteger(medium.height) ||
     !Number.isInteger(large.width) ||
     !Number.isInteger(large.height) ||
     small.width > 480 ||
     small.height > 480 ||
-    large.width > 1024 ||
-    large.height > 1024 ||
+    medium.width > 1024 ||
+    medium.height > 1024 ||
+    large.width > 1536 ||
+    large.height > 1536 ||
     !small.base64 ||
+    !medium.base64 ||
     !large.base64
   ) {
     throw new Error('Sharp image processor returned an invalid preview payload');
@@ -283,7 +293,8 @@ async function createSharpPreviewBytes(
 
   return {
     '480': decodeBase64Image(small.base64),
-    '1024': decodeBase64Image(large.base64),
+    '1024': decodeBase64Image(medium.base64),
+    '1536': decodeBase64Image(large.base64),
   };
 }
 
@@ -318,16 +329,21 @@ async function ensurePreviewInternal(
   cloudflareEnv?: unknown,
 ): Promise<boolean> {
   const previewKey = getGeneratedPreviewKeyFromOriginalKey(originalKey, 1024);
+  const largePreviewKey = getGeneratedPreviewKeyFromOriginalKey(originalKey, 1536);
   const thumbnailKey = getGeneratedPreviewKeyFromOriginalKey(originalKey, 480);
-  if (!previewKey || !thumbnailKey) return false;
+  if (!previewKey || !largePreviewKey || !thumbnailKey) return false;
   const env = getCloudflareEnv(cloudflareEnv);
   const bucket = env.SHUNTU_GENERATED_IMAGES;
   if (!bucket?.put) return false;
 
   if (bucket.get) {
     try {
-      const [preview, thumbnail] = await Promise.all([bucket.get(previewKey), bucket.get(thumbnailKey)]);
-      if (preview && thumbnail) return true;
+      const [preview, largePreview, thumbnail] = await Promise.all([
+        bucket.get(previewKey),
+        bucket.get(largePreviewKey),
+        bucket.get(thumbnailKey),
+      ]);
+      if (preview && largePreview && thumbnail) return true;
     } catch (error) {
       console.warn('[preview] existing preview lookup failed', error);
     }
@@ -351,6 +367,7 @@ async function ensurePreviewInternal(
   if (!previewBytes) return false;
   await Promise.all([
     putGeneratedPreview(previewKey, previewBytes['1024'], env),
+    putGeneratedPreview(largePreviewKey, previewBytes['1536'], env),
     putGeneratedPreview(thumbnailKey, previewBytes['480'], env),
   ]);
   return true;
@@ -404,11 +421,12 @@ export async function deleteGeneratedPreviewForOriginalUrl(
   cloudflareEnv?: unknown,
 ): Promise<boolean> {
   const previewKey = getGeneratedPreviewKeyFromPublicUrl(imageUrl, 1024);
+  const largePreviewKey = getGeneratedPreviewKeyFromPublicUrl(imageUrl, 1536);
   const thumbnailKey = getGeneratedPreviewKeyFromPublicUrl(imageUrl, 480);
   const bucket = getCloudflareEnv(cloudflareEnv).SHUNTU_GENERATED_IMAGES;
-  if (!previewKey || !thumbnailKey || !bucket?.delete) return false;
+  if (!previewKey || !largePreviewKey || !thumbnailKey || !bucket?.delete) return false;
   try {
-    await Promise.all([bucket.delete(previewKey), bucket.delete(thumbnailKey)]);
+    await Promise.all([bucket.delete(previewKey), bucket.delete(largePreviewKey), bucket.delete(thumbnailKey)]);
     return true;
   } catch (error) {
     console.warn('[preview] paired delete failed', error);
