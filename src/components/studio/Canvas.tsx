@@ -6,14 +6,61 @@ import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { getMyGenerationHistory } from "@/lib/admin.functions";
 import { getCachedHistoryFirstPage, setCachedHistoryFirstPage } from "@/lib/history-metadata-cache";
+import { getCachedPreview, loadHistoryPreview, type PreviewSize } from "@/lib/preview-cache";
 import type { GenProgress } from "./ControlPanel";
 
 const PAGE_SIZE = 20;
 const HISTORY_RESET_CACHE_MS = 60_000;
 
-function HistoryThumbnail({ imageUrl }: { imageUrl: string }) {
+function HistoryThumbnail({ imageUrl, userId, historyId, size = 480 }: { imageUrl: string; userId?: string | null; historyId: string; size?: PreviewSize }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(userId ? getCachedPreview(userId, historyId, size) : null);
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const [visible, setVisible] = useState(!!(userId && getCachedPreview(userId, historyId, size)));
+
+  useEffect(() => {
+    const cached = userId ? getCachedPreview(userId, historyId, size) : null;
+    setPreviewUrl(cached);
+    setPreviewFailed(false);
+    setVisible(!!cached);
+    if (!userId || cached) return;
+
+    if (typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry?.isIntersecting) {
+        setVisible(true);
+        observer.disconnect();
+      }
+    }, { rootMargin: "300px" });
+    if (containerRef.current) observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [userId, historyId, imageUrl, size]);
+
+  useEffect(() => {
+    if (!visible || previewUrl || !userId) return;
+    let cancelled = false;
+    void loadHistoryPreview(userId, historyId, size).then((url) => {
+      if (!cancelled) setPreviewUrl(url);
+    }).catch(() => {
+      if (!cancelled) setPreviewFailed(true);
+    });
+    return () => { cancelled = true; };
+  }, [visible, previewUrl, userId, historyId, size]);
+
+  if (!previewUrl) {
+    return (
+      <div ref={containerRef} className="flex h-full w-full items-center justify-center bg-black/30 text-[10px] text-white/65">
+        {previewFailed || !userId ? "预览暂时不可用" : visible ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : null}
+      </div>
+    );
+  }
+
   return (
-    <img src={imageUrl} alt="" width={1024} height={1024} loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
+    <img src={previewUrl} alt="" width={size} height={size} loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
   );
 }
 
@@ -145,7 +192,7 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
   const [loadingMore, setLoadingMore] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
-  const generatedPreviewUrl = generatedUrl;
+  const generatedPreviewUrl = null;
   const fetchHistory = useServerFn(getMyGenerationHistory);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const historySentinelRef = useRef<HTMLDivElement | null>(null);
@@ -341,6 +388,9 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
             >
               <GeneratedPreviewImage
                 previewSrc={generatedPreviewUrl}
+                historyId={currentHistoryId}
+                userId={userId}
+                previewSize={480}
                 alt="生成结果"
                 className="absolute inset-0"
               />
@@ -431,7 +481,7 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
                           }}
                           className="absolute inset-0"
                         >
-                          <HistoryThumbnail imageUrl={item.originalImageUrl} />
+                          <HistoryThumbnail imageUrl={item.originalImageUrl} userId={userId} historyId={item.id} />
                         </button>
                         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/0 opacity-0 transition-opacity group-hover:opacity-100" />
                         {isAdmin && (
@@ -490,7 +540,9 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
       {lightbox && (
         <Lightbox
           downloadSrc={lightbox.originalImageUrl}
-          previewUrl={lightbox.originalImageUrl}
+          previewUrl={userId ? getCachedPreview(userId, lightbox.id, 480) : null}
+          historyId={lightbox.id}
+          userId={userId}
           prompt={lightbox.prompt ?? ""}
           model={lightbox.model}
           filename={`lovable-${lightbox.model}-${lightbox.id}.png`}
@@ -501,8 +553,8 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
         <Lightbox
           downloadSrc={generatedUrl}
           previewUrl={generatedPreviewUrl}
-          thumbnailSrc={generatedUrl}
-          thumbnailLoading={false}
+          historyId={currentHistoryId ?? undefined}
+          userId={userId}
           prompt={heroPrompt}
           model={heroModel}
           filename={`lovable-${Date.now()}.png`}
@@ -779,15 +831,41 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
   );
 }
 
-function GeneratedPreviewImage({ previewSrc, thumbnailSrc, thumbnailLoading = false, alt, className, imageClassName }: { previewSrc?: string | null; thumbnailSrc?: string | null; thumbnailLoading?: boolean; alt: string; className?: string; imageClassName?: string }) {
-  const src = thumbnailSrc ?? (thumbnailLoading ? null : previewSrc);
+function GeneratedPreviewImage({ previewSrc, thumbnailSrc, thumbnailLoading = false, historyId, userId, previewSize = 480, alt, className, imageClassName }: { previewSrc?: string | null; thumbnailSrc?: string | null; thumbnailLoading?: boolean; historyId?: string | null; userId?: string | null; previewSize?: PreviewSize; alt: string; className?: string; imageClassName?: string }) {
+  const [resolvedPreviewSrc, setResolvedPreviewSrc] = useState<string | null>(thumbnailSrc ?? (historyId ? null : previewSrc ?? null));
+  const [previewRequestFailed, setPreviewRequestFailed] = useState(false);
+  const src = thumbnailSrc ?? resolvedPreviewSrc;
   const [loading, setLoading] = useState(!!src || thumbnailLoading);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    setLoading(!!src || thumbnailLoading);
-    setFailed(!src && !thumbnailLoading);
-  }, [src, thumbnailLoading]);
+    setResolvedPreviewSrc(thumbnailSrc ?? (historyId ? null : previewSrc ?? null));
+    setPreviewRequestFailed(false);
+    if (!historyId || !userId) return;
+
+    let cancelled = false;
+    setLoading(true);
+    setFailed(false);
+    void loadHistoryPreview(userId, historyId, previewSize).then((url) => {
+      if (!cancelled) {
+        setResolvedPreviewSrc(url);
+        setLoading(false);
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setPreviewRequestFailed(true);
+        setLoading(false);
+        setFailed(true);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [historyId, userId, previewSize, previewSrc, thumbnailSrc]);
+
+  useEffect(() => {
+    const requestingHistoryPreview = !!historyId && !!userId && !resolvedPreviewSrc && !previewRequestFailed;
+    setLoading(requestingHistoryPreview || !!src || thumbnailLoading);
+    setFailed(previewRequestFailed || (!src && !thumbnailLoading && !requestingHistoryPreview));
+  }, [historyId, userId, resolvedPreviewSrc, src, thumbnailLoading, previewRequestFailed]);
 
   return (
     <div className={`relative h-full w-full overflow-hidden bg-black ${className ?? ""}`}>
@@ -810,7 +888,7 @@ function GeneratedPreviewImage({ previewSrc, thumbnailSrc, thumbnailLoading = fa
   );
 }
 
-function Lightbox({ downloadSrc, previewUrl, thumbnailSrc, thumbnailLoading = false, prompt, model, filename, onClose }: { downloadSrc: string; previewUrl?: string | null; thumbnailSrc?: string; thumbnailLoading?: boolean; prompt: string; model: string; filename: string; onClose: () => void }) {
+function Lightbox({ downloadSrc, previewUrl, thumbnailSrc, thumbnailLoading = false, prompt, model, filename, onClose, historyId, userId }: { downloadSrc: string; previewUrl?: string | null; thumbnailSrc?: string; thumbnailLoading?: boolean; prompt: string; model: string; filename: string; onClose: () => void; historyId?: string; userId?: string | null }) {
   const [previewSrc, setPreviewSrc] = useState<string | null>(thumbnailSrc ?? previewUrl ?? null);
   const [previewLoading, setPreviewLoading] = useState(!previewSrc);
 
@@ -819,6 +897,23 @@ function Lightbox({ downloadSrc, previewUrl, thumbnailSrc, thumbnailLoading = fa
     setPreviewSrc(nextSrc);
     setPreviewLoading(!nextSrc);
   }, [previewUrl, thumbnailSrc]);
+
+  useEffect(() => {
+    if (!historyId || !userId) return;
+    let cancelled = false;
+    void loadHistoryPreview(userId, historyId, 480).then((url) => {
+      if (!cancelled) {
+        setPreviewSrc(url);
+        setPreviewLoading(false);
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setPreviewSrc(null);
+        setPreviewLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [historyId, userId]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

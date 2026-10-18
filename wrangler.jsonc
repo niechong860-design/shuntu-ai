@@ -29,8 +29,5 @@
       "database_id": "a475419e-3878-4ede-84d0-75fad8ebd5cd",
       "migrations_dir": "d1/migrations"
     }
-  ],
-  "images": {
-    "binding": "IMAGES"
-  }
+  ]
 }

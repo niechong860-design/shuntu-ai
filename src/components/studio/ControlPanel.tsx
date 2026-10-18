@@ -13,7 +13,7 @@ import { listModelsConfig, generateImage, checkImageStatus, generateRandomPrompt
 import { useAuth } from "@/hooks/use-auth";
 import { uploadImageToR2 } from "@/lib/r2-upload-client";
 import { consumeStudioPrefill } from "@/lib/studio-prefill";
-import { processImage, validateImageFile } from "@/lib/image-processing";
+import { processImage, REFERENCE_MAX_BYTES, validateImageFile } from "@/lib/image-processing";
 import { thumbUrl } from "@/lib/image-url";
 import { checkPromptSafety, SAFETY_BLOCK_MESSAGE } from "@/lib/promptSafety";
 import { STYLE_TEMPLATES, applyStyleSuffix, type StyleTemplate } from "@/lib/style-templates";
@@ -359,7 +359,10 @@ export function ControlPanel({
 
   const uploadReferenceFile = async (file: File, item: ReferenceImageItem) => {
     try {
-      const processed = await processImage(file, "ai-model");
+      const processed = await processImage(file, "ai-model", { maxBytes: REFERENCE_MAX_BYTES });
+      if (processed.blob.size > REFERENCE_MAX_BYTES) {
+        throw new Error("参考图压缩后仍超过 128KB");
+      }
       if (processed.previewUrl !== item.previewUrl) URL.revokeObjectURL(processed.previewUrl);
       const { url } = await uploadImageToR2(new File([processed.blob], `reference.${processed.ext}`, { type: processed.contentType }), "reference-image");
       console.log(

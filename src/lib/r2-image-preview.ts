@@ -4,10 +4,8 @@ const PUBLIC_IMAGE_BASE_URL = "https://img.shuntu.cc";
 const PUBLIC_IMAGE_HOST = "img.shuntu.cc";
 const GENERATED_IMAGE_KEY_PREFIX = "generated/";
 const PREVIEW_KEY_PREFIX = "previews/generated/";
+const THUMBNAIL_KEY_PREFIX = "previews/480/generated/";
 const PREVIEW_CONTENT_TYPE = "image/jpeg";
-const PREVIEW_MAX_EDGE = 1024;
-const PREVIEW_QUALITY = 78;
-const IMAGE_BINDING_MAX_BYTES = 20 * 1024 * 1024;
 const CLOUDFLARE_ENV_GLOBAL_KEY = "__SHUNTU_CLOUDFLARE_ENV__";
 
 type R2HttpMetadata = {
@@ -32,39 +30,12 @@ export type R2BucketLike = {
   delete?: (key: string) => Promise<unknown>;
 };
 
-type ImageTransform = {
-  width?: number;
-  height?: number;
-  fit?: "scale-down" | "contain" | "pad" | "squeeze" | "cover" | "crop";
-  background?: string;
-};
-
-type ImageOutputOptions = {
-  format: "image/jpeg";
-  quality?: number;
-  background?: string;
-  anim?: boolean;
-};
-
-type ImageTransformationResult = {
-  image: (options?: { encoding?: "base64" }) => ReadableStream<Uint8Array>;
-  contentType: () => string;
-};
-
-type ImageTransformerLike = {
-  transform: (transform: ImageTransform) => ImageTransformerLike;
-  output: (options: ImageOutputOptions) => Promise<ImageTransformationResult>;
-};
-
-type ImagesBindingLike = {
-  input: (stream: ReadableStream<Uint8Array>) => ImageTransformerLike;
-};
-
 export type CloudflareEnvLike = {
   SHUNTU_GENERATED_IMAGES?: R2BucketLike;
   SOURCE_GENERATED_IMAGES?: R2BucketLike;
-  IMAGES?: ImagesBindingLike;
   R2_PUBLIC_BASE_URL?: string;
+  SHARP_IMAGE_PROCESSOR_URL?: string;
+  SHARP_IMAGE_PROCESSOR_TOKEN?: string;
 };
 
 const previewInFlight = new Map<string, Promise<boolean>>();
@@ -99,6 +70,16 @@ export function getCloudflareEnv(explicitEnv?: unknown): CloudflareEnvLike {
       global.R2_PUBLIC_BASE_URL ??
       processEnv?.R2_PUBLIC_BASE_URL ??
       PUBLIC_IMAGE_BASE_URL,
+    SHARP_IMAGE_PROCESSOR_URL:
+      explicit.SHARP_IMAGE_PROCESSOR_URL ??
+      context.SHARP_IMAGE_PROCESSOR_URL ??
+      global.SHARP_IMAGE_PROCESSOR_URL ??
+      processEnv?.SHARP_IMAGE_PROCESSOR_URL,
+    SHARP_IMAGE_PROCESSOR_TOKEN:
+      explicit.SHARP_IMAGE_PROCESSOR_TOKEN ??
+      context.SHARP_IMAGE_PROCESSOR_TOKEN ??
+      global.SHARP_IMAGE_PROCESSOR_TOKEN ??
+      processEnv?.SHARP_IMAGE_PROCESSOR_TOKEN,
   };
 }
 
@@ -146,7 +127,10 @@ export function getGeneratedR2KeyFromPublicUrl(imageUrl: string | null | undefin
   return parseGeneratedImageUrl(imageUrl)?.key ?? null;
 }
 
-export function getGeneratedPreviewKeyFromOriginalKey(originalKey: string | null | undefined): string | null {
+export function getGeneratedPreviewKeyFromOriginalKey(
+  originalKey: string | null | undefined,
+  size: 480 | 1024 = 1024,
+): string | null {
   if (!originalKey?.startsWith(GENERATED_IMAGE_KEY_PREFIX)) return null;
   const segments = originalKey.split("/");
   if (segments.length < 2 || segments.some((segment) => !decodePathSegment(segment))) return null;
@@ -160,16 +144,23 @@ export function getGeneratedPreviewKeyFromOriginalKey(originalKey: string | null
   const extension = filename.slice(extensionIndex + 1).toLowerCase();
   if (!stem || !/^(?:png|jpe?g|webp)$/i.test(extension)) return null;
   const directory = segments.slice(1, -1).join("/");
-  return `${PREVIEW_KEY_PREFIX}${directory ? `${directory}/` : ""}${stem}.jpg`;
+  const prefix = size === 480 ? THUMBNAIL_KEY_PREFIX : PREVIEW_KEY_PREFIX;
+  return prefix + (directory ? directory + "/" : "") + stem + ".jpg";
 }
 
-export function getGeneratedPreviewKeyFromPublicUrl(imageUrl: string | null | undefined): string | null {
+export function getGeneratedPreviewKeyFromPublicUrl(
+  imageUrl: string | null | undefined,
+  size: 480 | 1024 = 1024,
+): string | null {
   const originalKey = getGeneratedR2KeyFromPublicUrl(imageUrl);
-  return getGeneratedPreviewKeyFromOriginalKey(originalKey);
+  return getGeneratedPreviewKeyFromOriginalKey(originalKey, size);
 }
 
-export function getGeneratedPreviewPublicUrlFromOriginalUrl(imageUrl: string | null | undefined): string | null {
-  const previewKey = getGeneratedPreviewKeyFromPublicUrl(imageUrl);
+export function getGeneratedPreviewPublicUrlFromOriginalUrl(
+  imageUrl: string | null | undefined,
+  size: 480 | 1024 = 1024,
+): string | null {
+  const previewKey = getGeneratedPreviewKeyFromPublicUrl(imageUrl, size);
   if (!previewKey) return null;
   return `${PUBLIC_IMAGE_BASE_URL}/${previewKey}`;
 }
@@ -178,80 +169,104 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
-function toByteStream(bytes: Uint8Array): ReadableStream<Uint8Array> {
-  return new Blob([toArrayBuffer(bytes)]).stream() as ReadableStream<Uint8Array>;
-}
-
 async function readR2Object(object: R2ObjectLike): Promise<Uint8Array> {
   if (object.arrayBuffer) return new Uint8Array(await object.arrayBuffer());
   return new Uint8Array(await new Response(object.body).arrayBuffer());
 }
 
-async function encodeWithImagesBinding(bytes: Uint8Array, images: ImagesBindingLike): Promise<Uint8Array> {
-  const result = await images
-    .input(toByteStream(bytes))
-    .transform({
-      width: PREVIEW_MAX_EDGE,
-      height: PREVIEW_MAX_EDGE,
-      fit: "scale-down",
-      background: "#000000",
-    })
-    .output({
-      format: PREVIEW_CONTENT_TYPE,
-      quality: PREVIEW_QUALITY,
-      background: "#000000",
-      anim: false,
-    });
-  if (result.contentType() !== PREVIEW_CONTENT_TYPE) throw new Error("Images binding returned an unexpected format");
-  return new Uint8Array(await new Response(result.image()).arrayBuffer());
-}
+type SharpPreviewVariant = {
+  contentType: string;
+  width: number;
+  height: number;
+  base64: string;
+};
 
-type CloudflareImageRequestInit = RequestInit & {
-  cf: {
-    image: {
-      width: number;
-      height: number;
-      fit: "scale-down";
-      format: "jpeg";
-      quality: number;
-      background: string;
-      anim: false;
-      metadata: "none";
-    };
+type SharpPreviewPayload = {
+  version: number;
+  variants: {
+    "480": SharpPreviewVariant;
+    "1024": SharpPreviewVariant;
   };
 };
 
-async function encodeWithImageTransform(imageUrl: string): Promise<Uint8Array> {
-  const transformed = await fetch(imageUrl, {
-    cf: {
-      image: {
-        width: PREVIEW_MAX_EDGE,
-        height: PREVIEW_MAX_EDGE,
-        fit: "scale-down",
-        format: "jpeg",
-        quality: PREVIEW_QUALITY,
-        background: "#000000",
-        anim: false,
-        metadata: "none",
-      },
-    },
-    headers: { Accept: PREVIEW_CONTENT_TYPE },
-  } as CloudflareImageRequestInit);
-  if (!transformed.ok || !transformed.body) throw new Error(`Preview transform failed: ${transformed.status}`);
-  const contentType = transformed.headers.get("content-type")?.split(";", 1)[0]?.toLowerCase();
-  if (contentType !== PREVIEW_CONTENT_TYPE) throw new Error("Image transform returned an unexpected format");
-  return new Uint8Array(await transformed.arrayBuffer());
+function getOriginalContentType(originalKey: string): string {
+  const extension = originalKey.slice(originalKey.lastIndexOf('.') + 1).toLowerCase();
+  if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg';
+  if (extension === 'webp') return 'image/webp';
+  return 'image/png';
 }
 
-async function createPreviewBytes(imageUrl: string, originalBytes: Uint8Array, env: CloudflareEnvLike): Promise<Uint8Array> {
-  if (originalBytes.byteLength <= IMAGE_BINDING_MAX_BYTES && env.IMAGES) {
-    try {
-      return await encodeWithImagesBinding(originalBytes, env.IMAGES);
-    } catch (error) {
-      console.warn("[preview] Images binding failed; using transform fallback", error);
-    }
+function decodeBase64Image(value: string): Uint8Array {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
   }
-  return encodeWithImageTransform(imageUrl);
+  return bytes;
+}
+
+async function createSharpPreviewBytes(
+  originalKey: string,
+  originalBytes: Uint8Array,
+  env: CloudflareEnvLike,
+): Promise<{ "480": Uint8Array; "1024": Uint8Array } | null> {
+  const rawProcessorUrl = env.SHARP_IMAGE_PROCESSOR_URL?.trim();
+  const token = env.SHARP_IMAGE_PROCESSOR_TOKEN?.trim();
+  if (!rawProcessorUrl || !token) {
+    console.warn('[preview] Sharp image processor is not configured');
+    return null;
+  }
+
+  let processorUrl: URL;
+  try {
+    processorUrl = new URL(rawProcessorUrl);
+  } catch {
+    throw new Error('Sharp image processor URL is invalid');
+  }
+  if (processorUrl.protocol !== 'https:' || processorUrl.username || processorUrl.password || processorUrl.search || processorUrl.hash) {
+    throw new Error('Sharp image processor URL must be a clean HTTPS URL');
+  }
+  processorUrl.pathname = processorUrl.pathname.replace(/\/+$/, '') + '/v1/previews';
+
+  const response = await fetch(processorUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + token,
+      'Content-Type': getOriginalContentType(originalKey),
+      Accept: 'application/json',
+    },
+    body: toArrayBuffer(originalBytes),
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!response.ok) throw new Error('Sharp image processor failed: ' + response.status);
+
+  const payload = await response.json() as Partial<SharpPreviewPayload>;
+  const small = payload.variants?.['480'];
+  const large = payload.variants?.['1024'];
+  if (
+    payload.version !== 1 ||
+    !small ||
+    !large ||
+    small.contentType !== PREVIEW_CONTENT_TYPE ||
+    large.contentType !== PREVIEW_CONTENT_TYPE ||
+    !Number.isInteger(small.width) ||
+    !Number.isInteger(small.height) ||
+    !Number.isInteger(large.width) ||
+    !Number.isInteger(large.height) ||
+    small.width > 480 ||
+    small.height > 480 ||
+    large.width > 1024 ||
+    large.height > 1024 ||
+    !small.base64 ||
+    !large.base64
+  ) {
+    throw new Error('Sharp image processor returned an invalid preview payload');
+  }
+
+  return {
+    '480': decodeBase64Image(small.base64),
+    '1024': decodeBase64Image(large.base64),
+  };
 }
 
 export async function getGeneratedPreviewObject(
@@ -284,17 +299,19 @@ async function ensurePreviewInternal(
   originalBytes: Uint8Array | null,
   cloudflareEnv?: unknown,
 ): Promise<boolean> {
-  const previewKey = getGeneratedPreviewKeyFromOriginalKey(originalKey);
-  if (!previewKey) return false;
+  const previewKey = getGeneratedPreviewKeyFromOriginalKey(originalKey, 1024);
+  const thumbnailKey = getGeneratedPreviewKeyFromOriginalKey(originalKey, 480);
+  if (!previewKey || !thumbnailKey) return false;
   const env = getCloudflareEnv(cloudflareEnv);
   const bucket = env.SHUNTU_GENERATED_IMAGES;
   if (!bucket?.put) return false;
 
   if (bucket.get) {
     try {
-      if (await bucket.get(previewKey)) return true;
+      const [preview, thumbnail] = await Promise.all([bucket.get(previewKey), bucket.get(thumbnailKey)]);
+      if (preview && thumbnail) return true;
     } catch (error) {
-      console.warn("[preview] existing preview lookup failed", error);
+      console.warn('[preview] existing preview lookup failed', error);
     }
   }
 
@@ -312,8 +329,12 @@ async function ensurePreviewInternal(
   }
   if (!bytes) return false;
 
-  const previewBytes = await createPreviewBytes(imageUrl, bytes, env);
-  await putGeneratedPreview(previewKey, previewBytes, env);
+  const previewBytes = await createSharpPreviewBytes(originalKey, bytes, env);
+  if (!previewBytes) return false;
+  await Promise.all([
+    putGeneratedPreview(previewKey, previewBytes['1024'], env),
+    putGeneratedPreview(thumbnailKey, previewBytes['480'], env),
+  ]);
   return true;
 }
 
@@ -323,20 +344,19 @@ export async function ensureGeneratedPreviewFromBytes(
   cloudflareEnv?: unknown,
 ): Promise<boolean> {
   const originalKey = getGeneratedR2KeyFromPublicUrl(imageUrl);
-  const previewKey = getGeneratedPreviewKeyFromOriginalKey(originalKey);
-  if (!originalKey || !previewKey) return false;
-  const existing = previewInFlight.get(previewKey);
+  if (!originalKey) return false;
+  const existing = previewInFlight.get(originalKey);
   if (existing) return existing;
 
   const operation = ensurePreviewInternal(imageUrl, originalKey, originalBytes, cloudflareEnv)
     .catch((error) => {
-      console.warn("[preview] best-effort creation failed", error);
+      console.warn('[preview] best-effort creation failed', error);
       return false;
     })
     .finally(() => {
-      if (previewInFlight.get(previewKey) === operation) previewInFlight.delete(previewKey);
+      if (previewInFlight.get(originalKey) === operation) previewInFlight.delete(originalKey);
     });
-  previewInFlight.set(previewKey, operation);
+  previewInFlight.set(originalKey, operation);
   return operation;
 }
 
@@ -345,20 +365,19 @@ export async function ensureGeneratedPreviewFromOriginalUrl(
   cloudflareEnv?: unknown,
 ): Promise<boolean> {
   const parsed = parseGeneratedImageUrl(imageUrl);
-  const previewKey = getGeneratedPreviewKeyFromOriginalKey(parsed?.key);
-  if (!parsed || !previewKey) return false;
-  const existing = previewInFlight.get(previewKey);
+  if (!parsed) return false;
+  const existing = previewInFlight.get(parsed.key);
   if (existing) return existing;
 
   const operation = ensurePreviewInternal(parsed.url.href, parsed.key, null, cloudflareEnv)
     .catch((error) => {
-      console.warn("[preview] lazy migration failed", error);
+      console.warn('[preview] lazy migration failed', error);
       return false;
     })
     .finally(() => {
-      if (previewInFlight.get(previewKey) === operation) previewInFlight.delete(previewKey);
+      if (previewInFlight.get(parsed.key) === operation) previewInFlight.delete(parsed.key);
     });
-  previewInFlight.set(previewKey, operation);
+  previewInFlight.set(parsed.key, operation);
   return operation;
 }
 
@@ -366,14 +385,15 @@ export async function deleteGeneratedPreviewForOriginalUrl(
   imageUrl: string | null | undefined,
   cloudflareEnv?: unknown,
 ): Promise<boolean> {
-  const previewKey = getGeneratedPreviewKeyFromPublicUrl(imageUrl);
+  const previewKey = getGeneratedPreviewKeyFromPublicUrl(imageUrl, 1024);
+  const thumbnailKey = getGeneratedPreviewKeyFromPublicUrl(imageUrl, 480);
   const bucket = getCloudflareEnv(cloudflareEnv).SHUNTU_GENERATED_IMAGES;
-  if (!previewKey || !bucket?.delete) return false;
+  if (!previewKey || !thumbnailKey || !bucket?.delete) return false;
   try {
-    await bucket.delete(previewKey);
+    await Promise.all([bucket.delete(previewKey), bucket.delete(thumbnailKey)]);
     return true;
   } catch (error) {
-    console.warn("[preview] paired delete failed", error);
+    console.warn('[preview] paired delete failed', error);
     return false;
   }
 }
