@@ -1,11 +1,14 @@
 import { supabase } from "@/integrations/supabase/client";
 
 const MAX_ENTRIES = 50;
-const PREVIEW_VERSION = "v1";
+const PREVIEW_VERSION = "v2";
+
+export type PreviewSize = 480 | 1024;
 
 type PreviewCacheEntry = {
   userId: string;
   historyId: string;
+  size: PreviewSize;
   blobUrl: string;
   touchedAt: number;
 };
@@ -17,14 +20,14 @@ const userGenerations = new Map<string, number>();
 let touchCounter = 0;
 let cacheEpoch = 0;
 
-function getKey(userId: string, historyId: string) {
-  return `${userId}:${PREVIEW_VERSION}:${historyId}`;
+function getKey(userId: string, historyId: string, size: PreviewSize) {
+  return `${userId}:${PREVIEW_VERSION}:${size}:${historyId}`;
 }
 
 function touch(entry: PreviewCacheEntry) {
   entry.touchedAt = ++touchCounter;
-  entries.delete(getKey(entry.userId, entry.historyId));
-  entries.set(getKey(entry.userId, entry.historyId), entry);
+  entries.delete(getKey(entry.userId, entry.historyId, entry.size));
+  entries.set(getKey(entry.userId, entry.historyId, entry.size), entry);
 }
 
 function evictIfNeeded() {
@@ -37,16 +40,21 @@ function evictIfNeeded() {
   }
 }
 
-export function getCachedPreview(userId: string, historyId: string): string | null {
-  const key = getKey(userId, historyId);
+export function getCachedPreview(userId: string, historyId: string, size: PreviewSize = 480): string | null {
+  const key = getKey(userId, historyId, size);
   const entry = entries.get(key);
   if (!entry) return null;
   touch(entry);
   return entry.blobUrl;
 }
 
-export function subscribePreview(userId: string, historyId: string, listener: (blobUrl: string) => void): () => void {
-  const key = getKey(userId, historyId);
+export function subscribePreview(
+  userId: string,
+  historyId: string,
+  listener: (blobUrl: string) => void,
+  size: PreviewSize = 480,
+): () => void {
+  const key = getKey(userId, historyId, size);
   const cached = entries.get(key)?.blobUrl;
   if (cached) listener(cached);
   const keyListeners = listeners.get(key) ?? new Set<(blobUrl: string) => void>();
@@ -58,11 +66,11 @@ export function subscribePreview(userId: string, historyId: string, listener: (b
   };
 }
 
-export async function loadHistoryPreview(userId: string, historyId: string): Promise<string> {
-  const cached = getCachedPreview(userId, historyId);
+export async function loadHistoryPreview(userId: string, historyId: string, size: PreviewSize = 480): Promise<string> {
+  const cached = getCachedPreview(userId, historyId, size);
   if (cached) return cached;
 
-  const key = getKey(userId, historyId);
+  const key = getKey(userId, historyId, size);
   const pending = inFlight.get(key);
   if (pending) return pending;
 
@@ -73,7 +81,7 @@ export async function loadHistoryPreview(userId: string, historyId: string): Pro
     const token = data.session?.access_token;
     if (!token) throw new Error("Missing session");
 
-    const response = await fetch(`/api/history-thumbnail/${encodeURIComponent(historyId)}`, {
+    const response = await fetch(`/api/history-thumbnail/${encodeURIComponent(historyId)}?size=${size}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!response.ok) throw new Error(`Preview request failed: ${response.status}`);
@@ -86,7 +94,7 @@ export async function loadHistoryPreview(userId: string, historyId: string): Pro
       throw new Error("Preview cache scope changed");
     }
 
-    entries.set(key, { userId, historyId, blobUrl, touchedAt: ++touchCounter });
+    entries.set(key, { userId, historyId, size, blobUrl, touchedAt: ++touchCounter });
     evictIfNeeded();
     listeners.get(key)?.forEach((listener) => listener(blobUrl));
     return blobUrl;

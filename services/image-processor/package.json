@@ -1,0 +1,15 @@
+{
+  "name": "@shuntu/image-processor",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "sharp": "^0.35.5"
+  }
+}

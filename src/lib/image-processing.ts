@@ -16,6 +16,11 @@
 
 export type ProcessPreset = "ai-model" | "community";
 
+export type ProcessImageOptions = {
+  /** Optional hard upper bound for the encoded output. */
+  maxBytes?: number;
+};
+
 export interface ProcessedImage {
   /** Processed binary, ready to upload. */
   blob: Blob;
@@ -32,6 +37,7 @@ export interface ProcessedImage {
 
 const AI_MAX_DIM = 1600;
 const AI_QUALITY = 0.85;
+export const REFERENCE_MAX_BYTES = 128 * 1024;
 
 const COMMUNITY_MAX_DIM = 2560;
 const COMMUNITY_SIZE_THRESHOLD = 2 * 1024 * 1024; // 2 MB
@@ -91,7 +97,7 @@ async function canvasEncode(
   }
   ctx.drawImage(bitmap, 0, 0, width, height);
 
-  if (canvas instanceof OffscreenCanvas) {
+  if (typeof OffscreenCanvas !== "undefined" && canvas instanceof OffscreenCanvas) {
     return await canvas.convertToBlob({ type, quality });
   }
   return await new Promise<Blob>((resolve, reject) =>
@@ -103,13 +109,55 @@ async function canvasEncode(
   );
 }
 
+async function encodeWithinByteLimit(
+  bitmap: ImageBitmap,
+  width: number,
+  height: number,
+  type: string,
+  initialQuality: number,
+  maxBytes: number,
+  flattenBg: string | null,
+): Promise<Blob> {
+  let currentWidth = width;
+  let currentHeight = height;
+
+  // Try to keep the largest dimensions and highest JPEG quality that fit.
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const lowestQualityBlob = await canvasEncode(bitmap, currentWidth, currentHeight, type, 0.1, flattenBg);
+    if (lowestQualityBlob.size <= maxBytes) {
+      let bestBlob = lowestQualityBlob;
+      let low = 0.1;
+      let high = Math.min(1, initialQuality);
+      for (let iteration = 0; iteration < 7; iteration += 1) {
+        const quality = (low + high) / 2;
+        const candidate = await canvasEncode(bitmap, currentWidth, currentHeight, type, quality, flattenBg);
+        if (candidate.size <= maxBytes) {
+          bestBlob = candidate;
+          low = quality;
+        } else {
+          high = quality;
+        }
+      }
+      return bestBlob;
+    }
+
+    const nextWidth = Math.max(1, Math.floor(currentWidth * 0.8));
+    const nextHeight = Math.max(1, Math.floor(currentHeight * 0.8));
+    if (nextWidth === currentWidth && nextHeight === currentHeight) break;
+    currentWidth = nextWidth;
+    currentHeight = nextHeight;
+  }
+
+  throw new Error("图片压缩后仍超过大小限制");
+}
+
 /** Yield to the browser so React can repaint loading states. */
 const nextFrame = () =>
   new Promise<void>((r) =>
     typeof requestAnimationFrame !== "undefined" ? requestAnimationFrame(() => r()) : setTimeout(r, 0),
   );
 
-export async function processImage(file: File, preset: ProcessPreset): Promise<ProcessedImage> {
+export async function processImage(file: File, preset: ProcessPreset, options: ProcessImageOptions = {}): Promise<ProcessedImage> {
   const previewUrl = makePreviewUrl(file);
   const originalSize = file.size;
 
@@ -119,6 +167,11 @@ export async function processImage(file: File, preset: ProcessPreset): Promise<P
   try {
     bitmap = await decode(file);
   } catch {
+    // Never bypass a caller-requested byte limit with the original file.
+    if (options.maxBytes !== undefined) {
+      URL.revokeObjectURL(previewUrl);
+      throw new Error("图片无法处理，请换一张图片重试");
+    }
     // Unable to decode (rare) → upload original.
     return {
       blob: file,
@@ -133,7 +186,9 @@ export async function processImage(file: File, preset: ProcessPreset): Promise<P
   try {
     if (preset === "ai-model") {
       const { w, h } = fitDimensions(bitmap.width, bitmap.height, AI_MAX_DIM);
-      const blob = await canvasEncode(bitmap, w, h, "image/jpeg", AI_QUALITY, "#ffffff");
+      const blob = options.maxBytes !== undefined
+        ? await encodeWithinByteLimit(bitmap, w, h, "image/jpeg", AI_QUALITY, options.maxBytes, "#ffffff")
+        : await canvasEncode(bitmap, w, h, "image/jpeg", AI_QUALITY, "#ffffff");
       return {
         blob,
         contentType: "image/jpeg",
@@ -179,6 +234,9 @@ export async function processImage(file: File, preset: ProcessPreset): Promise<P
       originalSize,
       processedSize: blob.size,
     };
+  } catch (error) {
+    URL.revokeObjectURL(previewUrl);
+    throw error;
   } finally {
     bitmap.close?.();
   }

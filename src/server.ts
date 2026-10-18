@@ -1,5 +1,6 @@
 import "./lib/error-capture";
 
+import { DurableObject } from "cloudflare:workers";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 import { runReplicationBatch, type ReplicationRuntimeEnv } from "./lib/replication-runtime";
@@ -9,6 +10,70 @@ type ServerEntry = {
 };
 
 type WorkerExecutionContext = { waitUntil?: (promise: Promise<unknown>) => void };
+
+type SharpContainer = {
+  running: boolean;
+  images: { base: unknown };
+  start: (options: { image: unknown; instance: string; enableInternet: boolean; env: Record<string, string> }) => void;
+  setInactivityTimeout: (timeoutMs: number) => Promise<void>;
+  getTcpPort: (port: number) => { fetch: (request: Request | string, init?: RequestInit) => Promise<Response> };
+  monitor: () => Promise<unknown>;
+};
+
+type SharpContainerEnv = {
+  SHARP_IMAGE_PROCESSOR_TOKEN?: string;
+};
+
+export class SharpImageProcessor extends DurableObject<SharpContainerEnv> {
+  private startup: Promise<void> | undefined;
+
+  async fetch(request: Request): Promise<Response> {
+    this.startup ??= this.startAndWaitForReady().finally(() => {
+      this.startup = undefined;
+    });
+    await this.startup;
+
+    const url = new URL(request.url);
+    url.protocol = "http:";
+    url.host = "container";
+    const forwarded = new Request(url, request);
+    forwarded.headers.delete("host");
+    return this.container().getTcpPort(8080).fetch(forwarded);
+  }
+
+  private container(): SharpContainer {
+    const container = (this.ctx as unknown as { container?: SharpContainer }).container;
+    if (!container) throw new Error("Cloudflare Container binding is unavailable");
+    return container;
+  }
+
+  private async startAndWaitForReady(): Promise<void> {
+    const container = this.container();
+    if (!container.running) {
+      container.start({
+        image: container.images.base,
+        instance: "basic",
+        enableInternet: false,
+        env: { SHARP_IMAGE_PROCESSOR_TOKEN: this.env.SHARP_IMAGE_PROCESSOR_TOKEN ?? "" },
+      });
+    }
+
+    await container.setInactivityTimeout(2 * 60 * 1000);
+    const port = container.getTcpPort(8080);
+    // A cold container may need time to pull and start the image before its port opens.
+    for (let attempt = 0; attempt < 300; attempt += 1) {
+      try {
+        const response = await port.fetch("http://container/healthz", { signal: AbortSignal.timeout(1000) });
+        await response.body?.cancel();
+        if (response.ok) return;
+      } catch {
+        // Wait for the HTTP server to finish starting.
+      }
+      await scheduler.wait(200);
+    }
+    throw new Error("Sharp image processor container did not become ready");
+  }
+}
 
 const CLOUDFLARE_ENV_GLOBAL_KEY = "__SHUNTU_CLOUDFLARE_ENV__";
 

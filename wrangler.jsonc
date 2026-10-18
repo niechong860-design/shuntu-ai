@@ -30,7 +30,27 @@
       "migrations_dir": "d1/migrations"
     }
   ],
-  "images": {
-    "binding": "IMAGES"
-  }
+  "containers": [
+    {
+      "class_name": "SharpImageProcessor",
+      "image": "./services/image-processor/Dockerfile",
+      "image_build_context": "./services/image-processor",
+      "scheduling_policy": "default",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "class_name": "SharpImageProcessor",
+        "name": "SHARP_IMAGE_PROCESSOR"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["SharpImageProcessor"]
+    }
+  ]
 }

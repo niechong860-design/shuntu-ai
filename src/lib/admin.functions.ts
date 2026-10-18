@@ -441,7 +441,7 @@ function buildHistoryThumbUrl(historyId: string, url: string | null | undefined)
   try {
     const parsed = new URL(url);
     if (parsed.origin === "https://img.shuntu.cc" && parsed.pathname.startsWith("/generated/")) {
-      return `/api/history-thumbnail/${encodeURIComponent(historyId)}`;
+      return `/api/history-thumbnail/${encodeURIComponent(historyId)}?size=480`;
     }
   } catch {
     // Preserve the legacy URL below when the stored value is not absolute.

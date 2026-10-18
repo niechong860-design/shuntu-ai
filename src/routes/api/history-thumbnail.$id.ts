@@ -2,7 +2,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { authenticateSupabaseRequest } from "@/lib/supabase-request-auth";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { createBusinessDatabaseFromContext } from "@/lib/business-database-router";
-import type { ImagePreviewMode } from "@/lib/business-database";
 import {
   GENERATED_PREVIEW_CACHE_CONTROL,
   GENERATED_PREVIEW_CONTENT_TYPE,
@@ -11,6 +10,8 @@ import {
   getGeneratedPreviewKeyFromPublicUrl,
   getGeneratedPreviewObject,
 } from "@/lib/r2-image-preview";
+
+type PreviewSize = 480 | 1024;
 
 function getIfNoneMatch(request: Request): string | null {
   const value = request.headers.get("If-None-Match");
@@ -41,26 +42,8 @@ function getPreviewResponse(request: Request, object: Awaited<ReturnType<typeof 
   return new Response(object.body, { status: 200, headers });
 }
 
-async function getOriginalImageResponse(imageUrl: string | null | undefined): Promise<Response> {
-  if (!imageUrl) return new Response("Preview unavailable", { status: 502 });
-  try {
-    const response = await fetch(imageUrl);
-    if (!response.ok || !response.body) return new Response("Preview unavailable", { status: 502 });
-    const headers = new Headers(response.headers);
-    headers.set("Cache-Control", GENERATED_PREVIEW_CACHE_CONTROL);
-    headers.set("Vary", "Authorization");
-    return new Response(response.body, { status: 200, headers });
-  } catch {
-    return new Response("Preview unavailable", { status: 502 });
-  }
-}
-
-function getImagePreviewMode(value: unknown): ImagePreviewMode {
-  return value === "auto" || value === "preview_only" || value === "original_only" ? value : "original_only";
-}
-
-function previewUnavailableResponse(): Response {
-  return new Response("Preview unavailable", { status: 502 });
+function getPreviewSize(request: Request): PreviewSize {
+  return new URL(request.url).searchParams.get("size") === "1024" ? 1024 : 480;
 }
 
 export const Route = createFileRoute("/api/history-thumbnail/$id")({
@@ -87,29 +70,22 @@ export const Route = createFileRoute("/api/history-thumbnail/$id")({
           if (!roles?.length) return new Response("Not found", { status: 404 });
         }
 
-        let mode: ImagePreviewMode = "original_only";
-        try {
-          mode = getImagePreviewMode((await db.getAdminSettings())?.image_preview_mode);
-        } catch {
-          mode = "original_only";
-        }
-        if (mode === "original_only") return getOriginalImageResponse(row.image_url);
-
-        const previewKey = getGeneratedPreviewKeyFromPublicUrl(row.image_url);
-        if (!previewKey) return mode === "preview_only" ? previewUnavailableResponse() : getOriginalImageResponse(row.image_url);
+        const size = getPreviewSize(request);
+        const previewKey = getGeneratedPreviewKeyFromPublicUrl(row.image_url, size);
+        if (!previewKey) return new Response("Preview unavailable", { status: 502 });
 
         try {
           const cloudflareEnv = getCloudflareEnv();
           let preview = await getGeneratedPreviewObject(previewKey, cloudflareEnv);
           if (!preview) {
             const ensured = await ensureGeneratedPreviewFromOriginalUrl(row.image_url ?? "", cloudflareEnv);
-            if (!ensured) return mode === "preview_only" ? previewUnavailableResponse() : getOriginalImageResponse(row.image_url);
+            if (!ensured) return new Response("Preview unavailable", { status: 502 });
             preview = await getGeneratedPreviewObject(previewKey, cloudflareEnv);
           }
 
-          return preview ? getPreviewResponse(request, preview) : mode === "preview_only" ? previewUnavailableResponse() : getOriginalImageResponse(row.image_url);
+          return preview ? getPreviewResponse(request, preview) : new Response("Preview unavailable", { status: 502 });
         } catch {
-          return mode === "preview_only" ? previewUnavailableResponse() : getOriginalImageResponse(row.image_url);
+          return new Response("Preview unavailable", { status: 502 });
         }
       },
     },
