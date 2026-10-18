@@ -15,6 +15,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as PaymentReturnRouteImport } from './routes/payment/return'
 import { Route as ApiDownloadImageRouteImport } from './routes/api/download-image'
 import { Route as ApiXunhupayNotifyRouteImport } from './routes/api/xunhupay/notify'
+import { Route as ApiStorageUploadRouteImport } from './routes/api/storage.upload'
 import { Route as ApiHistoryThumbnailIdRouteImport } from './routes/api/history-thumbnail.$id'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth.$'
 
@@ -48,6 +49,11 @@ const ApiXunhupayNotifyRoute = ApiXunhupayNotifyRouteImport.update({
   path: '/api/xunhupay/notify',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiStorageUploadRoute = ApiStorageUploadRouteImport.update({
+  id: '/api/storage/upload',
+  path: '/api/storage/upload',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiHistoryThumbnailIdRoute = ApiHistoryThumbnailIdRouteImport.update({
   id: '/api/history-thumbnail/$id',
   path: '/api/history-thumbnail/$id',
@@ -67,6 +73,7 @@ export interface FileRoutesByFullPath {
   '/payment/return': typeof PaymentReturnRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/history-thumbnail/$id': typeof ApiHistoryThumbnailIdRoute
+  '/api/storage/upload': typeof ApiStorageUploadRoute
   '/api/xunhupay/notify': typeof ApiXunhupayNotifyRoute
 }
 export interface FileRoutesByTo {
@@ -77,6 +84,7 @@ export interface FileRoutesByTo {
   '/payment/return': typeof PaymentReturnRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/history-thumbnail/$id': typeof ApiHistoryThumbnailIdRoute
+  '/api/storage/upload': typeof ApiStorageUploadRoute
   '/api/xunhupay/notify': typeof ApiXunhupayNotifyRoute
 }
 export interface FileRoutesById {
@@ -88,6 +96,7 @@ export interface FileRoutesById {
   '/payment/return': typeof PaymentReturnRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/history-thumbnail/$id': typeof ApiHistoryThumbnailIdRoute
+  '/api/storage/upload': typeof ApiStorageUploadRoute
   '/api/xunhupay/notify': typeof ApiXunhupayNotifyRoute
 }
 export interface FileRouteTypes {
@@ -100,6 +109,7 @@ export interface FileRouteTypes {
     | '/payment/return'
     | '/api/auth/$'
     | '/api/history-thumbnail/$id'
+    | '/api/storage/upload'
     | '/api/xunhupay/notify'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -110,6 +120,7 @@ export interface FileRouteTypes {
     | '/payment/return'
     | '/api/auth/$'
     | '/api/history-thumbnail/$id'
+    | '/api/storage/upload'
     | '/api/xunhupay/notify'
   id:
     | '__root__'
@@ -120,6 +131,7 @@ export interface FileRouteTypes {
     | '/payment/return'
     | '/api/auth/$'
     | '/api/history-thumbnail/$id'
+    | '/api/storage/upload'
     | '/api/xunhupay/notify'
   fileRoutesById: FileRoutesById
 }
@@ -131,6 +143,7 @@ export interface RootRouteChildren {
   PaymentReturnRoute: typeof PaymentReturnRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiHistoryThumbnailIdRoute: typeof ApiHistoryThumbnailIdRoute
+  ApiStorageUploadRoute: typeof ApiStorageUploadRoute
   ApiXunhupayNotifyRoute: typeof ApiXunhupayNotifyRoute
 }
 
@@ -178,6 +191,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiXunhupayNotifyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/storage/upload': {
+      id: '/api/storage/upload'
+      path: '/api/storage/upload'
+      fullPath: '/api/storage/upload'
+      preLoaderRoute: typeof ApiStorageUploadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/history-thumbnail/$id': {
       id: '/api/history-thumbnail/$id'
       path: '/api/history-thumbnail/$id'
@@ -203,6 +223,7 @@ const rootRouteChildren: RootRouteChildren = {
   PaymentReturnRoute: PaymentReturnRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiHistoryThumbnailIdRoute: ApiHistoryThumbnailIdRoute,
+  ApiStorageUploadRoute: ApiStorageUploadRoute,
   ApiXunhupayNotifyRoute: ApiXunhupayNotifyRoute,
 }
 export const routeTree = rootRouteImport
