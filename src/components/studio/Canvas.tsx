@@ -390,7 +390,7 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
                 previewSrc={generatedPreviewUrl}
                 historyId={currentHistoryId}
                 userId={userId}
-                previewSize={480}
+                previewSize={1024}
                 alt="生成结果"
                 className="absolute inset-0"
               />
@@ -540,7 +540,7 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
       {lightbox && (
         <Lightbox
           downloadSrc={lightbox.originalImageUrl}
-          previewUrl={userId ? getCachedPreview(userId, lightbox.id, 480) : null}
+          previewUrl={userId ? getCachedPreview(userId, lightbox.id, 1024) : null}
           historyId={lightbox.id}
           userId={userId}
           prompt={lightbox.prompt ?? ""}
@@ -901,7 +901,7 @@ function Lightbox({ downloadSrc, previewUrl, thumbnailSrc, thumbnailLoading = fa
   useEffect(() => {
     if (!historyId || !userId) return;
     let cancelled = false;
-    void loadHistoryPreview(userId, historyId, 480).then((url) => {
+    void loadHistoryPreview(userId, historyId, 1024).then((url) => {
       if (!cancelled) {
         setPreviewSrc(url);
         setPreviewLoading(false);
@@ -942,7 +942,7 @@ function Lightbox({ downloadSrc, previewUrl, thumbnailSrc, thumbnailLoading = fa
     >
       <div onClick={(e) => e.stopPropagation()} className="glass-elevated relative flex h-[92dvh] max-h-[calc(100dvh-3rem)] w-full max-w-[94vw] min-h-0 flex-col gap-4 overflow-hidden rounded-2xl p-2 sm:flex-row">
         <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-xl bg-black">
-          <GeneratedPreviewImage previewSrc={previewSrc} thumbnailSrc={thumbnailSrc} thumbnailLoading={thumbnailLoading || previewLoading} alt={prompt} className="flex min-h-0 min-w-0 flex-1 items-center justify-center rounded-xl" imageClassName="h-auto w-auto max-h-full max-w-full object-contain object-center" />
+          <GeneratedPreviewImage previewSrc={previewSrc} thumbnailSrc={thumbnailSrc} thumbnailLoading={thumbnailLoading || previewLoading} previewSize={1024} alt={prompt} className="flex min-h-0 min-w-0 flex-1 items-center justify-center rounded-xl" imageClassName="h-auto w-auto max-h-full max-w-full object-contain object-center" />
         </div>
         <div className="flex max-h-[40%] min-h-0 w-full shrink-0 flex-col overflow-y-auto p-4 sm:max-h-none sm:w-72">
           <div className="flex items-center justify-between">
