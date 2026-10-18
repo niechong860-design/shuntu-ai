@@ -36,6 +36,9 @@ export type CloudflareEnvLike = {
   R2_PUBLIC_BASE_URL?: string;
   SHARP_IMAGE_PROCESSOR_URL?: string;
   SHARP_IMAGE_PROCESSOR_TOKEN?: string;
+  SHARP_IMAGE_PROCESSOR?: {
+    getByName: (name: string) => { fetch: (request: Request) => Promise<Response> };
+  };
 };
 
 const previewInFlight = new Map<string, Promise<boolean>>();
@@ -212,32 +215,47 @@ async function createSharpPreviewBytes(
 ): Promise<{ "480": Uint8Array; "1024": Uint8Array } | null> {
   const rawProcessorUrl = env.SHARP_IMAGE_PROCESSOR_URL?.trim();
   const token = env.SHARP_IMAGE_PROCESSOR_TOKEN?.trim();
-  if (!rawProcessorUrl || !token) {
-    console.warn('[preview] Sharp image processor is not configured');
+  if (!token) {
+    console.warn('[preview] Sharp image processor token is not configured');
     return null;
   }
 
-  let processorUrl: URL;
-  try {
-    processorUrl = new URL(rawProcessorUrl);
-  } catch {
-    throw new Error('Sharp image processor URL is invalid');
+  const headers = {
+    Authorization: 'Bearer ' + token,
+    'Content-Type': getOriginalContentType(originalKey),
+    Accept: 'application/json',
+  };
+  const container = env.SHARP_IMAGE_PROCESSOR;
+  let response: Response;
+  if (container) {
+    response = await container.getByName('sharp-image-processor').fetch(new Request('http://container/v1/previews', {
+      method: 'POST',
+      headers,
+      body: toArrayBuffer(originalBytes),
+      signal: AbortSignal.timeout(120_000),
+    }));
+  } else {
+    if (!rawProcessorUrl) {
+      console.warn('[preview] Sharp image processor is not configured');
+      return null;
+    }
+    let processorUrl: URL;
+    try {
+      processorUrl = new URL(rawProcessorUrl);
+    } catch {
+      throw new Error('Sharp image processor URL is invalid');
+    }
+    if (processorUrl.protocol !== 'https:' || processorUrl.username || processorUrl.password || processorUrl.search || processorUrl.hash) {
+      throw new Error('Sharp image processor URL must be a clean HTTPS URL');
+    }
+    processorUrl.pathname = processorUrl.pathname.replace(/\/+$/, '') + '/v1/previews';
+    response = await fetch(processorUrl, {
+      method: 'POST',
+      headers,
+      body: toArrayBuffer(originalBytes),
+      signal: AbortSignal.timeout(20_000),
+    });
   }
-  if (processorUrl.protocol !== 'https:' || processorUrl.username || processorUrl.password || processorUrl.search || processorUrl.hash) {
-    throw new Error('Sharp image processor URL must be a clean HTTPS URL');
-  }
-  processorUrl.pathname = processorUrl.pathname.replace(/\/+$/, '') + '/v1/previews';
-
-  const response = await fetch(processorUrl, {
-    method: 'POST',
-    headers: {
-      Authorization: 'Bearer ' + token,
-      'Content-Type': getOriginalContentType(originalKey),
-      Accept: 'application/json',
-    },
-    body: toArrayBuffer(originalBytes),
-    signal: AbortSignal.timeout(20_000),
-  });
   if (!response.ok) throw new Error('Sharp image processor failed: ' + response.status);
 
   const payload = await response.json() as Partial<SharpPreviewPayload>;
