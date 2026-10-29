@@ -471,6 +471,7 @@ export function Canvas({
                 previewSize={1536}
                 alt="生成结果"
                 className="absolute inset-0"
+                showLoadingOverlay={generatedUrlSource !== "result"}
                 onReady={() => setResultImageReady(true)}
                 onFailed={() => setResultImageReady(true)}
               />
@@ -1059,6 +1060,7 @@ function GeneratedPreviewImage({
   imageClassName,
   onReady,
   onFailed,
+  showLoadingOverlay = true,
 }: {
   previewSrc?: string | null;
   thumbnailSrc?: string | null;
@@ -1072,6 +1074,7 @@ function GeneratedPreviewImage({
   imageClassName?: string;
   onReady?: () => void;
   onFailed?: () => void;
+  showLoadingOverlay?: boolean;
 }) {
   const [resolvedPreviewSrc, setResolvedPreviewSrc] = useState<string | null>(
     thumbnailSrc ?? (historyId ? fallbackSrc || null : (previewSrc ?? fallbackSrc ?? null)),
@@ -1086,6 +1089,7 @@ function GeneratedPreviewImage({
       thumbnailSrc ?? (historyId ? fallbackSrc || null : (previewSrc ?? fallbackSrc ?? null)),
     );
     setPreviewRequestFailed(false);
+    setFailed(false);
     if (!historyId || !userId) return;
 
     let cancelled = false;
@@ -1137,6 +1141,7 @@ function GeneratedPreviewImage({
           alt={alt}
           onLoad={() => {
             setLoading(false);
+            setFailed(false);
             onReady?.();
           }}
           onError={() => {
@@ -1153,7 +1158,7 @@ function GeneratedPreviewImage({
           className={`${imageClassName ?? "h-full w-full object-contain"} transition-opacity duration-200 ${loading || failed ? "opacity-0" : "opacity-100"}`}
         />
       )}
-      {loading && !failed && (
+      {loading && !failed && showLoadingOverlay && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-xs text-white/75">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
           <span>图片加载中...</span>
