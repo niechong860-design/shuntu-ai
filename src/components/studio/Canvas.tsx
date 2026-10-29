@@ -223,6 +223,7 @@ type Props = {
 
 export type GeneratedImageResult = {
   index: number;
+  taskId?: string;
   status: "pending" | "done" | "failed";
   imageUrl?: string | null;
   historyId?: string | null;

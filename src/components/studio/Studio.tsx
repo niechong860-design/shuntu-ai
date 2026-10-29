@@ -604,6 +604,15 @@ export function Studio() {
     prepareCanvasForNewTask(queuedTasks[0], {
       clearCurrentResult: generatedUrlSource !== "result" || adminActiveTaskCount === 0,
     });
+    setGeneratedResults(
+      count > 1
+        ? queuedTasks.map((task, index) => ({
+            index,
+            taskId: task.id,
+            status: "pending" as const,
+          }))
+        : [],
+    );
     setAdminPreparingNextTask(false);
     return true;
   };
@@ -770,6 +779,18 @@ export function Studio() {
       );
       if (finalized) {
         if (task.resultImageUrl) {
+          setGeneratedResults((results) =>
+            results.map((result) =>
+              result.taskId === task.taskId
+                ? {
+                    ...result,
+                    status: "done" as const,
+                    imageUrl: task.resultImageUrl,
+                    historyId: task.historyId ?? null,
+                  }
+                : result,
+            ),
+          );
           setGeneratedUrl(task.resultImageUrl);
           setCurrentHistoryId(task.historyId ?? null);
           setGeneratedUrlSource("result");
@@ -788,6 +809,11 @@ export function Studio() {
         await refreshProfile();
         toast.success("任务已完成");
       } else if (task.status === "failed" || task.status === "succeeded") {
+        setGeneratedResults((results) =>
+          results.map((result) =>
+            result.taskId === task.taskId ? { ...result, status: "failed" as const } : result,
+          ),
+        );
         setProgress(null);
         toast.error(task.errorMessage ?? "任务生成失败");
       } else {
@@ -798,6 +824,11 @@ export function Studio() {
       setAdminTasks((tasks) =>
         tasks.map((item) =>
           item.id === taskId ? { ...item, status: "failed" as const, errorMessage: message } : item,
+        ),
+      );
+      setGeneratedResults((results) =>
+        results.map((result) =>
+          result.taskId === taskId ? { ...result, status: "failed" as const } : result,
         ),
       );
       setProgress(null);
