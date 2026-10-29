@@ -208,7 +208,7 @@ export function Studio() {
   const canPrepareNextAdminTask =
     !!session &&
     !adminPreparingNextTask &&
-    effectiveCurrentBatchTaskCount < 3 &&
+    effectiveCurrentBatchTaskCount < 4 &&
     (generating || adminActiveTaskCount > 0);
   const activeQueueTask = getActiveQueueTask(adminTasks);
   const hasVisibleResult = !!generatedUrl && generatedUrlSource === "result";
@@ -224,7 +224,7 @@ export function Studio() {
       (task) =>
         task.status !== "waiting" && task.status !== "submitting" && task.status !== "generating",
     );
-    return [...queueTasks, ...recentTasks].slice(0, 3);
+    return [...queueTasks, ...recentTasks].slice(0, 4);
   };
 
   const rememberLatestResult = (url: string, prompt: string, modelName: string) => {
@@ -346,7 +346,7 @@ export function Studio() {
               };
             },
           )
-          .slice(0, 3);
+          .slice(0, 4);
         const trimmed = trimPanelTasks(recovered);
         setAdminTasks(trimmed);
         const activeTask = getActiveQueueTask(trimmed);
@@ -569,8 +569,8 @@ export function Studio() {
     inputParams: Record<string, unknown>;
   }) => {
     if (!session) return false;
-    if (effectiveCurrentBatchTaskCount >= 3) {
-      throw new Error("本轮任务已满 3 个，请开始新一轮后再提交。");
+    if (effectiveCurrentBatchTaskCount >= 4) {
+      throw new Error("本轮任务已满 4 个，请开始新一轮后再提交。");
     }
 
     const task = await createTask({
@@ -641,8 +641,8 @@ export function Studio() {
   const handleRetryFailedTask = async (taskId: string) => {
     if (!session) return;
     if (retryingTaskIds.includes(taskId)) return;
-    if (adminActiveTaskCount >= 3) {
-      toast.error("任务已满 3/3");
+    if (adminActiveTaskCount >= 4) {
+      toast.error("任务已满 4/4");
       return;
     }
 
@@ -909,7 +909,7 @@ export function Studio() {
         {session && (
           <TaskFloatingPanel
             tasks={adminTasks}
-            maxTasks={3}
+            maxTasks={4}
             onClearTestTasks={handleAdminClearTestTasks}
             startingTaskIds={startingTaskIds}
             onCancelTask={handleAdminCancelTask}

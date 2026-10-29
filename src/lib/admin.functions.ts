@@ -721,7 +721,7 @@ export const getMyGenerationTasks = createServerFn({ method: "POST" })
 
     const items = (rows ?? [])
       .filter((r) => !isProductionConnectedGeneration() || isCurrentGenerationTestTask(r))
-      .slice(0, 3)
+      .slice(0, 4)
       .map((r) => ({
         id: r.id as string,
         requestId: r.request_id as string,
@@ -765,8 +765,8 @@ export const createGenerationTask = createServerFn({ method: "POST" })
       statuses: ["queued", "running"],
     });
     const activeCount = activeTaskRows.filter(isCurrentGenerationTestTask).length;
-    if (activeCount >= 3) {
-      throw new Error("当前已有 3 个进行中任务，请等待任务完成后再提交。");
+    if (activeCount >= 4) {
+      throw new Error("当前已有 4 个进行中任务，请等待任务完成后再提交。");
     }
 
     const model = await getBusinessModel(db, data.modelKey, false);

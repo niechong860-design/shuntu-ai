@@ -64,7 +64,7 @@ function formatTaskErrorMessage(message?: string | null): string {
 
 export function TaskFloatingPanel({
   tasks,
-  maxTasks = 3,
+  maxTasks = 4,
   onClearTestTasks,
   startingTaskIds = [],
   onCancelTask,
@@ -109,7 +109,7 @@ export function TaskFloatingPanel({
             <div>
               <div className="text-sm font-semibold text-foreground">任务队列</div>
               <div className="mt-0.5 text-[11px] text-muted-foreground">
-                显示当前队列和最近完成，最多 3 个任务
+                显示当前队列和最近完成，最多 4 个任务
               </div>
             </div>
             <div className="flex items-center gap-2">

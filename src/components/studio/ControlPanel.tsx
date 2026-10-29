@@ -287,7 +287,7 @@ export function ControlPanel({
   const [modelKey, setModelKey] = useState<string>("");
   const [ratio, setRatio] = useState("1:1");
   const [size, setSize] = useState<"1K" | "2K" | "4K">("1K");
-  const [imageCount, setImageCount] = useState<1 | 2 | 4>(4);
+  const [imageCount, setImageCount] = useState<1 | 2 | 4>(1);
   const [modelOpen, setModelOpen] = useState(false);
   const [ratioOpen, setRatioOpen] = useState(false);
   const [sizeOpen, setSizeOpen] = useState(false);
@@ -838,8 +838,8 @@ export function ControlPanel({
   const handleGenerate = async () => {
     const createQueuedTask = async () => {
       if (isCreatingQueuedTask) return;
-      if (adminCurrentBatchTaskCount >= 3) {
-        toast.error("本轮任务已满 3 个，请开始新一轮后再提交。");
+      if (adminCurrentBatchTaskCount >= 4) {
+        toast.error("本轮任务已满 4 个，请开始新一轮后再提交。");
         return;
       }
       if (!activeModel) return;
@@ -1324,7 +1324,7 @@ export function ControlPanel({
                     <Popover>
                       <PopoverTrigger asChild>
                         <button className="flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/[0.05] px-2.5 py-1.5 text-[11px] font-medium transition-colors hover:border-primary/45 hover:bg-primary/[0.1]">
-                          <span className="font-mono">×{imageCount}</span>
+                          <span className="font-mono">数量 {imageCount}张</span>
                           <ChevronDown className="h-3 w-3 text-muted-foreground" />
                         </button>
                       </PopoverTrigger>
@@ -1508,7 +1508,7 @@ export function ControlPanel({
           onClick={handleGenerate}
           disabled={
             isQueueMode
-              ? !activeModel || adminCurrentBatchTaskCount >= 3 || isCreatingQueuedTask
+              ? !activeModel || adminCurrentBatchTaskCount >= 4 || isCreatingQueuedTask
               : (generating && !isPreparingNextTask) || !activeModel
           }
           className="group relative flex w-full items-center justify-between gap-2 overflow-hidden rounded-2xl bg-gradient-aurora px-5 py-3.5 text-sm font-bold text-primary-foreground shadow-glow transition-all duration-150 ease-out hover:brightness-110 active:scale-[0.97] disabled:opacity-70 disabled:cursor-not-allowed disabled:active:scale-100"
@@ -1525,13 +1525,13 @@ export function ControlPanel({
                 {isPreparingNextTask
                   ? isCreatingQueuedTask
                     ? "加入队列中..."
-                    : adminCurrentBatchTaskCount >= 3
-                      ? "任务已满 3/3"
+                    : adminCurrentBatchTaskCount >= 4
+                      ? "任务已满 4/4"
                       : "加入任务队列"
                   : isQueueMode && isCreatingQueuedTask
                     ? "加入队列中..."
-                    : isQueueMode && adminCurrentBatchTaskCount >= 3
-                      ? "任务已满 3/3"
+                    : isQueueMode && adminCurrentBatchTaskCount >= 4
+                      ? "任务已满 4/4"
                       : isQueueMode && adminCurrentBatchTaskCount > 0
                         ? "加入任务队列"
                         : "立即生成"}
