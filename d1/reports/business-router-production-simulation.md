@@ -2,16 +2,15 @@
 
 ## DATABASE_PRIMARY
 
-- unset: lovable
-- empty: lovable
-- lovable: lovable
+- unset: d1
+- empty: d1
 - d1: d1
-- invalid values fall back to lovable: 1=lovable, D1=lovable, dl=lovable, postgres=lovable, true=lovable
+- legacy Lovable value is rejected; D1 is the only runtime authority
 
 ## D1 Binding Lazy Init
 
-- PASS: DatabaseRouter returns the Lovable adapter before resolving env.DB when primary is lovable.
-- PASS: DATABASE_PRIMARY=d1 remains the only path that requires a DB binding.
+- PASS: DatabaseRouter rejects the retired Lovable adapter before resolving a binding.
+- PASS: DATABASE_PRIMARY=d1 remains the only supported path that requires a DB binding.
 
 ## Production Paths
 
@@ -27,12 +26,13 @@
 - inspirationLegacyWritesGuarded: PASS
 - notifyUsesRouter: PASS
 - thumbnailUsesRouter: PASS
-- admin legacy write guards: 22
+- admin legacy write guards: 0
 - inspiration legacy write guards: 5
 
-## Outbox Guards
+## Outbox D1-Only Behavior
 
-- batchRequiresBusinessStatements: PASS
-- batchRequiresOutboxEvents: PASS
-- payloadGuardPresent: PASS
-- d1WritesUseOutbox: PASS
+- enqueueHelperRetainedForAtomicAudit: PASS
+- d1BusinessBatchesRemainAtomic: PASS
+- outboxSchemaPreservedForHistory: PASS
+- runtimeHealthReadsOnly: PASS
+- legacyReplicationConsumerDisabled: PASS

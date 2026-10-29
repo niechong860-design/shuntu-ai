@@ -1,12 +1,19 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireD1Auth } from "@/lib/d1-auth-middleware";
 import type { BusinessDatabase } from "@/lib/business-database";
-import { createBusinessDatabaseFromContext } from "@/lib/business-database-router";
+import {
+  createBusinessDatabaseFromContext,
+  getCloudflareEnvFromContext,
+} from "@/lib/business-database-router";
 import { hasTrustedPackageCreditMapping } from "@/lib/recharge-packages";
 
 const orderInput = z.object({
-  outTradeNo: z.string().min(1).max(32).regex(/^[0-9A-Za-z_*-]+$/),
+  outTradeNo: z
+    .string()
+    .min(1)
+    .max(32)
+    .regex(/^[0-9A-Za-z_*-]+$/),
 });
 
 type OrderRow = {
@@ -18,13 +25,20 @@ type OrderRow = {
 };
 
 function getBusinessDb(context: unknown): BusinessDatabase {
-  return createBusinessDatabaseFromContext(context as Parameters<typeof createBusinessDatabaseFromContext>[0]);
+  return createBusinessDatabaseFromContext(
+    context as Parameters<typeof createBusinessDatabaseFromContext>[0],
+  );
 }
 
 function publicOrderStatus(row: OrderRow) {
   return {
     outTradeNo: row.out_trade_no,
-    status: row.status === "paid" ? "paid" as const : row.status === "cancelled" ? "cancelled" as const : "pending" as const,
+    status:
+      row.status === "paid"
+        ? ("paid" as const)
+        : row.status === "cancelled"
+          ? ("cancelled" as const)
+          : ("pending" as const),
     amount: String(row.amount),
     credits: Number(row.credits),
   };
@@ -36,12 +50,15 @@ async function getOwnOrder(db: BusinessDatabase, outTradeNo: string, userId: str
 }
 
 export const createXunhuPayOrder = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((input) => z.object({ packageId: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
+    rejectIsolatedExternalOperation(context);
     const payment = await import("@/lib/xunhupay.server");
     const db = getBusinessDb(context);
-    const rechargePackage = (await db.listRechargePackages()).find((row) => row.id === data.packageId && row.is_visible);
+    const rechargePackage = (await db.listRechargePackages()).find(
+      (row) => row.id === data.packageId && row.is_visible,
+    );
     if (!rechargePackage) throw new Error("充值套餐不存在或已下架");
 
     let amountCents: number;
@@ -51,7 +68,10 @@ export const createXunhuPayOrder = createServerFn({ method: "POST" })
       throw new Error("套餐价格配置错误");
     }
     const credits = Number(rechargePackage.credits);
-    if (!Number.isSafeInteger(credits) || !hasTrustedPackageCreditMapping(data.packageId, amountCents, credits)) {
+    if (
+      !Number.isSafeInteger(credits) ||
+      !hasTrustedPackageCreditMapping(data.packageId, amountCents, credits)
+    ) {
       throw new Error("套餐积分配置错误，请联系管理员");
     }
 
@@ -94,7 +114,7 @@ export const createXunhuPayOrder = createServerFn({ method: "POST" })
   });
 
 export const getUserOrderStatus = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((input) => orderInput.parse(input))
   .handler(async ({ data, context }) => {
     const db = getBusinessDb(context);
@@ -104,9 +124,10 @@ export const getUserOrderStatus = createServerFn({ method: "POST" })
   });
 
 export const confirmXunhuPayOrder = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((input) => orderInput.parse(input))
   .handler(async ({ data, context }) => {
+    rejectIsolatedExternalOperation(context);
     const payment = await import("@/lib/xunhupay.server");
     const db = getBusinessDb(context);
     const row = await getOwnOrder(db, data.outTradeNo, context.userId);
@@ -150,9 +171,22 @@ export const confirmXunhuPayOrder = createServerFn({ method: "POST" })
       throw new Error("支付确认失败，请稍后重试");
     }
 
-    const complete = await db.completePaidOrder({ outTradeNo: row.out_trade_no, tradeNo: provider.transactionId });
+    const complete = await db.completePaidOrder({
+      outTradeNo: row.out_trade_no,
+      tradeNo: provider.transactionId,
+    });
     if (!complete.success) throw new Error("支付确认失败，请稍后重试");
     const completed = await getOwnOrder(db, row.out_trade_no, context.userId);
     if (!completed || completed.status !== "paid") throw new Error("订单暂未确认");
     return publicOrderStatus(completed);
   });
+
+// Isolated full-site candidate only: reject before any paid or external operation.
+function rejectIsolatedExternalOperation(context?: unknown): void {
+  const env = getCloudflareEnvFromContext(
+    context as Parameters<typeof getCloudflareEnvFromContext>[0],
+  ) as { REAL_PAYMENT_ENABLED?: string } | undefined;
+  if (env?.REAL_PAYMENT_ENABLED !== "production") {
+    throw new Error("真实支付尚未启用；请等待正式配置完成");
+  }
+}

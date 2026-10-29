@@ -1,3 +1,4 @@
+import { errorMessage } from "@/lib/error-message";
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -17,13 +18,17 @@ export function AccessPasswordPanel() {
 
   const load = async () => {
     try {
-      const r: any = await getPw({});
-      setCurrent(r.password ?? "");
-      setUpdatedAt(r.updated_at ?? null);
-      setNext(r.password ?? "");
-    } catch (e: any) { toast.error(e.message); }
+      const r = await getPw({});
+      setCurrent(typeof r.password === "string" ? r.password : "");
+      setUpdatedAt(typeof r.updated_at === "string" ? r.updated_at : null);
+      setNext(typeof r.password === "string" ? r.password : "");
+    } catch (e: unknown) {
+      toast.error(errorMessage(e));
+    }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const save = async () => {
     if (!next.trim()) return toast.error("密码不能为空");
@@ -32,8 +37,11 @@ export function AccessPasswordPanel() {
       await setPw({ data: { password: next.trim() } });
       toast.success("访问密码已更新");
       load();
-    } catch (e: any) { toast.error(e.message); }
-    finally { setBusy(false); }
+    } catch (e: unknown) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -50,8 +58,13 @@ export function AccessPasswordPanel() {
         <div className="space-y-1">
           <label className="text-[11px] text-muted-foreground">当前密码</label>
           <div className="flex items-center gap-2">
-            <Input readOnly type={show ? "text" : "password"} value={current} className="font-mono" />
-            <Button variant="outline" size="icon" onClick={() => setShow(s => !s)}>
+            <Input
+              readOnly
+              type={show ? "text" : "password"}
+              value={current}
+              className="font-mono"
+            />
+            <Button variant="outline" size="icon" onClick={() => setShow((s) => !s)}>
               {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </Button>
             <Button variant="outline" size="icon" onClick={load}>
@@ -59,7 +72,9 @@ export function AccessPasswordPanel() {
             </Button>
           </div>
           {updatedAt && (
-            <p className="text-[10px] text-muted-foreground">最后更新：{new Date(updatedAt).toLocaleString()}</p>
+            <p className="text-[10px] text-muted-foreground">
+              最后更新：{new Date(updatedAt).toLocaleString()}
+            </p>
           )}
         </div>
 
@@ -73,7 +88,8 @@ export function AccessPasswordPanel() {
               placeholder="例如：九辞后台2026"
             />
             <Button onClick={save} disabled={busy || !next.trim() || next.trim() === current}>
-              <Save className="mr-1.5 h-3.5 w-3.5" />保存
+              <Save className="mr-1.5 h-3.5 w-3.5" />
+              保存
             </Button>
           </div>
         </div>

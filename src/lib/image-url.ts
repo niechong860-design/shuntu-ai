@@ -27,9 +27,30 @@ export type CompressOpts = {
   maxDim?: number;
 };
 
+/** Convert a previously generated render URL back to its original object URL.
+ * This is a local compatibility transform; it never calls the legacy service.
+ */
+export function normalizeLegacyImageUrl(url: string | null | undefined): string {
+  if (!url) return "";
+  if (!url.includes("/storage/v1/render/image/public/")) return url;
+  const [path, query = ""] = url.split("?", 2);
+  const normalizedPath = path.replace(
+    "/storage/v1/render/image/public/",
+    "/storage/v1/object/public/",
+  );
+  const params = new URLSearchParams(query);
+  for (const key of ["width", "height", "quality", "resize"]) params.delete(key);
+  const nextQuery = params.toString();
+  return nextQuery ? `${normalizedPath}?${nextQuery}` : normalizedPath;
+}
+
 export function thumbUrl(url: string | null | undefined, opts: CompressOpts = {}): string {
   if (!url) return "";
   if (/^(blob:|data:)/i.test(url)) return url;
+
+  const normalized = normalizeLegacyImageUrl(url);
+  if (normalized !== url) return normalized;
+  if (url.includes("/storage/v1/object/public/")) return url;
 
   let transformed = url;
   if (url.includes("/storage/v1/object/public/")) {
@@ -58,7 +79,13 @@ export function thumbUrl(url: string | null | undefined, opts: CompressOpts = {}
 export function historyThumbUrl(url: string | null | undefined): string {
   if (!url) return "";
   if (/^(blob:|data:)/i.test(url)) return url;
-  if (!url.includes("/storage/v1/object/public/") && !url.includes("/storage/v1/render/image/public/")) {
+  const normalized = normalizeLegacyImageUrl(url);
+  if (normalized !== url) return normalized;
+  if (url.includes("/storage/v1/object/public/")) return url;
+  if (
+    !url.includes("/storage/v1/object/public/") &&
+    !url.includes("/storage/v1/render/image/public/")
+  ) {
     return url;
   }
   const transformed = url.includes("/storage/v1/object/public/")
@@ -89,7 +116,7 @@ export function preloadImages(urls: Array<string | null | undefined>) {
   if (fresh.length === 0) return;
 
   const schedule =
-    (typeof window !== "undefined" && (window as any).requestIdleCallback) ||
+    (typeof window !== "undefined" && window.requestIdleCallback) ||
     ((cb: () => void) => setTimeout(cb, 200));
 
   schedule(() => {
@@ -100,7 +127,7 @@ export function preloadImages(urls: Array<string | null | undefined>) {
       link.rel = "preload";
       link.as = "image";
       link.href = url;
-      (link as any).fetchPriority = "low";
+      link.fetchPriority = "low";
       document.head.appendChild(link);
     }
   });

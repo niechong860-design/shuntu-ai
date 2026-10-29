@@ -42,13 +42,13 @@ function md5(value: string) {
   let c0 = 0x98badcfe;
   let d0 = 0x10325476;
   const shifts = [
-    7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
-    5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,
-    4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
-    6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21,
+    7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9,
+    14, 20, 5, 9, 14, 20, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 6, 10, 15, 21,
+    6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21,
   ];
-  const constants = Array.from({ length: 64 }, (_, i) =>
-    Math.floor(Math.abs(Math.sin(i + 1)) * 0x1_0000_0000) >>> 0,
+  const constants = Array.from(
+    { length: 64 },
+    (_, i) => Math.floor(Math.abs(Math.sin(i + 1)) * 0x1_0000_0000) >>> 0,
   );
 
   for (let offset = 0; offset < bytes.length; offset += 64) {
@@ -89,7 +89,11 @@ function md5(value: string) {
   }
 
   return [a0, b0, c0, d0]
-    .map((word) => [0, 8, 16, 24].map((shift) => ((word >>> shift) & 0xff).toString(16).padStart(2, "0")).join(""))
+    .map((word) =>
+      [0, 8, 16, 24]
+        .map((shift) => ((word >>> shift) & 0xff).toString(16).padStart(2, "0"))
+        .join(""),
+    )
     .join("");
 }
 
@@ -111,7 +115,10 @@ export function generateXunhuHash(fields: XunhuFields, appsecret = getConfig().a
 
 export function verifyXunhuHash(fields: XunhuFields, appsecret = getConfig().appsecret) {
   const received = fields.hash?.toLowerCase() ?? "";
-  return /^[0-9a-f]{32}$/.test(received) && constantTimeEqual(generateXunhuHash(fields, appsecret), received);
+  return (
+    /^[0-9a-f]{32}$/.test(received) &&
+    constantTimeEqual(generateXunhuHash(fields, appsecret), received)
+  );
 }
 
 export function parseYuanToCents(value: string) {
@@ -143,8 +150,14 @@ async function orderSignature(core: string) {
     false,
     ["sign"],
   );
-  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`shuntu-order-v1:${core}`));
-  return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, "0")).join("").slice(0, 12);
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(`shuntu-order-v1:${core}`),
+  );
+  return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 12);
 }
 
 export async function generateTrustedOrderNo() {
@@ -164,11 +177,13 @@ function isRecord(value: unknown): value is JsonRecord {
 }
 
 function signedDataFromEnvelope(envelope: JsonRecord) {
-  if (!isRecord(envelope.data) || typeof envelope.hash !== "string") throw new Error("XUNHUPAY_INVALID_RESPONSE");
+  if (!isRecord(envelope.data) || typeof envelope.hash !== "string")
+    throw new Error("XUNHUPAY_INVALID_RESPONSE");
   const fields: XunhuFields = {};
   for (const [key, value] of Object.entries(envelope.data)) {
     if (value === null || value === undefined || value === "") continue;
-    if (!["string", "number", "boolean"].includes(typeof value)) throw new Error("XUNHUPAY_INVALID_RESPONSE");
+    if (!["string", "number", "boolean"].includes(typeof value))
+      throw new Error("XUNHUPAY_INVALID_RESPONSE");
     fields[key] = String(value);
   }
   fields.hash = envelope.hash;
@@ -181,7 +196,8 @@ function simpleSignedFields(payload: JsonRecord) {
   const fields: XunhuFields = {};
   for (const [key, value] of Object.entries(payload)) {
     if (key === "hash" || value === null || value === undefined || value === "") continue;
-    if (!["string", "number", "boolean"].includes(typeof value)) throw new Error("XUNHUPAY_INVALID_RESPONSE");
+    if (!["string", "number", "boolean"].includes(typeof value))
+      throw new Error("XUNHUPAY_INVALID_RESPONSE");
     fields[key] = String(value);
   }
   fields.hash = payload.hash;
@@ -240,20 +256,29 @@ async function postJson(url: string, fields: XunhuFields) {
   try {
     const response = await fetch(url, {
       method: "POST",
-      headers: { "content-type": "application/json;charset=UTF-8", accept: "application/json, text/plain;q=0.9" },
+      headers: {
+        "content-type": "application/json;charset=UTF-8",
+        accept: "application/json, text/plain;q=0.9",
+      },
       body: JSON.stringify(fields),
       signal: controller.signal,
     });
     if (!response.ok) throw new Error("XUNHUPAY_HTTP_ERROR");
     let payload: unknown;
-    try { payload = JSON.parse(await response.text()); } catch { throw new Error("XUNHUPAY_INVALID_RESPONSE"); }
+    try {
+      payload = JSON.parse(await response.text());
+    } catch {
+      throw new Error("XUNHUPAY_INVALID_RESPONSE");
+    }
     if (!isRecord(payload)) throw new Error("XUNHUPAY_INVALID_RESPONSE");
     if (Number(payload.errcode) !== 0) {
       console.error("[XunhuPay] raw provider response", payload);
       throw new Error("XUNHUPAY_PROVIDER_ERROR");
     }
     return { payload, data: simpleSignedFields(payload) };
-  } finally { clearTimeout(timeout); }
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function postJsonPayload(url: string, fields: XunhuFields) {
@@ -262,13 +287,20 @@ async function postJsonPayload(url: string, fields: XunhuFields) {
   try {
     const response = await fetch(url, {
       method: "POST",
-      headers: { "content-type": "application/json;charset=UTF-8", accept: "application/json, text/plain;q=0.9" },
+      headers: {
+        "content-type": "application/json;charset=UTF-8",
+        accept: "application/json, text/plain;q=0.9",
+      },
       body: JSON.stringify(fields),
       signal: controller.signal,
     });
     if (!response.ok) throw new Error("XUNHUPAY_HTTP_ERROR");
     let payload: unknown;
-    try { payload = JSON.parse(await response.text()); } catch { throw new Error("XUNHUPAY_INVALID_RESPONSE"); }
+    try {
+      payload = JSON.parse(await response.text());
+    } catch {
+      throw new Error("XUNHUPAY_INVALID_RESPONSE");
+    }
     if (!isRecord(payload)) throw new Error("XUNHUPAY_INVALID_RESPONSE");
     console.info("[XunhuPay] query response shape", {
       status: response.status,
@@ -277,7 +309,9 @@ async function postJsonPayload(url: string, fields: XunhuFields) {
     });
     if (payload.errcode !== 0) throw new Error("XUNHUPAY_PROVIDER_ERROR");
     return payload;
-  } finally { clearTimeout(timeout); }
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function assertProviderUrl(value: string, required: boolean) {
@@ -315,7 +349,8 @@ export async function createXunhuPayment(input: {
   fields.hash = generateXunhuHash(fields);
   const { data } = await postJson(XUNHUPAY_CREATE_URL, fields);
   if (data.appid && data.appid !== appid) throw new Error("XUNHUPAY_APPID_MISMATCH");
-  if (data.trade_order_id && data.trade_order_id !== input.outTradeNo) throw new Error("XUNHUPAY_ORDER_MISMATCH");
+  if (data.trade_order_id && data.trade_order_id !== input.outTradeNo)
+    throw new Error("XUNHUPAY_ORDER_MISMATCH");
   return {
     urlQrcode: assertProviderUrl(data.url_qrcode, true),
     mobileUrl: assertProviderUrl(data.url, false),
@@ -333,7 +368,9 @@ export async function queryXunhuPayment(outTradeNo: string): Promise<XunhuQueryR
   };
   fields.hash = generateXunhuHash(fields);
   const payload = await postJsonPayload(XUNHUPAY_QUERY_URL, fields);
-  const data = isRecord(payload.data) ? simpleDataFields(payload.data) : simpleSignedFields(payload);
+  const data = isRecord(payload.data)
+    ? simpleDataFields(payload.data)
+    : simpleSignedFields(payload);
   if (data.appid && data.appid !== appid) throw new Error("XUNHUPAY_APPID_MISMATCH");
   if (!["OD", "WP", "CD"].includes(data.status)) throw new Error("XUNHUPAY_INVALID_STATUS");
   return {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { d1Auth } from "@/lib/d1-auth-client";
 import { Sparkles, Loader2, Mail, Lock, Headphones, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
@@ -7,7 +7,7 @@ import { getContactInfo } from "@/lib/admin.functions";
 
 type Tab = "login" | "signup" | "forgot";
 
-const PASSWORD_TOO_SHORT_MSG = "密码长度不足，请至少设置 6 位密码";
+const PASSWORD_TOO_SHORT_MSG = "密码长度不足，请至少设置 10 位密码";
 const PASSWORD_TOO_SIMPLE_MSG = "密码不可用，请更换一个不常见的密码";
 const PASSWORD_MISMATCH_MSG = "两次输入的密码不一致";
 const INVALID_EMAIL_MSG = "请输入正确的邮箱地址";
@@ -15,13 +15,13 @@ const EMAIL_REGISTERED_MSG = "该邮箱已注册，请直接登录";
 const SIGNUP_FAILED_MSG = "注册失败，请稍后重试";
 
 function isWeakSignupPassword(password: string) {
-  return password.trim().length < 6;
+  return password.trim().length < 10;
 }
 
-/** 把 Supabase 返回的英文错误翻成更明确的中文提示 */
+/** 把认证服务返回的英文错误翻成更明确的中文提示 */
 function translateAuthError(err: unknown, tab: Tab): string {
   const raw = err instanceof Error ? err.message : typeof err === "string" ? err : "";
-  // 新版 Supabase 错误把详情放在 code/status 字段，message 可能是通用文案
+  // 认证服务错误把详情放在 code/status 字段，message 可能是通用文案
   const errObj = (err && typeof err === "object" ? err : {}) as {
     code?: string;
     error_code?: string;
@@ -64,7 +64,11 @@ function translateAuthError(err: unknown, tab: Tab): string {
       m.includes("weak_password") ||
       m.includes("pwned") ||
       m.includes("compromised") ||
-      (m.includes("password") && (m.includes("weak") || m.includes("easy") || m.includes("simple") || m.includes("strength")))
+      (m.includes("password") &&
+        (m.includes("weak") ||
+          m.includes("easy") ||
+          m.includes("simple") ||
+          m.includes("strength")))
     ) {
       return PASSWORD_TOO_SIMPLE_MSG;
     }
@@ -76,12 +80,9 @@ function translateAuthError(err: unknown, tab: Tab): string {
   if (code === "email_not_confirmed") return "邮箱尚未验证，请先到邮箱完成验证";
   if (code === "user_not_found") return "账号不存在，请先注册";
   if (code === "user_banned") return "账号已被封禁，请联系客服";
-  if (code === "user_already_exists" || code === "email_exists")
-    return "该邮箱已注册，请直接登录";
-  if (code === "password_too_short")
-    return PASSWORD_TOO_SHORT_MSG;
-  if (code === "weak_password")
-    return PASSWORD_TOO_SIMPLE_MSG;
+  if (code === "user_already_exists" || code === "email_exists") return "该邮箱已注册，请直接登录";
+  if (code === "password_too_short") return PASSWORD_TOO_SHORT_MSG;
+  if (code === "weak_password") return PASSWORD_TOO_SIMPLE_MSG;
   if (
     code === "over_request_rate_limit" ||
     code === "over_email_send_rate_limit" ||
@@ -92,21 +93,21 @@ function translateAuthError(err: unknown, tab: Tab): string {
   if (code === "validation_failed" || code === "email_address_invalid")
     return "请输入正确的邮箱地址";
 
-
-
   // 已经是中文的（自定义抛出）直接返回
   if (/[\u4e00-\u9fa5]/.test(raw)) return raw;
   if (!raw) return "操作失败，请稍后再试";
 
   // —— 登录类 ——
-  if (m.includes("invalid login") || m.includes("invalid credentials") || m.includes("invalid_grant"))
+  if (
+    m.includes("invalid login") ||
+    m.includes("invalid credentials") ||
+    m.includes("invalid_grant")
+  )
     return "邮箱或密码不正确，请重新输入";
   if (m.includes("email not confirmed") || m.includes("email_not_confirmed"))
     return "邮箱尚未验证，请先到邮箱完成验证";
-  if (m.includes("user not found") || m.includes("no user found"))
-    return "账号不存在，请先注册";
-  if (m.includes("user is banned") || m.includes("banned"))
-    return "账号已被封禁，请联系客服";
+  if (m.includes("user not found") || m.includes("no user found")) return "账号不存在，请先注册";
+  if (m.includes("user is banned") || m.includes("banned")) return "账号已被封禁，请联系客服";
 
   // —— 注册类（按用户要求的措辞）——
   if (
@@ -117,7 +118,11 @@ function translateAuthError(err: unknown, tab: Tab): string {
     m.includes("email_exists")
   )
     return "该邮箱已注册，请直接登录";
-  if (m.includes("invalid email") || m.includes("email_address_invalid") || m.includes("validation_failed"))
+  if (
+    m.includes("invalid email") ||
+    m.includes("email_address_invalid") ||
+    m.includes("validation_failed")
+  )
     return "请输入正确的邮箱地址";
   if (
     m.includes("password should be at least") ||
@@ -125,14 +130,15 @@ function translateAuthError(err: unknown, tab: Tab): string {
     m.includes("password_too_short")
   )
     return PASSWORD_TOO_SHORT_MSG;
-  if (m.includes("weak_password"))
-    return PASSWORD_TOO_SIMPLE_MSG;
-  if (m.includes("password") && (m.includes("weak") || m.includes("easy") || m.includes("simple") || m.includes("strength")))
+  if (m.includes("weak_password")) return PASSWORD_TOO_SIMPLE_MSG;
+  if (
+    m.includes("password") &&
+    (m.includes("weak") || m.includes("easy") || m.includes("simple") || m.includes("strength"))
+  )
     return PASSWORD_TOO_SIMPLE_MSG;
   if (m.includes("pwned") || m.includes("compromised"))
     return "该密码已在公开泄露库中，请更换更安全的密码";
-  if (m.includes("signup") && m.includes("disabled"))
-    return "暂未开放注册，请稍后再试";
+  if (m.includes("signup") && m.includes("disabled")) return "暂未开放注册，请稍后再试";
 
   // —— 邮件发送 ——
   if (
@@ -163,8 +169,7 @@ function translateAuthError(err: unknown, tab: Tab): string {
     m.includes("fetch failed")
   )
     return "连接认证服务失败，请检查网络、浏览器代理或稍后重试";
-  if (m.includes("timeout") || m.includes("timed out"))
-    return "网络连接不稳定，请稍后重试";
+  if (m.includes("timeout") || m.includes("timed out")) return "网络连接不稳定，请稍后重试";
 
   // —— 服务端 ——
   if (/\b5\d\d\b/.test(m) || m.includes("internal server") || m.includes("unexpected_failure"))
@@ -184,8 +189,13 @@ function translateAuthError(err: unknown, tab: Tab): string {
 /** 提取一个非敏感的错误代码用于前端 console（不输出 message / email / token） */
 function safeErrorCode(err: unknown): string {
   if (!err || typeof err !== "object") return "unknown";
-  const e = err as { code?: string; error_code?: string; status?: number; name?: string };
-  return e.code ?? e.error_code ?? (e.status ? `http_${e.status}` : e.name ?? "unknown");
+  const e = err as {
+    code?: string;
+    error_code?: string;
+    status?: number;
+    name?: string;
+  };
+  return e.code ?? e.error_code ?? (e.status ? `http_${e.status}` : (e.name ?? "unknown"));
 }
 
 const DISCLAIMER_AGREED_KEY = "shuntu:disclaimer_agreed:v1";
@@ -196,27 +206,44 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
-  const [contact, setContact] = useState<{ wechat: string; qq: string }>({ wechat: "", qq: "" });
+  const [contact, setContact] = useState<{ wechat: string; qq: string }>({
+    wechat: "",
+    qq: "",
+  });
   const [agreed, setAgreed] = useState(false);
   const fetchContact = useServerFn(getContactInfo);
 
   useEffect(() => {
     try {
       if (localStorage.getItem(DISCLAIMER_AGREED_KEY) === "1") setAgreed(true);
-    } catch {}
+    } catch {
+      // Storage can be unavailable; consent must still be given in this page.
+    }
   }, []);
 
   useEffect(() => {
     if (tab !== "forgot") return;
-    fetchContact().then((r: any) => setContact({ wechat: r?.wechat ?? "", qq: r?.qq ?? "" })).catch(() => {});
-  }, [tab]);
+    let active = true;
+    fetchContact()
+      .then((r) => {
+        if (active) setContact({ wechat: r?.wechat ?? "", qq: r?.qq ?? "" });
+      })
+      .catch(() => {
+        // Keep the existing unavailable-contact message on a failed request.
+      });
+    return () => {
+      active = false;
+    };
+  }, [tab, fetchContact]);
 
   const toggleAgreed = (next: boolean) => {
     setAgreed(next);
     try {
       if (next) localStorage.setItem(DISCLAIMER_AGREED_KEY, "1");
       else localStorage.removeItem(DISCLAIMER_AGREED_KEY);
-    } catch {}
+    } catch {
+      // Page-local consent remains usable when storage is blocked.
+    }
   };
 
   const copy = async (val: string, label: string) => {
@@ -230,6 +257,7 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (tab === "forgot") return;
     if (!agreed) {
       toast.error("请先阅读并同意《用户声明与免责声明》");
       return;
@@ -240,12 +268,12 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
       toast.error(INVALID_EMAIL_MSG);
       return;
     }
-    if (tab !== "forgot" && !password) {
+    if (!password) {
       toast.error("请输入密码");
       return;
     }
     if (tab === "signup") {
-      if (password.length < 6) {
+      if (isWeakSignupPassword(password)) {
         toast.error(PASSWORD_TOO_SHORT_MSG);
         return;
       }
@@ -262,10 +290,6 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
       toast.error("邮箱格式不对，看起来少了 @ 或后缀");
       return;
     }
-    if (tab !== "forgot" && password.length < 6) {
-      toast.error("密码太短啦，至少要 6 位");
-      return;
-    }
     if (tab === "signup" && password !== confirm) {
       toast.error("两次输入的密码不一样，请再核对一下");
       return;
@@ -274,7 +298,10 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
     setLoading(true);
     try {
       if (tab === "login") {
-        const { error } = await supabase.auth.signInWithPassword({ email: trimmedEmail, password });
+        const { error } = await d1Auth.auth.signInWithPassword({
+          email: trimmedEmail,
+          password,
+        });
         if (error) {
           console.warn("[auth] login failed:", safeErrorCode(error));
           throw error;
@@ -282,17 +309,16 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
         toast.success("登录成功，欢迎回来");
         onSuccess?.();
       } else if (tab === "signup") {
-        const { data: signUpData, error } = await supabase.auth.signUp({
+        const { data: signUpData, error } = await d1Auth.auth.signUp({
           email: trimmedEmail,
           password,
-          options: { emailRedirectTo: `${window.location.origin}/` },
         });
         if (error) {
           console.warn("[auth] signup failed:", safeErrorCode(error));
           throw error;
         }
         // 如果未自动登录（需邮箱验证场景），尝试登录
-        const { error: signInErr } = await supabase.auth.signInWithPassword({
+        const { error: signInErr } = await d1Auth.auth.signInWithPassword({
           email: trimmedEmail,
           password,
         });
@@ -310,15 +336,7 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
           onSuccess?.();
         }
       } else {
-        const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
-          redirectTo: `${window.location.origin}/`,
-        });
-        if (error) {
-          console.warn("[auth] reset password failed:", safeErrorCode(error));
-          throw error;
-        }
-        toast.success("重置链接已发到邮箱，请去查收");
-        setTab("login");
+        throw new Error("账户找回功能尚未启用");
       }
     } catch (err) {
       toast.error(translateAuthError(err, tab));
@@ -326,7 +344,6 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
       setLoading(false);
     }
   };
-
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
@@ -342,9 +359,15 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
               <Sparkles className="h-4 w-4 text-primary-foreground" strokeWidth={2.5} />
             </div>
             <div>
-              <div className="font-display text-base font-semibold" translate="no">ShunTu</div>
+              <div className="font-display text-base font-semibold" translate="no">
+                ShunTu
+              </div>
               <div className="text-[11px] text-muted-foreground">
-                {tab === "login" ? "欢迎回来，开启你的创作" : tab === "signup" ? "创建账号，免费体验" : "找回你的账号"}
+                {tab === "login"
+                  ? "欢迎回来，开启你的创作"
+                  : tab === "signup"
+                    ? "创建账号，免费体验"
+                    : "找回你的账号"}
               </div>
             </div>
           </div>
@@ -357,7 +380,9 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
                   type="button"
                   onClick={() => setTab(t)}
                   className={`flex-1 rounded-md py-1.5 text-xs font-medium transition-all ${
-                    tab === t ? "bg-gradient-aurora text-primary-foreground shadow-glow" : "text-muted-foreground hover:text-foreground"
+                    tab === t
+                      ? "bg-gradient-aurora text-primary-foreground shadow-glow"
+                      : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   {t === "login" ? "登录" : "注册"}
@@ -367,23 +392,25 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
           )}
 
           <form onSubmit={submit} className="space-y-3">
-            <Field icon={<Mail className="h-4 w-4" />}>
-              <input
-                type="email"
-                required
-                placeholder="邮箱地址"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-              />
-            </Field>
+            {tab !== "forgot" && (
+              <Field icon={<Mail className="h-4 w-4" />}>
+                <input
+                  type="email"
+                  required
+                  placeholder="邮箱地址"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                />
+              </Field>
+            )}
 
             {tab !== "forgot" && (
               <Field icon={<Lock className="h-4 w-4" />}>
                 <input
                   type="password"
                   required
-                  minLength={tab === "signup" ? 6 : 1}
+                  minLength={tab === "signup" ? 10 : 1}
                   placeholder="密码"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -397,7 +424,7 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
                 <input
                   type="password"
                   required
-                  minLength={6}
+                  minLength={10}
                   placeholder="确认密码"
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
@@ -427,29 +454,39 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
               </span>
             </label>
 
-            <button
-              type="submit"
-              disabled={loading}
-              aria-disabled={!agreed}
-              className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-gradient-aurora text-sm font-semibold text-primary-foreground shadow-glow transition-transform hover:scale-[1.01] disabled:opacity-60"
-            >
-              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-              {tab === "login" ? "登 录" : tab === "signup" ? "创建账号" : "发送重置链接"}
-            </button>
+            {tab !== "forgot" && (
+              <button
+                type="submit"
+                disabled={loading}
+                aria-disabled={!agreed}
+                className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-gradient-aurora text-sm font-semibold text-primary-foreground shadow-glow transition-transform hover:scale-[1.01] disabled:opacity-60"
+              >
+                {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+                {tab === "login" ? "登 录" : "创建账号"}
+              </button>
+            )}
           </form>
 
           {tab === "forgot" && (
             <div className="mt-4 rounded-xl border border-border bg-white/[0.03] p-3">
               <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
                 <Headphones className="h-3.5 w-3.5 text-primary" />
-                收不到邮件？联系客服帮你重置
+                如需找回密码，请添加客服微信联系客服处理
               </div>
               <div className="space-y-1.5">
                 {contact.wechat && (
-                  <ContactLine label="微信" value={contact.wechat} onCopy={() => copy(contact.wechat, "微信号")} />
+                  <ContactLine
+                    label="微信"
+                    value={contact.wechat}
+                    onCopy={() => copy(contact.wechat, "微信号")}
+                  />
                 )}
                 {contact.qq && (
-                  <ContactLine label="QQ" value={contact.qq} onCopy={() => copy(contact.qq, "QQ 号")} />
+                  <ContactLine
+                    label="QQ"
+                    value={contact.qq}
+                    onCopy={() => copy(contact.qq, "QQ 号")}
+                  />
                 )}
                 {!contact.wechat && !contact.qq && (
                   <div className="text-[11px] text-muted-foreground">暂未配置联系方式</div>
@@ -461,11 +498,15 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
           <div className="mt-4 flex items-center justify-between text-[11px] text-muted-foreground">
             {tab === "login" ? (
               <>
-                <button onClick={() => setTab("forgot")} className="hover:text-foreground">忘记密码？</button>
-                <button onClick={() => setTab("signup")} className="hover:text-foreground">没有账号？立即注册</button>
+                <span>账号恢复暂不开放</span>
+                <button onClick={() => setTab("signup")} className="hover:text-foreground">
+                  没有账号？立即注册
+                </button>
               </>
             ) : (
-              <button onClick={() => setTab("login")} className="hover:text-foreground">← 返回登录</button>
+              <button onClick={() => setTab("login")} className="hover:text-foreground">
+                ← 返回登录
+              </button>
             )}
           </div>
         </div>
@@ -477,23 +518,36 @@ export function AuthModal({ onSuccess }: { onSuccess?: () => void }) {
 function Field({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
   return (
     <label className="group flex h-11 items-center gap-2.5 rounded-lg border border-border bg-white/[0.03] px-3 transition-all focus-within:border-primary/60 focus-within:bg-white/[0.05] focus-within:shadow-[0_0_0_3px_oklch(0.86_0.21_155_/_0.18)] focus-within:[animation:breathe_2.4s_ease-in-out_infinite]">
-      <span className="text-muted-foreground transition-colors group-focus-within:text-primary">{icon}</span>
+      <span className="text-muted-foreground transition-colors group-focus-within:text-primary">
+        {icon}
+      </span>
       {children}
     </label>
   );
 }
 
-function ContactLine({ label, value, onCopy }: { label: string; value: string; onCopy: () => void }) {
+function ContactLine({
+  label,
+  value,
+  onCopy,
+}: {
+  label: string;
+  value: string;
+  onCopy: () => void;
+}) {
   return (
     <div className="flex items-center gap-2 rounded-lg bg-white/[0.02] px-2.5 py-1.5">
-      <span className="w-8 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="w-8 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        {label}
+      </span>
       <span className="min-w-0 flex-1 truncate font-mono text-xs">{value}</span>
       <button
         type="button"
         onClick={onCopy}
         className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px] text-muted-foreground hover:bg-white/[0.05] hover:text-foreground"
       >
-        <Copy className="h-3 w-3" />复制
+        <Copy className="h-3 w-3" />
+        复制
       </button>
     </div>
   );

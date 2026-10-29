@@ -11,7 +11,9 @@ export function AdBanner() {
   const [idx, setIdx] = useState(0);
 
   useEffect(() => {
-    fetchAds({}).then((d: any) => setAds(d ?? [])).catch(() => setAds([]));
+    fetchAds({})
+      .then((d) => setAds(d ?? []))
+      .catch(() => setAds([]));
   }, [fetchAds]);
 
   useEffect(() => {
@@ -33,7 +35,12 @@ export function AdBanner() {
   return (
     <div className="mx-4 hidden h-9 max-w-md flex-1 items-center overflow-hidden rounded-full border border-primary/20 bg-primary/5 px-3.5 md:flex">
       {current.link_url ? (
-        <a href={current.link_url} target="_blank" rel="noreferrer noopener" className="w-full overflow-hidden hover:text-primary">
+        <a
+          href={current.link_url}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="w-full overflow-hidden hover:text-primary"
+        >
           {inner}
         </a>
       ) : (

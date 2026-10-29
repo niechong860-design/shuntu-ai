@@ -5,12 +5,24 @@ import { Canvas } from "./Canvas";
 import { TopBar } from "./TopBar";
 import { TaskFloatingPanel, type FloatingTask } from "./TaskFloatingPanel";
 import { useAuth } from "@/hooks/use-auth";
-import { cancelGenerationTask, cancelMyQueuedGenerationTasks, createGenerationTask, getMyGenerationHistory, getMyGenerationTasks, pollGenerationTask, startGenerationTask } from "@/lib/admin.functions";
+import {
+  cancelGenerationTask,
+  cancelMyQueuedGenerationTasks,
+  createGenerationTask,
+  getMyGenerationHistory,
+  getMyGenerationTasks,
+  pollGenerationTask,
+  startGenerationTask,
+} from "@/lib/admin.functions";
 import { getCachedHistoryFirstPage, setCachedHistoryFirstPage } from "@/lib/history-metadata-cache";
 import { toast } from "sonner";
 
-const AnnouncementCenter = lazy(() => import("./AnnouncementCenter").then((m) => ({ default: m.AnnouncementCenter })));
-const AuthModal = lazy(() => import("@/components/auth/AuthModal").then((m) => ({ default: m.AuthModal })));
+const AnnouncementCenter = lazy(() =>
+  import("./AnnouncementCenter").then((m) => ({ default: m.AnnouncementCenter })),
+);
+const AuthModal = lazy(() =>
+  import("@/components/auth/AuthModal").then((m) => ({ default: m.AuthModal })),
+);
 const GPT_IMAGE_2_BACKUP_MODEL_KEY = "gpt_image_2_backup";
 
 const latestResultStorageKey = (userId: string) => `shuntu:studio:last-result:${userId}`;
@@ -36,7 +48,9 @@ type ReuseSource = {
 
 function getReusableReferenceImages(inputParams?: Record<string, unknown>) {
   return Array.isArray(inputParams?.referenceImages)
-    ? inputParams.referenceImages.filter((url): url is string => typeof url === "string" && /^https?:\/\//i.test(url))
+    ? inputParams.referenceImages.filter(
+        (url): url is string => typeof url === "string" && /^https?:\/\//i.test(url),
+      )
     : [];
 }
 
@@ -142,30 +156,43 @@ export function Studio() {
     let cancelled = false;
     const schedule =
       typeof window !== "undefined" && "requestIdleCallback" in window
-        ? (window as Window & { requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback
+        ? (
+            window as Window & {
+              requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => number;
+            }
+          ).requestIdleCallback
         : (cb: () => void) => window.setTimeout(cb, 1200);
-    const idleId = schedule(async () => {
-      if (cancelled) return;
-      try {
-        const page = await fetchHistory({ data: { limit: 20, offset: 0 } });
-        if (!cancelled && session?.user.id === userId) {
-          setCachedHistoryFirstPage(userId, page as Parameters<typeof setCachedHistoryFirstPage>[1]);
+    const idleId = schedule(
+      async () => {
+        if (cancelled) return;
+        try {
+          const page = await fetchHistory({ data: { limit: 20, offset: 0 } });
+          if (!cancelled && session?.user.id === userId) {
+            setCachedHistoryFirstPage(
+              userId,
+              page as Parameters<typeof setCachedHistoryFirstPage>[1],
+            );
+          }
+        } catch {
+          // Prefetch is best-effort and must never affect the main UI.
         }
-      } catch {
-        // Prefetch is best-effort and must never affect the main UI.
-      }
-    }, { timeout: 5000 });
+      },
+      { timeout: 5000 },
+    );
     return () => {
       cancelled = true;
       if ("cancelIdleCallback" in window && typeof idleId === "number") {
-        (window as Window & { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback?.(idleId);
+        (window as Window & { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback?.(
+          idleId,
+        );
       } else {
         window.clearTimeout(idleId as number);
       }
     };
   }, [fetchHistory, loading, session?.user.id]);
-  const adminActiveTaskCount = adminTasks.filter((task) =>
-    task.status === "waiting" || task.status === "submitting" || task.status === "generating"
+  const adminActiveTaskCount = adminTasks.filter(
+    (task) =>
+      task.status === "waiting" || task.status === "submitting" || task.status === "generating",
   ).length;
   const adminBatchHasContext = generating || adminActiveTaskCount > 0 || adminPreparingNextTask;
   const effectiveCurrentBatchTaskCount = adminBatchHasContext
@@ -182,11 +209,13 @@ export function Studio() {
   const queueProgress = activeQueueTask ? getQueueProgress(activeQueueTask) : null;
 
   const trimPanelTasks = (tasks: FloatingTask[]) => {
-    const queueTasks = tasks.filter((task) =>
-      task.status === "waiting" || task.status === "submitting" || task.status === "generating"
+    const queueTasks = tasks.filter(
+      (task) =>
+        task.status === "waiting" || task.status === "submitting" || task.status === "generating",
     );
-    const recentTasks = tasks.filter((task) =>
-      task.status !== "waiting" && task.status !== "submitting" && task.status !== "generating"
+    const recentTasks = tasks.filter(
+      (task) =>
+        task.status !== "waiting" && task.status !== "submitting" && task.status !== "generating",
     );
     return [...queueTasks, ...recentTasks].slice(0, 3);
   };
@@ -216,10 +245,15 @@ export function Studio() {
     setProgress(getQueueProgress(task as FloatingTask));
   };
 
-  const mapRecoveredTaskStatus = (status: string, deductionStatus?: string | null, deductionId?: string | null): FloatingTask["status"] => {
+  const mapRecoveredTaskStatus = (
+    status: string,
+    deductionStatus?: string | null,
+    deductionId?: string | null,
+  ): FloatingTask["status"] => {
     if (status === "queued") return "waiting";
     if (status === "running") return "generating";
-    if (status === "succeeded") return deductionStatus === "charged" && !!deductionId ? "done" : "failed";
+    if (status === "succeeded")
+      return deductionStatus === "charged" && !!deductionId ? "done" : "failed";
     if (status === "failed") return "failed";
     if (status === "canceled") return "failed";
     return "waiting";
@@ -278,30 +312,32 @@ export function Studio() {
       .then((res) => {
         if (cancelled) return;
         const recovered = (res?.items ?? [])
-          .map((task: {
-            id: string;
-            prompt: string | null;
-            modelId: string;
-            status: string;
-            inputParams?: Record<string, unknown> | null;
-            resultImageUrl?: string | null;
-            deductionStatus?: string | null;
-            deductionId?: string | null;
-            errorMessage?: string | null;
-          }) => {
-            const promptTitle = task.prompt?.trim().slice(0, 20);
-            return {
-              id: task.id,
-              title: promptTitle || task.modelId || "生成任务",
-              status: mapRecoveredTaskStatus(task.status, task.deductionStatus, task.deductionId),
-              prompt: task.prompt ?? "",
-              modelKey: task.modelId,
-              modelName: task.modelId,
-              inputParams: task.inputParams ?? {},
-              resultImageUrl: task.resultImageUrl ?? null,
-              errorMessage: task.errorMessage ?? null,
-            };
-          })
+          .map(
+            (task: {
+              id: string;
+              prompt: string | null;
+              modelId: string;
+              status: string;
+              inputParams?: Record<string, unknown> | null;
+              resultImageUrl?: string | null;
+              deductionStatus?: string | null;
+              deductionId?: string | null;
+              errorMessage?: string | null;
+            }) => {
+              const promptTitle = task.prompt?.trim().slice(0, 20);
+              return {
+                id: task.id,
+                title: promptTitle || task.modelId || "生成任务",
+                status: mapRecoveredTaskStatus(task.status, task.deductionStatus, task.deductionId),
+                prompt: task.prompt ?? "",
+                modelKey: task.modelId,
+                modelName: task.modelId,
+                inputParams: task.inputParams ?? {},
+                resultImageUrl: task.resultImageUrl ?? null,
+                errorMessage: task.errorMessage ?? null,
+              };
+            },
+          )
           .slice(0, 3);
         const trimmed = trimPanelTasks(recovered);
         setAdminTasks(trimmed);
@@ -322,7 +358,9 @@ export function Studio() {
         }
       });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id]);
 
@@ -349,12 +387,24 @@ export function Studio() {
               historyId?: string | null;
               errorMessage?: string | null;
             };
-            if (task.status === "succeeded" && task.deductionStatus === "charged" && !!task.historyId) {
+            if (
+              task.status === "succeeded" &&
+              task.deductionStatus === "charged" &&
+              !!task.historyId
+            ) {
               const matchedTask = adminTasks.find((item) => item.id === task.taskId);
               setAdminTasks((tasks) =>
-                trimPanelTasks(tasks.map((item) =>
-                  item.id === task.taskId ? { ...item, status: "done" as const, resultImageUrl: task.resultImageUrl ?? item.resultImageUrl ?? null } : item,
-                )),
+                trimPanelTasks(
+                  tasks.map((item) =>
+                    item.id === task.taskId
+                      ? {
+                          ...item,
+                          status: "done" as const,
+                          resultImageUrl: task.resultImageUrl ?? item.resultImageUrl ?? null,
+                        }
+                      : item,
+                  ),
+                ),
               );
               if (task.resultImageUrl) {
                 setGeneratedUrl(task.resultImageUrl);
@@ -380,7 +430,11 @@ export function Studio() {
               setAdminTasks((tasks) =>
                 tasks.map((item) =>
                   item.id === task.taskId
-                    ? { ...item, status: "failed" as const, errorMessage: task.errorMessage ?? "任务生成失败" }
+                    ? {
+                        ...item,
+                        status: "failed" as const,
+                        errorMessage: task.errorMessage ?? "任务生成失败",
+                      }
                     : item,
                 ),
               );
@@ -403,7 +457,12 @@ export function Studio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id, adminTasks]);
 
-  const handleGenerateStart = (info: { prompt: string; modelName: string; modelKey?: string; inputParams?: Record<string, unknown> }) => {
+  const handleGenerateStart = (info: {
+    prompt: string;
+    modelName: string;
+    modelKey?: string;
+    inputParams?: Record<string, unknown>;
+  }) => {
     if (session && !adminBatchHasContext) {
       setAdminTasks([]);
     }
@@ -423,17 +482,19 @@ export function Studio() {
     setGenerating(false);
     setAdminPreparingNextTask(false);
     setAdminTasks((tasks) =>
-      trimPanelTasks(url
-        ? tasks.map((task) =>
-            task.id.startsWith("admin-preview-") && task.status === "generating"
-              ? { ...task, status: "done" as const, resultImageUrl: url }
-              : task,
-          )
-        : tasks.map((task) =>
-            task.id.startsWith("admin-preview-") && task.status === "generating"
-              ? { ...task, status: "failed" as const }
-              : task,
-          )),
+      trimPanelTasks(
+        url
+          ? tasks.map((task) =>
+              task.id.startsWith("admin-preview-") && task.status === "generating"
+                ? { ...task, status: "done" as const, resultImageUrl: url }
+                : task,
+            )
+          : tasks.map((task) =>
+              task.id.startsWith("admin-preview-") && task.status === "generating"
+                ? { ...task, status: "failed" as const }
+                : task,
+            ),
+      ),
     );
     setProgress(null);
     if (url) {
@@ -479,12 +540,7 @@ export function Studio() {
       modelName: input.modelName,
       inputParams: input.inputParams,
     };
-    setAdminTasks((tasks) =>
-      trimPanelTasks([
-        ...(!adminBatchHasContext ? [] : tasks),
-        queuedTask,
-      ]),
-    );
+    setAdminTasks((tasks) => trimPanelTasks([...(!adminBatchHasContext ? [] : tasks), queuedTask]));
     prepareCanvasForNewTask(queuedTask, {
       clearCurrentResult: generatedUrlSource !== "result" || adminActiveTaskCount === 0,
     });
@@ -497,8 +553,11 @@ export function Studio() {
     try {
       await cancelQueuedTasks({});
       setAdminTasks((tasks) =>
-        tasks.filter((task) =>
-          task.status !== "waiting" && task.status !== "submitting" && task.status !== "generating"
+        tasks.filter(
+          (task) =>
+            task.status !== "waiting" &&
+            task.status !== "submitting" &&
+            task.status !== "generating",
         ),
       );
       setAdminPreparingNextTask(false);
@@ -513,9 +572,9 @@ export function Studio() {
   const handleAdminCancelTask = async (taskId: string) => {
     if (!session) return;
     if (cancelingTaskIds.includes(taskId)) return;
-    setCancelingTaskIds((ids) => ids.includes(taskId) ? ids : [...ids, taskId]);
+    setCancelingTaskIds((ids) => (ids.includes(taskId) ? ids : [...ids, taskId]));
     try {
-      const task = await cancelTask({ data: { taskId } }) as { taskId: string; status: string };
+      const task = (await cancelTask({ data: { taskId } })) as { taskId: string; status: string };
       if (task.status === "canceled") {
         setAdminTasks((tasks) => tasks.filter((item) => item.id !== task.taskId));
         toast.success("任务已取消");
@@ -542,7 +601,7 @@ export function Studio() {
       return;
     }
 
-    setRetryingTaskIds((ids) => ids.includes(taskId) ? ids : [...ids, taskId]);
+    setRetryingTaskIds((ids) => (ids.includes(taskId) ? ids : [...ids, taskId]));
     try {
       const task = await createTask({
         data: {
@@ -593,10 +652,12 @@ export function Studio() {
     if (!session) return;
     if (startingTaskIds.includes(taskId)) return;
     const taskForCanvas = adminTasks.find((item) => item.id === taskId);
-    setStartingTaskIds((ids) => ids.includes(taskId) ? ids : [...ids, taskId]);
+    setStartingTaskIds((ids) => (ids.includes(taskId) ? ids : [...ids, taskId]));
     setAdminTasks((tasks) =>
       tasks.map((item) =>
-        item.id === taskId && item.status === "waiting" ? { ...item, status: "submitting" as const } : item,
+        item.id === taskId && item.status === "waiting"
+          ? { ...item, status: "submitting" as const }
+          : item,
       ),
     );
     if (taskForCanvas) {
@@ -604,7 +665,7 @@ export function Studio() {
       prepareCanvasForNewTask(submittingTask, { clearCurrentResult: false });
     }
     try {
-      const task = await startTask({ data: { taskId } }) as {
+      const task = (await startTask({ data: { taskId } })) as {
         taskId: string;
         status: string;
         resultImageUrl?: string | null;
@@ -613,28 +674,39 @@ export function Studio() {
         historyId?: string | null;
       };
       const matchedTask = adminTasks.find((item) => item.id === task.taskId);
-      const finalized = task.status === "succeeded" && task.deductionStatus === "charged" && !!task.historyId;
-      const nextStatus =
-        finalized
-          ? "done"
-          : task.status === "failed" || task.status === "succeeded"
+      const finalized =
+        task.status === "succeeded" && task.deductionStatus === "charged" && !!task.historyId;
+      const nextStatus = finalized
+        ? "done"
+        : task.status === "failed" || task.status === "succeeded"
           ? "failed"
           : "generating";
       setAdminTasks((tasks) =>
-        trimPanelTasks(finalized
-          ? tasks.map((item) =>
-              item.id === task.taskId ? { ...item, status: "done" as const, resultImageUrl: task.resultImageUrl ?? item.resultImageUrl ?? null } : item,
-            )
-          : tasks.map((item) =>
-              item.id === task.taskId
-                ? {
-                    ...item,
-                    status: nextStatus as FloatingTask["status"],
-                    resultImageUrl: task.resultImageUrl ?? item.resultImageUrl ?? null,
-                    errorMessage: nextStatus === "failed" ? task.errorMessage ?? "任务生成失败" : item.errorMessage,
-                  }
-                : item,
-            )),
+        trimPanelTasks(
+          finalized
+            ? tasks.map((item) =>
+                item.id === task.taskId
+                  ? {
+                      ...item,
+                      status: "done" as const,
+                      resultImageUrl: task.resultImageUrl ?? item.resultImageUrl ?? null,
+                    }
+                  : item,
+              )
+            : tasks.map((item) =>
+                item.id === task.taskId
+                  ? {
+                      ...item,
+                      status: nextStatus as FloatingTask["status"],
+                      resultImageUrl: task.resultImageUrl ?? item.resultImageUrl ?? null,
+                      errorMessage:
+                        nextStatus === "failed"
+                          ? (task.errorMessage ?? "任务生成失败")
+                          : item.errorMessage,
+                    }
+                  : item,
+              ),
+        ),
       );
       if (finalized) {
         if (task.resultImageUrl) {
@@ -686,7 +758,9 @@ export function Studio() {
     }
     if (runningOrStartingIds.size > 0) return;
 
-    const taskToStart = adminTasks.find((task) => task.status === "waiting" && !startingTaskIds.includes(task.id));
+    const taskToStart = adminTasks.find(
+      (task) => task.status === "waiting" && !startingTaskIds.includes(task.id),
+    );
     if (!taskToStart) return;
 
     void handleAdminStartTask(taskToStart.id);
@@ -722,7 +796,9 @@ export function Studio() {
 
   return (
     <div className="min-h-[100dvh] w-screen overflow-y-auto bg-background text-foreground lg:flex lg:h-screen lg:flex-col lg:overflow-hidden">
-      <div className={`${showAuth ? "pointer-events-none select-none blur-sm" : ""} min-h-[100dvh] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col`}>
+      <div
+        className={`${showAuth ? "pointer-events-none select-none blur-sm" : ""} min-h-[100dvh] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col`}
+      >
         <TopBar
           credits={credits}
           onOpenHistory={() => setHistoryOpen(true)}
@@ -808,5 +884,3 @@ export function Studio() {
     </div>
   );
 }
-
-

@@ -1,10 +1,26 @@
-export type HistoryMetadataItem = {
+export type HistoryItem = {
   id: string;
-  [key: string]: unknown;
+  userId?: string | null;
+  model: string;
+  prompt: string | null;
+  finalPrompt: string | null;
+  styleName: string | null;
+  aspectRatio: string | null;
+  createdAt: string;
+  thumbnailUrl: string | null;
+  originalImageUrl: string;
+  modelKey?: string | null;
+  generationTaskId?: string | null;
+  inputParams?: Record<string, unknown> | null;
+  cost: number;
+  authorName?: string | null;
+  authorEmail?: string | null;
+  // legacy
+  image_url: string;
+  created_at: string;
 };
-
 export type HistoryMetadataPage = {
-  items: any[];
+  items: HistoryItem[];
   total?: number;
   limit: number;
   offset: number;

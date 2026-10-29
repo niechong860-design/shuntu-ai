@@ -39,8 +39,7 @@ export const STYLE_TEMPLATES: StyleTemplate[] = [
     id: "beauty",
     name: "美妆海报",
     previewImage: "/style-previews/style-04.webp",
-    promptSuffix:
-      "高端美妆海报，柔光温润亲肤，丝滑渐变底色，雅致粉玫瑰色调，水润奢华氛围感",
+    promptSuffix: "高端美妆海报，柔光温润亲肤，丝滑渐变底色，雅致粉玫瑰色调，水润奢华氛围感",
   },
   {
     id: "food",
@@ -53,8 +52,7 @@ export const STYLE_TEMPLATES: StyleTemplate[] = [
     id: "shoes",
     name: "鞋靴高级感",
     previewImage: "/style-previews/style-06.webp",
-    promptSuffix:
-      "高端鞋履广告，立体定向光影，层次动感阴影，质感石质基底，潮流球鞋杂志风范",
+    promptSuffix: "高端鞋履广告，立体定向光影，层次动感阴影，质感石质基底，潮流球鞋杂志风范",
   },
   {
     id: "outdoor",
@@ -67,8 +65,7 @@ export const STYLE_TEMPLATES: StyleTemplate[] = [
     id: "dark_premium",
     name: "暗黑高级感",
     previewImage: "/style-previews/style-08.webp",
-    promptSuffix:
-      "暗调高级产品摄影，纯黑底色，明暗对比光影，层次深邃，梦幻泡影极具电影奢华质感",
+    promptSuffix: "暗调高级产品摄影，纯黑底色，明暗对比光影，层次深邃，梦幻泡影极具电影奢华质感",
   },
   {
     id: "outdoor_photo",

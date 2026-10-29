@@ -1,11 +1,16 @@
-import { supabase } from "@/integrations/supabase/client";
+import { getD1AccessToken } from "@/lib/d1-auth-client";
 
-export type R2UploadScope = "avatar" | "reference-image" | "announcement-image" | "style-template-image";
+export type R2UploadScope =
+  | "avatar"
+  | "reference-image"
+  | "announcement-image"
+  | "style-template-image";
 
-export async function uploadImageToR2(file: File, scope: R2UploadScope): Promise<{ key: string; url: string }> {
-  const { data, error: sessionError } = await supabase.auth.getSession();
-  if (sessionError) throw sessionError;
-  const accessToken = data.session?.access_token;
+export async function uploadImageToR2(
+  file: File,
+  scope: R2UploadScope,
+): Promise<{ key: string; url: string }> {
+  const accessToken = await getD1AccessToken();
   if (!accessToken) throw new Error("请先登录");
 
   const form = new FormData();
@@ -16,7 +21,11 @@ export async function uploadImageToR2(file: File, scope: R2UploadScope): Promise
     headers: { Authorization: `Bearer ${accessToken}` },
     body: form,
   });
-  const payload = await response.json().catch(() => null) as { error?: string; key?: string; url?: string } | null;
+  const payload = (await response.json().catch(() => null)) as {
+    error?: string;
+    key?: string;
+    url?: string;
+  } | null;
   if (!response.ok || !payload?.key || !payload.url) {
     throw new Error(payload?.error || `上传失败（${response.status}）`);
   }

@@ -5,7 +5,10 @@ import { XunhuPayStatus } from "@/components/payment/XunhuPayStatus";
 
 export const Route = createFileRoute("/payment/return")({
   validateSearch: (search: Record<string, unknown>) => ({
-    order: typeof search.order === "string" && /^[0-9A-Za-z_*-]{1,32}$/.test(search.order) ? search.order : "",
+    order:
+      typeof search.order === "string" && /^[0-9A-Za-z_*-]{1,32}$/.test(search.order)
+        ? search.order
+        : "",
   }),
   head: () => ({ meta: [{ title: "微信支付结果 - ShunTu AI" }] }),
   component: PaymentReturnPage,
@@ -16,7 +19,10 @@ function PaymentReturnPage() {
   return (
     <main className="min-h-screen bg-background px-4 py-8 text-foreground sm:py-14">
       <div className="mx-auto max-w-3xl">
-        <Link to="/" className="mb-6 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+        <Link
+          to="/"
+          className="mb-6 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        >
           <ArrowLeft className="h-4 w-4" /> 返回 ShunTu
         </Link>
         <section className="rounded-lg border border-border/70 bg-card/90 p-5 shadow-xl sm:p-8">
@@ -29,7 +35,9 @@ function PaymentReturnPage() {
             </div>
           )}
           <div className="mt-8 border-t border-border/60 pt-5 text-center">
-            <Button asChild variant="outline"><Link to="/">返回 ShunTu</Link></Button>
+            <Button asChild variant="outline">
+              <Link to="/">返回 ShunTu</Link>
+            </Button>
           </div>
         </section>
       </div>

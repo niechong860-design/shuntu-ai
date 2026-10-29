@@ -29,7 +29,8 @@ export const Route = createFileRoute("/api/xunhupay/notify")({
         const params = new URLSearchParams(body);
         const fields: Record<string, string> = {};
         for (const [key, value] of params) {
-          if (Object.prototype.hasOwnProperty.call(fields, key)) return textResponse("duplicate field", 400);
+          if (Object.prototype.hasOwnProperty.call(fields, key))
+            return textResponse("duplicate field", 400);
           fields[key] = value;
         }
 
@@ -38,11 +39,15 @@ export const Route = createFileRoute("/api/xunhupay/notify")({
         if (fields.appid !== payment.getXunhuAppId()) return textResponse("invalid appid", 400);
         if (fields.status !== "OD") return textResponse("ignored status", 400);
         const outTradeNo = fields.trade_order_id ?? "";
-        if (!(await payment.verifyTrustedOrderNo(outTradeNo))) return textResponse("invalid order", 400);
+        if (!(await payment.verifyTrustedOrderNo(outTradeNo)))
+          return textResponse("invalid order", 400);
         const transactionId = fields.transaction_id ?? "";
-        if (!/^[0-9A-Za-z_-]{1,128}$/.test(transactionId)) return textResponse("invalid transaction", 400);
+        if (!/^[0-9A-Za-z_-]{1,128}$/.test(transactionId))
+          return textResponse("invalid transaction", 400);
 
-        const db = createBusinessDatabaseFromContext(context as Parameters<typeof createBusinessDatabaseFromContext>[0]);
+        const db = createBusinessDatabaseFromContext(
+          context as Parameters<typeof createBusinessDatabaseFromContext>[0],
+        );
         const order = await db.getOrderByOutTradeNo(outTradeNo);
         if (!order) return textResponse("order not found", 404);
 

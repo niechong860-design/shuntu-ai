@@ -139,10 +139,18 @@ export function getConfiguredRechargePackage(packageId: string) {
   return RECHARGE_PACKAGES_V2.find((pkg) => pkg.id === packageId);
 }
 
-export function hasTrustedPackageCreditMapping(packageId: string, amountCents: number, credits: number) {
+export function hasTrustedPackageCreditMapping(
+  packageId: string,
+  amountCents: number,
+  credits: number,
+) {
   const configuredPackage = getConfiguredRechargePackage(packageId);
   if (configuredPackage) {
-    if (configuredPackage.credits === credits && priceToCents(configuredPackage.price) === amountCents) return true;
+    if (
+      configuredPackage.credits === credits &&
+      priceToCents(configuredPackage.price) === amountCents
+    )
+      return true;
   }
   // Keep old rows payable during the short code-first rollout window, but only
   // for the same stable package_id and its original locked values.

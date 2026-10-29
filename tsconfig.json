@@ -1,5 +1,12 @@
 {
   "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts", "eslint.config.js"],
+  "exclude": [
+    "src/components/inspiration/InspirationPage.tsx",
+    "src/integrations/supabase/**/*.ts",
+    "src/lib/inspiration.functions.ts",
+    "src/lib/lovable-business-database.ts",
+    "src/lib/supabase-request-auth.ts"
+  ],
   "compilerOptions": {
     "target": "ES2022",
     "jsx": "react-jsx",

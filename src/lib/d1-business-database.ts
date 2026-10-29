@@ -37,7 +37,11 @@ import {
   randomId,
   yuanToFen,
 } from "@/lib/business-database";
-import type { ReplicatedEntityType, ReplicationEventType, ReplicationOutboxEvent } from "@/lib/d1-replication-outbox";
+import type {
+  ReplicatedEntityType,
+  ReplicationEventType,
+  ReplicationOutboxEvent,
+} from "@/lib/d1-replication-outbox";
 import { buildReplicationOutboxStatement } from "@/lib/d1-replication-outbox";
 
 type BoundValue = string | number | null;
@@ -71,7 +75,13 @@ export class D1BusinessDatabase implements BusinessDatabase {
     return row ? mapProfile(row) : null;
   }
 
-  async ensureProfile(input: { id: string; email?: string | null; displayName?: string | null; avatarUrl?: string | null; now?: string }): Promise<Profile> {
+  async ensureProfile(input: {
+    id: string;
+    email?: string | null;
+    displayName?: string | null;
+    avatarUrl?: string | null;
+    now?: string;
+  }): Promise<Profile> {
     const existing = await this.getProfile(input.id);
     if (existing) return existing;
 
@@ -85,12 +95,27 @@ export class D1BusinessDatabase implements BusinessDatabase {
       created_at: now,
       updated_at: now,
     };
-    await this.batchWithOutbox([
-      this.db.prepare(`
+    await this.batchWithOutbox(
+      [
+        this.db
+          .prepare(
+            `
         INSERT INTO profiles (id, email, display_name, avatar_url, credits, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).bind(row.id, row.email, row.display_name, row.avatar_url, row.credits, row.created_at, row.updated_at),
-    ], [rowStateEvent("profiles", row.id, row, `profiles:${row.id}:ensure`)]);
+      `,
+          )
+          .bind(
+            row.id,
+            row.email,
+            row.display_name,
+            row.avatar_url,
+            row.credits,
+            row.created_at,
+            row.updated_at,
+          ),
+      ],
+      [rowStateEvent("profiles", row.id, row, `profiles:${row.id}:ensure`)],
+    );
     return mapProfile(row);
   }
 
@@ -110,23 +135,43 @@ export class D1BusinessDatabase implements BusinessDatabase {
       avatar_url: input.avatarUrl !== undefined ? input.avatarUrl : existing.avatar_url,
       updated_at: now,
     };
-    await this.batchWithOutbox([
-      this.db.prepare(`
+    await this.batchWithOutbox(
+      [
+        this.db
+          .prepare(
+            `
         UPDATE profiles
         SET email = ?, display_name = ?, avatar_url = ?, updated_at = ?
         WHERE id = ?
-      `).bind(row.email, row.display_name, row.avatar_url, row.updated_at, input.userId),
-    ], [rowStateEvent("profiles", input.userId, row, `profiles:${input.userId}:profile-update:${now}`)]);
+      `,
+          )
+          .bind(row.email, row.display_name, row.avatar_url, row.updated_at, input.userId),
+      ],
+      [
+        rowStateEvent(
+          "profiles",
+          input.userId,
+          row,
+          `profiles:${input.userId}:profile-update:${now}`,
+        ),
+      ],
+    );
     return mapProfile(row);
   }
 
   async getCredits(userId: string): Promise<number> {
-    const row = await this.first<{ credits: number }>("SELECT credits FROM profiles WHERE id = ?", userId);
+    const row = await this.first<{ credits: number }>(
+      "SELECT credits FROM profiles WHERE id = ?",
+      userId,
+    );
     return centiCreditToCredits(row?.credits ?? 0);
   }
 
   async createGenerationTask(input: CreateGenerationTaskInput): Promise<GenerationTask> {
-    const existing = await this.first<RawRow>("SELECT * FROM generation_tasks WHERE request_id = ?", input.requestId);
+    const existing = await this.first<RawRow>(
+      "SELECT * FROM generation_tasks WHERE request_id = ?",
+      input.requestId,
+    );
     if (existing) return mapGenerationTask(existing);
 
     const now = input.now ?? nowIso();
@@ -138,7 +183,10 @@ export class D1BusinessDatabase implements BusinessDatabase {
       model_id: input.modelId,
       prompt: input.prompt ?? null,
       input_params: jsonToD1(input.inputParams, {}),
-      credits_required: creditsToCentiCredit(input.creditsRequired, "generation_tasks.credits_required"),
+      credits_required: creditsToCentiCredit(
+        input.creditsRequired,
+        "generation_tasks.credits_required",
+      ),
       deduction_status: "not_charged",
       deduction_id: null,
       charged_at: null,
@@ -153,20 +201,43 @@ export class D1BusinessDatabase implements BusinessDatabase {
       updated_at: now,
     };
 
-    await this.batchWithOutbox([
-      this.db.prepare(`
+    await this.batchWithOutbox(
+      [
+        this.db
+          .prepare(
+            `
         INSERT INTO generation_tasks (
           id, request_id, user_id, status, model_id, prompt, input_params, credits_required,
           deduction_status, deduction_id, charged_at, refunded_at, result_image_url, result_payload,
           error_code, error_message, started_at, completed_at, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(
-        row.id, row.request_id, row.user_id, row.status, row.model_id, row.prompt, row.input_params,
-        row.credits_required, row.deduction_status, row.deduction_id, row.charged_at, row.refunded_at,
-        row.result_image_url, row.result_payload, row.error_code, row.error_message, row.started_at,
-        row.completed_at, row.created_at, row.updated_at,
-      ),
-    ], [rowStateEvent("generation_tasks", row.id, row, `generation_tasks:${row.request_id}:create`)]);
+      `,
+          )
+          .bind(
+            row.id,
+            row.request_id,
+            row.user_id,
+            row.status,
+            row.model_id,
+            row.prompt,
+            row.input_params,
+            row.credits_required,
+            row.deduction_status,
+            row.deduction_id,
+            row.charged_at,
+            row.refunded_at,
+            row.result_image_url,
+            row.result_payload,
+            row.error_code,
+            row.error_message,
+            row.started_at,
+            row.completed_at,
+            row.created_at,
+            row.updated_at,
+          ),
+      ],
+      [rowStateEvent("generation_tasks", row.id, row, `generation_tasks:${row.request_id}:create`)],
+    );
 
     return mapGenerationTask(row);
   }
@@ -177,12 +248,22 @@ export class D1BusinessDatabase implements BusinessDatabase {
   }
 
   async getGenerationTaskByRequestId(requestId: string): Promise<GenerationTask | null> {
-    const row = await this.first<RawRow>("SELECT * FROM generation_tasks WHERE request_id = ?", requestId);
+    const row = await this.first<RawRow>(
+      "SELECT * FROM generation_tasks WHERE request_id = ?",
+      requestId,
+    );
     return row ? mapGenerationTask(row) : null;
   }
 
-  async getUserGenerationTask(input: { taskId: string; userId: string }): Promise<GenerationTask | null> {
-    const row = await this.first<RawRow>("SELECT * FROM generation_tasks WHERE id = ? AND user_id = ?", input.taskId, input.userId);
+  async getUserGenerationTask(input: {
+    taskId: string;
+    userId: string;
+  }): Promise<GenerationTask | null> {
+    const row = await this.first<RawRow>(
+      "SELECT * FROM generation_tasks WHERE id = ? AND user_id = ?",
+      input.taskId,
+      input.userId,
+    );
     return row ? mapGenerationTask(row) : null;
   }
 
@@ -209,11 +290,18 @@ export class D1BusinessDatabase implements BusinessDatabase {
     deductionStatus?: GenerationTask["deduction_status"];
   }): Promise<number> {
     const { where, values } = buildTaskFilter(input);
-    const row = await this.first<{ count: number }>(`SELECT COUNT(*) AS count FROM generation_tasks WHERE ${where}`, ...values);
+    const row = await this.first<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM generation_tasks WHERE ${where}`,
+      ...values,
+    );
     return Number(row?.count ?? 0);
   }
 
-  async claimQueuedGenerationTask(input: { taskId: string; userId: string; now?: string }): Promise<GenerationTask | null> {
+  async claimQueuedGenerationTask(input: {
+    taskId: string;
+    userId: string;
+    now?: string;
+  }): Promise<GenerationTask | null> {
     const existing = await this.first<RawRow>(
       "SELECT * FROM generation_tasks WHERE id = ? AND user_id = ? AND status = 'queued' AND deduction_status = 'not_charged'",
       input.taskId,
@@ -221,36 +309,85 @@ export class D1BusinessDatabase implements BusinessDatabase {
     );
     if (!existing) return null;
     const now = input.now ?? nowIso();
-    const next = { ...existing, status: "running", started_at: now, updated_at: now };
-    await this.batchWithOutbox([
-      this.db.prepare(`
+    const next = {
+      ...existing,
+      status: "running",
+      started_at: now,
+      updated_at: now,
+    };
+    const results = await this.batchWithOutbox(
+      [
+        this.db
+          .prepare(
+            `
         UPDATE generation_tasks
         SET status = 'running', started_at = ?, updated_at = ?
         WHERE id = ? AND user_id = ? AND status = 'queued' AND deduction_status = 'not_charged'
-      `).bind(now, now, input.taskId, input.userId),
-    ], [rowStateEvent("generation_tasks", input.taskId, next, `generation_tasks:${input.taskId}:claim:${now}`)]);
-    return mapGenerationTask(next);
+      `,
+          )
+          .bind(now, now, input.taskId, input.userId),
+      ],
+      [
+        {
+          ...rowStateEvent(
+            "generation_tasks",
+            input.taskId,
+            next,
+            `generation_tasks:${input.taskId}:claim:${now}`,
+          ),
+          condition: { sql: "changes() = 1", values: [] },
+        },
+      ],
+    );
+    return Number((results[0] as D1RunResult | undefined)?.meta?.changes ?? 0) === 1
+      ? mapGenerationTask(next)
+      : null;
   }
 
   async cancelUserQueuedGenerationTasks(input: { userId: string; now?: string }): Promise<number> {
-    const rows = await this.all<RawRow>(`
-      SELECT * FROM generation_tasks
-      WHERE user_id = ? AND deduction_status = 'not_charged' AND status IN ('queued', 'running')
-    `, input.userId);
-    if (rows.length === 0) return 0;
+    const rows = await this.all<RawRow>(
+      "SELECT * FROM generation_tasks WHERE user_id=? AND deduction_status='not_charged' AND status IN ('queued','running')",
+      input.userId,
+    );
     const now = input.now ?? nowIso();
-    const nextRows: RawRow[] = rows.map((row) => ({ ...row, status: "canceled", completed_at: now, updated_at: now }));
-    await this.batchWithOutbox([
-      this.db.prepare(`
-        UPDATE generation_tasks
-        SET status = 'canceled', completed_at = ?, updated_at = ?
-        WHERE user_id = ? AND deduction_status = 'not_charged' AND status IN ('queued', 'running')
-      `).bind(now, now, input.userId),
-    ], nextRows.map((row) => rowStateEvent("generation_tasks", String(row.id), row, `generation_tasks:${String(row.id)}:cancel:${now}`)));
-    return rows.length;
+    let canceled = 0;
+    for (const row of rows) {
+      const next = {
+        ...row,
+        status: "canceled",
+        completed_at: now,
+        updated_at: now,
+      };
+      const results = await this.batchWithOutbox(
+        [
+          this.db
+            .prepare(
+              "UPDATE generation_tasks SET status='canceled',completed_at=?,updated_at=? WHERE id=? AND user_id=? AND deduction_status='not_charged' AND status IN ('queued','running')",
+            )
+            .bind(now, now, String(row.id), input.userId),
+        ],
+        [
+          {
+            ...rowStateEvent(
+              "generation_tasks",
+              String(row.id),
+              next,
+              `generation_tasks:${String(row.id)}:cancel:${now}`,
+            ),
+            condition: { sql: "changes() = 1", values: [] },
+          },
+        ],
+      );
+      canceled += Number((results[0] as D1RunResult | undefined)?.meta?.changes ?? 0);
+    }
+    return canceled;
   }
 
-  async cancelQueuedGenerationTask(input: { taskId: string; userId: string; now?: string }): Promise<GenerationTask | null> {
+  async cancelQueuedGenerationTask(input: {
+    taskId: string;
+    userId: string;
+    now?: string;
+  }): Promise<GenerationTask | null> {
     const existing = await this.first<RawRow>(
       "SELECT * FROM generation_tasks WHERE id = ? AND user_id = ? AND status = 'queued' AND deduction_status = 'not_charged'",
       input.taskId,
@@ -258,18 +395,44 @@ export class D1BusinessDatabase implements BusinessDatabase {
     );
     if (!existing) return null;
     const now = input.now ?? nowIso();
-    const next = { ...existing, status: "canceled", completed_at: now, updated_at: now };
-    await this.batchWithOutbox([
-      this.db.prepare(`
+    const next = {
+      ...existing,
+      status: "canceled",
+      completed_at: now,
+      updated_at: now,
+    };
+    const results = await this.batchWithOutbox(
+      [
+        this.db
+          .prepare(
+            `
         UPDATE generation_tasks
         SET status = 'canceled', completed_at = ?, updated_at = ?
         WHERE id = ? AND user_id = ? AND status = 'queued' AND deduction_status = 'not_charged'
-      `).bind(now, now, input.taskId, input.userId),
-    ], [rowStateEvent("generation_tasks", input.taskId, next, `generation_tasks:${input.taskId}:cancel:${now}`)]);
-    return mapGenerationTask(next);
+      `,
+          )
+          .bind(now, now, input.taskId, input.userId),
+      ],
+      [
+        {
+          ...rowStateEvent(
+            "generation_tasks",
+            input.taskId,
+            next,
+            `generation_tasks:${input.taskId}:cancel:${now}`,
+          ),
+          condition: { sql: "changes() = 1", values: [] },
+        },
+      ],
+    );
+    return Number((results[0] as D1RunResult | undefined)?.meta?.changes ?? 0) === 1
+      ? mapGenerationTask(next)
+      : null;
   }
 
-  async updateGenerationTaskLifecycle(input: UpdateGenerationTaskLifecycleInput): Promise<GenerationTask> {
+  async updateGenerationTaskLifecycle(
+    input: UpdateGenerationTaskLifecycleInput,
+  ): Promise<GenerationTask> {
     const existing = await this.getUserScopedTaskForUpdate(input.taskId, input.userId);
     if (!existing) throw new Error("generation task not found");
     const now = input.now ?? nowIso();
@@ -280,36 +443,88 @@ export class D1BusinessDatabase implements BusinessDatabase {
       deduction_id: input.deductionId !== undefined ? input.deductionId : existing.raw.deduction_id,
       charged_at: input.chargedAt !== undefined ? input.chargedAt : existing.raw.charged_at,
       refunded_at: input.refundedAt !== undefined ? input.refundedAt : existing.raw.refunded_at,
-      result_image_url: input.resultImageUrl !== undefined ? input.resultImageUrl : existing.raw.result_image_url,
-      result_payload: input.resultPayload !== undefined ? jsonToD1(input.resultPayload, null) : existing.raw.result_payload,
+      result_image_url:
+        input.resultImageUrl !== undefined ? input.resultImageUrl : existing.raw.result_image_url,
+      result_payload:
+        input.resultPayload !== undefined
+          ? jsonToD1(input.resultPayload, null)
+          : existing.raw.result_payload,
       error_code: input.errorCode !== undefined ? input.errorCode : existing.raw.error_code,
-      error_message: input.errorMessage !== undefined ? input.errorMessage : existing.raw.error_message,
+      error_message:
+        input.errorMessage !== undefined ? input.errorMessage : existing.raw.error_message,
       started_at: input.startedAt !== undefined ? input.startedAt : existing.raw.started_at,
       completed_at: input.completedAt !== undefined ? input.completedAt : existing.raw.completed_at,
       updated_at: now,
     };
 
-    await this.batchWithOutbox([
-      this.db.prepare(`
+    const results = await this.batchWithOutbox(
+      [
+        this.db
+          .prepare(
+            `
         UPDATE generation_tasks
         SET status = ?, deduction_status = ?, deduction_id = ?, charged_at = ?, refunded_at = ?,
             result_image_url = ?, result_payload = ?, error_code = ?, error_message = ?,
             started_at = ?, completed_at = ?, updated_at = ?
         WHERE id = ? ${input.userId ? "AND user_id = ?" : ""}
-      `).bind(...compactBind([
-        bindValue(next.status), bindValue(next.deduction_status), bindValue(next.deduction_id), bindValue(next.charged_at), bindValue(next.refunded_at),
-        bindValue(next.result_image_url), bindValue(next.result_payload), bindValue(next.error_code), bindValue(next.error_message),
-        bindValue(next.started_at), bindValue(next.completed_at), bindValue(next.updated_at), input.taskId, input.userId,
-      ])),
-    ], [rowStateEvent("generation_tasks", input.taskId, next, `generation_tasks:${input.taskId}:lifecycle:${now}`)]);
+          AND deduction_status IS ? AND deduction_id IS ?
+          AND charged_at IS ? AND refunded_at IS ?
+      `,
+          )
+          .bind(
+            ...compactBind([
+              bindValue(next.status),
+              bindValue(next.deduction_status),
+              bindValue(next.deduction_id),
+              bindValue(next.charged_at),
+              bindValue(next.refunded_at),
+              bindValue(next.result_image_url),
+              bindValue(next.result_payload),
+              bindValue(next.error_code),
+              bindValue(next.error_message),
+              bindValue(next.started_at),
+              bindValue(next.completed_at),
+              bindValue(next.updated_at),
+              input.taskId,
+              input.userId,
+              bindValue(existing.raw.deduction_status),
+              bindValue(existing.raw.deduction_id),
+              bindValue(existing.raw.charged_at),
+              bindValue(existing.raw.refunded_at),
+            ]),
+          ),
+      ],
+      [
+        {
+          ...rowStateEvent(
+            "generation_tasks",
+            input.taskId,
+            next,
+            `generation_tasks:${input.taskId}:lifecycle:${now}`,
+          ),
+          condition: { sql: "changes() = 1", values: [] },
+        },
+      ],
+    );
+    if (Number((results[0] as D1RunResult | undefined)?.meta?.changes ?? 0) !== 1) {
+      const current = await this.getUserScopedTaskForUpdate(input.taskId, input.userId);
+      if (!current) throw new Error("generation task not found after lifecycle conflict");
+      return mapGenerationTask(current.raw);
+    }
     return mapGenerationTask(next);
   }
 
-  async consumeCreditsForGeneration(input: ConsumeCreditsForGenerationInput): Promise<ConsumeCreditsResult> {
+  async consumeCreditsForGeneration(
+    input: ConsumeCreditsForGenerationInput,
+  ): Promise<ConsumeCreditsResult> {
     const now = input.now ?? nowIso();
-    const idempotencyKey = input.idempotencyKey ?? (input.historyId ? `history:${input.historyId}` : null);
+    const idempotencyKey =
+      input.idempotencyKey ?? (input.historyId ? `history:${input.historyId}` : null);
     if (idempotencyKey) {
-      const existingLedger = await this.first<RawRow>("SELECT * FROM credit_usage_logs WHERE idempotency_key = ?", idempotencyKey);
+      const existingLedger = await this.first<RawRow>(
+        "SELECT * FROM credit_usage_logs WHERE idempotency_key = ?",
+        idempotencyKey,
+      );
       if (existingLedger) {
         return {
           success: true,
@@ -321,12 +536,26 @@ export class D1BusinessDatabase implements BusinessDatabase {
       }
     }
     const model = await this.readEnabledModel(input.modelKey);
-    if (!model) return { success: false, message: "model not found or disabled", credits: 0, cost: 0, history_id: null };
-    const costCenti = input.cost == null ? Number(model.cost) : creditsToCentiCredit(input.cost, "generation.cost");
+    if (!model)
+      return {
+        success: false,
+        message: "model not found or disabled",
+        credits: 0,
+        cost: 0,
+        history_id: null,
+      };
+    const costCenti =
+      input.cost == null ? Number(model.cost) : creditsToCentiCredit(input.cost, "generation.cost");
     const profile = await this.ensureProfile({ id: input.userId, now });
     const currentCenti = creditsToCentiCredit(profile.credits, "profiles.credits");
     if (currentCenti < costCenti) {
-      return { success: false, message: "insufficient credits", credits: profile.credits, cost: centiCreditToCredits(costCenti), history_id: null };
+      return {
+        success: false,
+        message: "insufficient credits",
+        credits: profile.credits,
+        cost: centiCreditToCredits(costCenti),
+        history_id: null,
+      };
     }
 
     const historyId = input.historyId ?? randomId();
@@ -356,31 +585,120 @@ export class D1BusinessDatabase implements BusinessDatabase {
       created_at: now,
       metadata: jsonToD1({ prompt: input.prompt ?? "" }, {}),
     };
-    const profileRow = { ...profileToRaw(profile), credits: creditsAfterCenti, updated_at: now };
+    const profileRow = {
+      ...profileToRaw(profile),
+      credits: creditsAfterCenti,
+      updated_at: now,
+    };
 
-    await this.batchWithOutbox([
-      this.db.prepare("UPDATE profiles SET credits = ?, updated_at = ? WHERE id = ? AND credits >= ?")
-        .bind(creditsAfterCenti, now, input.userId, costCenti),
-      this.db.prepare(`
+    await this.batchWithOutbox(
+      [
+        this.db
+          .prepare(
+            "UPDATE profiles SET credits = ?, updated_at = ? WHERE id = ? AND credits = ? AND credits >= ?",
+          )
+          .bind(creditsAfterCenti, now, input.userId, currentCenti, costCenti),
+        this.db
+          .prepare(
+            `
         INSERT INTO generation_history (id, user_id, model, cost, prompt, image_url, created_at, generation_task_id)
-        SELECT ?, ?, ?, ?, ?, ?, ?, ?
-        WHERE EXISTS (SELECT 1 FROM profiles WHERE id = ? AND credits = ? AND updated_at = ?)
-      `).bind(historyRow.id, historyRow.user_id, historyRow.model, historyRow.cost, historyRow.prompt, historyRow.image_url, historyRow.created_at, historyRow.generation_task_id, input.userId, creditsAfterCenti, now),
-      this.db.prepare(`
+        SELECT ?, CASE WHEN changes() = 1 THEN ? ELSE NULL END, ?, ?, ?, ?, ?, ?
+      `,
+          )
+          .bind(
+            historyRow.id,
+            historyRow.user_id,
+            historyRow.model,
+            historyRow.cost,
+            historyRow.prompt,
+            historyRow.image_url,
+            historyRow.created_at,
+            historyRow.generation_task_id,
+          ),
+        this.db
+          .prepare(
+            `
         INSERT INTO credit_usage_logs (id, user_id, amount, source, model_key, model_name, generation_history_id, generation_task_id, idempotency_key, created_at, metadata)
         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         WHERE EXISTS (SELECT 1 FROM generation_history WHERE id = ?)
-      `).bind(ledgerRow.id, ledgerRow.user_id, ledgerRow.amount, ledgerRow.source, ledgerRow.model_key, ledgerRow.model_name, ledgerRow.generation_history_id, ledgerRow.generation_task_id, ledgerRow.idempotency_key, ledgerRow.created_at, ledgerRow.metadata, historyId),
-    ], [
-      rowStateEvent("profiles", input.userId, profileRow, `profiles:${input.userId}:consume:${ledgerKey}`),
-      rowStateEvent("generation_history", historyId, historyRow, `generation_history:${historyId}:consume`),
-      rowStateEvent("credit_usage_logs", ledgerId, ledgerRow, `credit_usage_logs:${ledgerKey}`),
-    ]);
+      `,
+          )
+          .bind(
+            ledgerRow.id,
+            ledgerRow.user_id,
+            ledgerRow.amount,
+            ledgerRow.source,
+            ledgerRow.model_key,
+            ledgerRow.model_name,
+            ledgerRow.generation_history_id,
+            ledgerRow.generation_task_id,
+            ledgerRow.idempotency_key,
+            ledgerRow.created_at,
+            ledgerRow.metadata,
+            historyId,
+          ),
+      ],
+      [
+        rowStateEvent(
+          "profiles",
+          input.userId,
+          profileRow,
+          `profiles:${input.userId}:consume:${ledgerKey}`,
+        ),
+        rowStateEvent(
+          "generation_history",
+          historyId,
+          historyRow,
+          `generation_history:${historyId}:consume`,
+        ),
+        rowStateEvent("credit_usage_logs", ledgerId, ledgerRow, `credit_usage_logs:${ledgerKey}`),
+      ],
+    );
 
-    return { success: true, message: "charged", credits: centiCreditToCredits(creditsAfterCenti), cost: centiCreditToCredits(costCenti), history_id: historyId };
+    return {
+      success: true,
+      message: "charged",
+      credits: centiCreditToCredits(creditsAfterCenti),
+      cost: centiCreditToCredits(costCenti),
+      history_id: historyId,
+    };
   }
 
   async adjustCreditsByAdmin(input: AdminAdjustCreditsInput): Promise<AdminAdjustCreditsResult> {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.requestId))
+      throw new Error("INVALID_ADJUSTMENT_REQUEST_ID");
+    const idempotencyKey = `admin_adjustment:${input.adminUserId}:${input.requestId}`;
+    const readCommitted = async (): Promise<AdminAdjustCreditsResult | null> => {
+      const row = await this.first<RawRow>(
+        "SELECT id,user_id,metadata FROM credit_usage_logs WHERE idempotency_key=?",
+        idempotencyKey,
+      );
+      if (!row) return null;
+      const metadata: unknown = JSON.parse(String(row.metadata));
+      if (
+        !metadata ||
+        typeof metadata !== "object" ||
+        !("admin_user_id" in metadata) ||
+        metadata.admin_user_id !== input.adminUserId ||
+        row.user_id !== input.userId ||
+        !("delta" in metadata) ||
+        metadata.delta !== input.delta ||
+        !("before" in metadata) ||
+        typeof metadata.before !== "number" ||
+        !("after" in metadata) ||
+        typeof metadata.after !== "number"
+      )
+        throw new Error("ADJUSTMENT_REQUEST_CONFLICT");
+      return {
+        credits: metadata.after,
+        before: metadata.before,
+        after: metadata.after,
+        delta: input.delta,
+        ledgerId: String(row.id),
+      };
+    };
+    const previous = await readCommitted();
+    if (previous) return previous;
     const now = input.now ?? nowIso();
     const deltaCenti = creditsToCentiCredit(input.delta, "admin_adjustment.delta");
     if (deltaCenti === 0) throw new Error("adjustment must not be zero");
@@ -394,8 +712,11 @@ export class D1BusinessDatabase implements BusinessDatabase {
     const direction = deltaCenti > 0 ? "add" : "subtract";
 
     const ledgerId = randomId();
-    const idempotencyKey = `admin_adjustment:${ledgerId}`;
-    const profileRow = { ...profileToRaw(profile), credits: afterCenti, updated_at: now };
+    const profileRow = {
+      ...profileToRaw(profile),
+      credits: afterCenti,
+      updated_at: now,
+    };
     const ledgerRow = {
       id: ledgerId,
       user_id: input.userId,
@@ -407,41 +728,78 @@ export class D1BusinessDatabase implements BusinessDatabase {
       generation_task_id: null,
       idempotency_key: idempotencyKey,
       created_at: now,
-      metadata: jsonToD1({
-        admin_user_id: input.adminUserId,
-        target_user_id: input.userId,
-        delta: input.delta,
-        direction,
-        before: profile.credits,
-        after: centiCreditToCredits(afterCenti),
-        reason: "admin_adjustment",
-      }, {}),
+      metadata: jsonToD1(
+        {
+          admin_user_id: input.adminUserId,
+          target_user_id: input.userId,
+          delta: input.delta,
+          direction,
+          before: profile.credits,
+          after: centiCreditToCredits(afterCenti),
+          reason: "admin_adjustment",
+        },
+        {},
+      ),
     };
 
-    await this.batchWithOutbox([
-      this.db.prepare(`
+    try {
+      await this.batchWithOutbox(
+        [
+          this.db
+            .prepare(
+              `
         UPDATE profiles SET credits = ?, updated_at = ?
         WHERE id = ? AND credits = ? AND credits + ? >= 0
-      `).bind(afterCenti, now, input.userId, beforeCenti, deltaCenti),
-      this.db.prepare(`
+      `,
+            )
+            .bind(afterCenti, now, input.userId, beforeCenti, deltaCenti),
+          this.db
+            .prepare(
+              `
         INSERT INTO credit_usage_logs
           (id, user_id, amount, source, model_key, model_name, generation_history_id,
            generation_task_id, idempotency_key, created_at, metadata)
-        SELECT ?, ?, CASE WHEN EXISTS (
-          SELECT 1 FROM profiles WHERE id = ? AND credits = ? AND updated_at = ?
-        ) THEN ? ELSE -1 END, ?, ?, ?, ?, ?, ?, ?, ?
-      `).bind(
-        ledgerRow.id, ledgerRow.user_id, input.userId, afterCenti, now, ledgerRow.amount, ledgerRow.source,
-        ledgerRow.model_key, ledgerRow.model_name, ledgerRow.generation_history_id,
-        ledgerRow.generation_task_id, ledgerRow.idempotency_key, ledgerRow.created_at,
-        ledgerRow.metadata,
-      ),
-    ], [
-      rowStateEvent("profiles", input.userId, profileRow, `profiles:${input.userId}:admin-adjustment:${ledgerId}`),
-      rowStateEvent("credit_usage_logs", ledgerId, ledgerRow, `credit_usage_logs:${idempotencyKey}`),
-    ]);
-
-    const committed = await this.first<RawRow>("SELECT id FROM credit_usage_logs WHERE idempotency_key = ?", idempotencyKey);
+        SELECT ?, CASE WHEN changes()=1 THEN ? ELSE NULL END, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      `,
+            )
+            .bind(
+              ledgerRow.id,
+              ledgerRow.user_id,
+              ledgerRow.amount,
+              ledgerRow.source,
+              ledgerRow.model_key,
+              ledgerRow.model_name,
+              ledgerRow.generation_history_id,
+              ledgerRow.generation_task_id,
+              ledgerRow.idempotency_key,
+              ledgerRow.created_at,
+              ledgerRow.metadata,
+            ),
+        ],
+        [
+          rowStateEvent(
+            "profiles",
+            input.userId,
+            profileRow,
+            `profiles:${input.userId}:admin-adjustment:${ledgerId}`,
+          ),
+          rowStateEvent(
+            "credit_usage_logs",
+            ledgerId,
+            ledgerRow,
+            `credit_usage_logs:${idempotencyKey}`,
+          ),
+        ],
+      );
+    } catch {
+      const replay = await readCommitted();
+      if (replay) return replay;
+      throw new Error("ADJUSTMENT_NOT_COMMITTED_RETRY_SAME_REQUEST");
+    }
+    const committed = await this.first<RawRow>(
+      "SELECT id FROM credit_usage_logs WHERE idempotency_key = ?",
+      idempotencyKey,
+    );
     if (!committed) throw new Error("credit adjustment was not committed; please retry");
     return {
       credits: centiCreditToCredits(afterCenti),
@@ -454,22 +812,47 @@ export class D1BusinessDatabase implements BusinessDatabase {
 
   async listAdminUserBusinessRows(): Promise<AdminUserBusinessRow[]> {
     const rows = await this.all<RawRow>(`
-      SELECT p.*, COALESCE(SUM(CASE
+      SELECT
+        p.id,
+        COALESCE(NULLIF(trim(p.email), ''), i.provider_user_id) AS email,
+        p.display_name,
+        p.avatar_url,
+        p.credits,
+        p.created_at,
+        p.updated_at,
+        COALESCE(SUM(CASE
         WHEN l.source IN ('generation_task', 'legacy_generation', 'backfill_generation_history', 'admin_generation_task') THEN l.amount
         WHEN l.source = 'admin_adjustment' AND CAST(json_extract(CASE WHEN json_valid(l.metadata) THEN l.metadata ELSE '{}' END, '$.delta') AS REAL) < 0 THEN l.amount
         ELSE 0
-      END), 0) AS total_spent
+        END), 0) AS total_spent
       FROM profiles p
+      LEFT JOIN (
+        SELECT user_id, MAX(provider_user_id) AS provider_user_id
+        FROM auth_identities
+        WHERE provider = 'legacy_email'
+        GROUP BY user_id
+      ) i ON i.user_id = p.id
       LEFT JOIN credit_usage_logs l ON l.user_id = p.id
       GROUP BY p.id
       ORDER BY p.created_at DESC
     `);
-    return rows.map((row) => ({ ...mapProfile(row), total_spent: centiCreditToCredits(row.total_spent as number) }));
+    return rows.map((row) => ({
+      ...mapProfile(row),
+      total_spent: centiCreditToCredits(row.total_spent as number),
+    }));
   }
 
-  async listAdminCreditUsageLogs(input: { userId: string; limit: number; offset: number }): Promise<{ rows: AdminCreditUsageLogRow[]; total: number }> {
-    const total = await this.first<{ count: number }>("SELECT COUNT(*) AS count FROM credit_usage_logs WHERE user_id = ?", input.userId);
-    const rows = await this.all<RawRow>(`
+  async listAdminCreditUsageLogs(input: {
+    userId: string;
+    limit: number;
+    offset: number;
+  }): Promise<{ rows: AdminCreditUsageLogRow[]; total: number }> {
+    const total = await this.first<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM credit_usage_logs WHERE user_id = ?",
+      input.userId,
+    );
+    const rows = await this.all<RawRow>(
+      `
       SELECT l.*,
         CASE
           WHEN l.source IN ('payment', 'coupon_redeem') THEN l.amount
@@ -487,7 +870,11 @@ export class D1BusinessDatabase implements BusinessDatabase {
       WHERE l.user_id = ?
       ORDER BY l.created_at DESC
       LIMIT ? OFFSET ?
-    `, input.userId, input.limit, input.offset);
+    `,
+      input.userId,
+      input.limit,
+      input.offset,
+    );
     return {
       rows: rows.map((row) => ({
         id: String(row.id),
@@ -507,9 +894,13 @@ export class D1BusinessDatabase implements BusinessDatabase {
     };
   }
 
-  async getAdminAnalyticsData(input: { startUtc: string; endUtc: string }): Promise<AdminAnalyticsData> {
+  async getAdminAnalyticsData(input: {
+    startUtc: string;
+    endUtc: string;
+  }): Promise<AdminAnalyticsData> {
     const [summary, usage, todayRegistrations, coupons] = await Promise.all([
-      this.first<RawRow>(`
+      this.first<RawRow>(
+        `
         SELECT
           (SELECT COUNT(*) FROM profiles) AS total_users,
           (SELECT COUNT(*) FROM profiles WHERE created_at >= ? AND created_at < ?) AS today_users,
@@ -525,8 +916,14 @@ export class D1BusinessDatabase implements BusinessDatabase {
               source IN ('generation_task', 'legacy_generation', 'backfill_generation_history', 'admin_generation_task')
               OR (source = 'admin_adjustment' AND CAST(json_extract(CASE WHEN json_valid(metadata) THEN metadata ELSE '{}' END, '$.delta') AS REAL) < 0)
             )) AS today_cost
-      `, input.startUtc, input.endUtc, input.startUtc, input.endUtc),
-      this.all<RawRow>(`
+      `,
+        input.startUtc,
+        input.endUtc,
+        input.startUtc,
+        input.endUtc,
+      ),
+      this.all<RawRow>(
+        `
         SELECT COALESCE(NULLIF(model_name, ''), NULLIF(model_key, ''), '未知') AS model,
           COUNT(*) AS total_count,
           SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END) AS today_count,
@@ -534,8 +931,15 @@ export class D1BusinessDatabase implements BusinessDatabase {
         FROM credit_usage_logs
         WHERE source IN ('generation_task', 'legacy_generation', 'backfill_generation_history', 'admin_generation_task')
         GROUP BY COALESCE(NULLIF(model_name, ''), NULLIF(model_key, ''), '未知')
-      `, input.startUtc, input.endUtc),
-      this.all<RawRow>("SELECT * FROM profiles WHERE created_at >= ? AND created_at < ? ORDER BY created_at DESC LIMIT 50", input.startUtc, input.endUtc),
+      `,
+        input.startUtc,
+        input.endUtc,
+      ),
+      this.all<RawRow>(
+        "SELECT * FROM profiles WHERE created_at >= ? AND created_at < ? ORDER BY created_at DESC LIMIT 50",
+        input.startUtc,
+        input.endUtc,
+      ),
       this.first<{ count: number }>("SELECT COUNT(*) AS count FROM coupons WHERE is_used = 0"),
     ]);
     return {
@@ -556,16 +960,38 @@ export class D1BusinessDatabase implements BusinessDatabase {
     };
   }
 
-  async finalizeUserGenerationTaskOnce(input: FinalizeGenerationTaskInput): Promise<FinalizeGenerationTaskResult> {
+  async finalizeUserGenerationTaskOnce(
+    input: FinalizeGenerationTaskInput,
+  ): Promise<FinalizeGenerationTaskResult> {
     if (!input.imageUrl.trim()) {
-      return { success: false, message: "image url is required", credits: 0, cost: 0, history_id: null, deduction_status: null };
+      return {
+        success: false,
+        message: "image url is required",
+        credits: 0,
+        cost: 0,
+        history_id: null,
+        deduction_status: null,
+      };
     }
     const now = input.now ?? nowIso();
-    const task = await this.getUserGenerationTask({ taskId: input.taskId, userId: input.userId });
+    const task = await this.getUserGenerationTask({
+      taskId: input.taskId,
+      userId: input.userId,
+    });
     if (!task) {
-      return { success: false, message: "task not found or not owned by current user", credits: 0, cost: 0, history_id: null, deduction_status: null };
+      return {
+        success: false,
+        message: "task not found or not owned by current user",
+        credits: 0,
+        cost: 0,
+        history_id: null,
+        deduction_status: null,
+      };
     }
-    const existingHistory = await this.first<RawRow>("SELECT * FROM generation_history WHERE generation_task_id = ?", input.taskId);
+    const existingHistory = await this.first<RawRow>(
+      "SELECT * FROM generation_history WHERE generation_task_id = ?",
+      input.taskId,
+    );
     if (task.deduction_status === "charged") {
       return {
         success: true,
@@ -577,24 +1003,67 @@ export class D1BusinessDatabase implements BusinessDatabase {
       };
     }
     if (task.deduction_status !== "not_charged") {
-      return { success: false, message: "task deduction status is not finalizable", credits: await this.getCredits(input.userId), cost: task.credits_required, history_id: null, deduction_status: task.deduction_status };
+      return {
+        success: false,
+        message: "task deduction status is not finalizable",
+        credits: await this.getCredits(input.userId),
+        cost: task.credits_required,
+        history_id: null,
+        deduction_status: task.deduction_status,
+      };
     }
     if (!new Set(["running", "succeeded"]).has(task.status)) {
-      return { success: false, message: "task status is not finalizable", credits: await this.getCredits(input.userId), cost: task.credits_required, history_id: null, deduction_status: task.deduction_status };
+      return {
+        success: false,
+        message: "task status is not finalizable",
+        credits: await this.getCredits(input.userId),
+        cost: task.credits_required,
+        history_id: null,
+        deduction_status: task.deduction_status,
+      };
     }
 
     const model = await this.readEnabledModel(task.model_id);
     if (!model) {
-      await this.updateGenerationTaskLifecycle({ taskId: input.taskId, userId: input.userId, errorMessage: "model not found or disabled", now });
-      return { success: false, message: "model not found or disabled", credits: await this.getCredits(input.userId), cost: 0, history_id: null, deduction_status: task.deduction_status };
+      await this.updateGenerationTaskLifecycle({
+        taskId: input.taskId,
+        userId: input.userId,
+        errorMessage: "model not found or disabled",
+        now,
+      });
+      return {
+        success: false,
+        message: "model not found or disabled",
+        credits: await this.getCredits(input.userId),
+        cost: 0,
+        history_id: null,
+        deduction_status: task.deduction_status,
+      };
     }
 
-    const costCenti = Number(model.cost);
+    // Charge the accepted task snapshot, even if the live model price changes
+    // while the provider is processing the task.
+    const costCenti = creditsToCentiCredit(
+      task.credits_required,
+      "generation_tasks.credits_required",
+    );
     const profile = await this.ensureProfile({ id: input.userId, now });
     const currentCenti = creditsToCentiCredit(profile.credits, "profiles.credits");
     if (currentCenti < costCenti) {
-      await this.updateGenerationTaskLifecycle({ taskId: input.taskId, userId: input.userId, errorMessage: "insufficient credits", now });
-      return { success: false, message: "insufficient credits", credits: profile.credits, cost: centiCreditToCredits(costCenti), history_id: null, deduction_status: task.deduction_status };
+      await this.updateGenerationTaskLifecycle({
+        taskId: input.taskId,
+        userId: input.userId,
+        errorMessage: "insufficient credits",
+        now,
+      });
+      return {
+        success: false,
+        message: "insufficient credits",
+        credits: profile.credits,
+        cost: centiCreditToCredits(costCenti),
+        history_id: null,
+        deduction_status: task.deduction_status,
+      };
     }
 
     const historyId = input.historyId ?? randomId();
@@ -636,51 +1105,143 @@ export class D1BusinessDatabase implements BusinessDatabase {
       updated_at: now,
       error_message: null,
     };
-    const profileRow = { ...profileToRaw(profile), credits: creditsAfterCenti, updated_at: now };
+    const profileRow = {
+      ...profileToRaw(profile),
+      credits: creditsAfterCenti,
+      updated_at: now,
+    };
 
-    await this.batchWithOutbox([
-      this.db.prepare(`
+    await this.batchWithOutbox(
+      [
+        this.db
+          .prepare(
+            `
         UPDATE profiles
         SET credits = ?, updated_at = ?
         WHERE id = ?
-          AND credits >= ?
+          AND credits = ? AND credits >= ?
           AND EXISTS (
             SELECT 1 FROM generation_tasks
             WHERE id = ? AND user_id = ? AND deduction_status = 'not_charged' AND status IN ('running', 'succeeded')
           )
           AND NOT EXISTS (SELECT 1 FROM generation_history WHERE generation_task_id = ?)
-      `).bind(creditsAfterCenti, now, input.userId, costCenti, input.taskId, input.userId, input.taskId),
-      this.db.prepare(`
+      `,
+          )
+          .bind(
+            creditsAfterCenti,
+            now,
+            input.userId,
+            currentCenti,
+            costCenti,
+            input.taskId,
+            input.userId,
+            input.taskId,
+          ),
+        this.db
+          .prepare(
+            `
         INSERT INTO generation_history (id, user_id, model, cost, prompt, image_url, created_at, generation_task_id)
-        SELECT ?, ?, ?, ?, ?, ?, ?, ?
-        WHERE EXISTS (SELECT 1 FROM profiles WHERE id = ? AND credits = ? AND updated_at = ?)
-      `).bind(historyRow.id, historyRow.user_id, historyRow.model, historyRow.cost, historyRow.prompt, historyRow.image_url, historyRow.created_at, historyRow.generation_task_id, input.userId, creditsAfterCenti, now),
-      this.db.prepare(`
+        SELECT ?, CASE WHEN changes() = 1 THEN ? ELSE NULL END, ?, ?, ?, ?, ?, ?
+      `,
+          )
+          .bind(
+            historyRow.id,
+            historyRow.user_id,
+            historyRow.model,
+            historyRow.cost,
+            historyRow.prompt,
+            historyRow.image_url,
+            historyRow.created_at,
+            historyRow.generation_task_id,
+          ),
+        this.db
+          .prepare(
+            `
         INSERT INTO credit_usage_logs (id, user_id, amount, source, model_key, model_name, generation_history_id, generation_task_id, idempotency_key, created_at, metadata)
         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         WHERE EXISTS (SELECT 1 FROM generation_history WHERE id = ?)
-      `).bind(ledgerRow.id, ledgerRow.user_id, ledgerRow.amount, ledgerRow.source, ledgerRow.model_key, ledgerRow.model_name, ledgerRow.generation_history_id, ledgerRow.generation_task_id, ledgerRow.idempotency_key, ledgerRow.created_at, ledgerRow.metadata, historyId),
-      this.db.prepare(`
+      `,
+          )
+          .bind(
+            ledgerRow.id,
+            ledgerRow.user_id,
+            ledgerRow.amount,
+            ledgerRow.source,
+            ledgerRow.model_key,
+            ledgerRow.model_name,
+            ledgerRow.generation_history_id,
+            ledgerRow.generation_task_id,
+            ledgerRow.idempotency_key,
+            ledgerRow.created_at,
+            ledgerRow.metadata,
+            historyId,
+          ),
+        this.db
+          .prepare(
+            `
         UPDATE generation_tasks
         SET status = 'succeeded', deduction_status = 'charged', deduction_id = ?, charged_at = ?,
             result_image_url = ?, result_payload = ?, completed_at = COALESCE(completed_at, ?),
             updated_at = ?, error_message = NULL
         WHERE id = ? AND user_id = ? AND deduction_status = 'not_charged'
           AND EXISTS (SELECT 1 FROM credit_usage_logs WHERE idempotency_key = ?)
-      `).bind(historyId, now, input.imageUrl, taskRow.result_payload, now, now, input.taskId, input.userId, ledgerKey),
-    ], [
-      rowStateEvent("profiles", input.userId, profileRow, `profiles:${input.userId}:finalize:${input.taskId}`),
-      rowStateEvent("generation_history", historyId, historyRow, `generation_history:${historyId}:finalize`),
-      rowStateEvent("credit_usage_logs", ledgerId, ledgerRow, `credit_usage_logs:${ledgerKey}`),
-      rowStateEvent("generation_tasks", input.taskId, taskRow, `generation_tasks:${input.taskId}:finalize`),
-    ]);
+      `,
+          )
+          .bind(
+            historyId,
+            now,
+            input.imageUrl,
+            taskRow.result_payload,
+            now,
+            now,
+            input.taskId,
+            input.userId,
+            ledgerKey,
+          ),
+      ],
+      [
+        rowStateEvent(
+          "profiles",
+          input.userId,
+          profileRow,
+          `profiles:${input.userId}:finalize:${input.taskId}`,
+        ),
+        rowStateEvent(
+          "generation_history",
+          historyId,
+          historyRow,
+          `generation_history:${historyId}:finalize`,
+        ),
+        rowStateEvent("credit_usage_logs", ledgerId, ledgerRow, `credit_usage_logs:${ledgerKey}`),
+        rowStateEvent(
+          "generation_tasks",
+          input.taskId,
+          taskRow,
+          `generation_tasks:${input.taskId}:finalize`,
+        ),
+      ],
+    );
 
-    return { success: true, message: "finalized", credits: centiCreditToCredits(creditsAfterCenti), cost: centiCreditToCredits(costCenti), history_id: historyId, deduction_status: "charged" };
+    return {
+      success: true,
+      message: "finalized",
+      credits: centiCreditToCredits(creditsAfterCenti),
+      cost: centiCreditToCredits(costCenti),
+      history_id: historyId,
+      deduction_status: "charged",
+    };
   }
 
-  async getGenerationHistory(input: { historyId: string; userId?: string }): Promise<GenerationHistory | null> {
+  async getGenerationHistory(input: {
+    historyId: string;
+    userId?: string;
+  }): Promise<GenerationHistory | null> {
     const row = input.userId
-      ? await this.first<RawRow>("SELECT * FROM generation_history WHERE id = ? AND user_id = ?", input.historyId, input.userId)
+      ? await this.first<RawRow>(
+          "SELECT * FROM generation_history WHERE id = ? AND user_id = ?",
+          input.historyId,
+          input.userId,
+        )
       : await this.first<RawRow>("SELECT * FROM generation_history WHERE id = ?", input.historyId);
     return row ? mapGenerationHistory(row) : null;
   }
@@ -704,38 +1265,70 @@ export class D1BusinessDatabase implements BusinessDatabase {
       values.push(input.since);
     }
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const totalRow = await this.first<{ count: number }>(`SELECT COUNT(*) AS count FROM generation_history ${where}`, ...values);
+    const totalRow = await this.first<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM generation_history ${where}`,
+      ...values,
+    );
     const rows = await this.all<RawRow>(
       `SELECT * FROM generation_history ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
       ...values,
       input.limit,
       input.offset,
     );
-    return { rows: rows.map(mapGenerationHistory), total: Number(totalRow?.count ?? 0) };
+    return {
+      rows: rows.map(mapGenerationHistory),
+      total: Number(totalRow?.count ?? 0),
+    };
   }
 
   async getGenerationTasksByIds(taskIds: string[]): Promise<GenerationTask[]> {
     if (taskIds.length === 0) return [];
     const placeholders = taskIds.map(() => "?").join(", ");
-    const rows = await this.all<RawRow>(`SELECT * FROM generation_tasks WHERE id IN (${placeholders})`, ...taskIds);
+    const rows = await this.all<RawRow>(
+      `SELECT * FROM generation_tasks WHERE id IN (${placeholders})`,
+      ...taskIds,
+    );
     return rows.map(mapGenerationTask);
   }
 
   async getProfilesByIds(userIds: string[]): Promise<Profile[]> {
     if (userIds.length === 0) return [];
     const placeholders = userIds.map(() => "?").join(", ");
-    const rows = await this.all<RawRow>(`SELECT * FROM profiles WHERE id IN (${placeholders})`, ...userIds);
+    const rows = await this.all<RawRow>(
+      `SELECT * FROM profiles WHERE id IN (${placeholders})`,
+      ...userIds,
+    );
     return rows.map(mapProfile);
   }
 
-  async setGenerationHistoryImageUrl(input: { historyId: string; userId: string; imageUrl: string; now?: string }): Promise<GenerationHistory> {
-    const existing = await this.first<RawRow>("SELECT * FROM generation_history WHERE id = ? AND user_id = ?", input.historyId, input.userId);
+  async setGenerationHistoryImageUrl(input: {
+    historyId: string;
+    userId: string;
+    imageUrl: string;
+    now?: string;
+  }): Promise<GenerationHistory> {
+    const existing = await this.first<RawRow>(
+      "SELECT * FROM generation_history WHERE id = ? AND user_id = ?",
+      input.historyId,
+      input.userId,
+    );
     if (!existing) throw new Error("history not found");
     const row = { ...existing, image_url: input.imageUrl };
-    await this.batchWithOutbox([
-      this.db.prepare("UPDATE generation_history SET image_url = ? WHERE id = ? AND user_id = ?")
-        .bind(input.imageUrl, input.historyId, input.userId),
-    ], [rowStateEvent("generation_history", input.historyId, row, `generation_history:${input.historyId}:image:${input.now ?? nowIso()}`)]);
+    await this.batchWithOutbox(
+      [
+        this.db
+          .prepare("UPDATE generation_history SET image_url = ? WHERE id = ? AND user_id = ?")
+          .bind(input.imageUrl, input.historyId, input.userId),
+      ],
+      [
+        rowStateEvent(
+          "generation_history",
+          input.historyId,
+          row,
+          `generation_history:${input.historyId}:image:${input.now ?? nowIso()}`,
+        ),
+      ],
+    );
     return mapGenerationHistory(row);
   }
 
@@ -743,8 +1336,19 @@ export class D1BusinessDatabase implements BusinessDatabase {
     throw new Error("D1 history image updates require an explicit history_id");
   }
 
-  async createUserOrder(input: { id?: string; userId: string; outTradeNo: string; amount: number; credits: number; payType?: string | null; now?: string }): Promise<UserOrder> {
-    const existing = await this.first<RawRow>("SELECT * FROM user_orders WHERE out_trade_no = ?", input.outTradeNo);
+  async createUserOrder(input: {
+    id?: string;
+    userId: string;
+    outTradeNo: string;
+    amount: number;
+    credits: number;
+    payType?: string | null;
+    now?: string;
+  }): Promise<UserOrder> {
+    const existing = await this.first<RawRow>(
+      "SELECT * FROM user_orders WHERE out_trade_no = ?",
+      input.outTradeNo,
+    );
     if (existing) return mapUserOrder(existing);
     const now = input.now ?? nowIso();
     const row = {
@@ -760,38 +1364,91 @@ export class D1BusinessDatabase implements BusinessDatabase {
       created_at: now,
       updated_at: now,
     };
-    await this.batchWithOutbox([
-      this.db.prepare(`
+    await this.batchWithOutbox(
+      [
+        this.db
+          .prepare(
+            `
         INSERT INTO user_orders (id, user_id, out_trade_no, amount, credits, status, pay_type, trade_no, paid_at, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(row.id, row.user_id, row.out_trade_no, row.amount, row.credits, row.status, row.pay_type, row.trade_no, row.paid_at, row.created_at, row.updated_at),
-    ], [rowStateEvent("user_orders", row.id, row, `user_orders:${row.out_trade_no}:create`)]);
+      `,
+          )
+          .bind(
+            row.id,
+            row.user_id,
+            row.out_trade_no,
+            row.amount,
+            row.credits,
+            row.status,
+            row.pay_type,
+            row.trade_no,
+            row.paid_at,
+            row.created_at,
+            row.updated_at,
+          ),
+      ],
+      [rowStateEvent("user_orders", row.id, row, `user_orders:${row.out_trade_no}:create`)],
+    );
     return mapUserOrder(row);
   }
 
   async getUserOrder(input: { outTradeNo: string; userId: string }): Promise<UserOrder | null> {
-    const row = await this.first<RawRow>("SELECT * FROM user_orders WHERE out_trade_no = ? AND user_id = ?", input.outTradeNo, input.userId);
+    const row = await this.first<RawRow>(
+      "SELECT * FROM user_orders WHERE out_trade_no = ? AND user_id = ?",
+      input.outTradeNo,
+      input.userId,
+    );
     return row ? mapUserOrder(row) : null;
   }
 
   async getOrderByOutTradeNo(outTradeNo: string): Promise<UserOrder | null> {
-    const row = await this.first<RawRow>("SELECT * FROM user_orders WHERE out_trade_no = ?", outTradeNo);
+    const row = await this.first<RawRow>(
+      "SELECT * FROM user_orders WHERE out_trade_no = ?",
+      outTradeNo,
+    );
     return row ? mapUserOrder(row) : null;
   }
 
   async completePaidOrder(input: CompletePaidOrderInput): Promise<CompletePaidOrderResult> {
     const now = input.now ?? nowIso();
-    const order = await this.first<RawRow>("SELECT * FROM user_orders WHERE out_trade_no = ?", input.outTradeNo);
-    if (!order) return { success: false, message: "order not found", order: null, credits: null, alreadyPaid: false };
+    const order = await this.first<RawRow>(
+      "SELECT * FROM user_orders WHERE out_trade_no = ?",
+      input.outTradeNo,
+    );
+    if (!order)
+      return {
+        success: false,
+        message: "order not found",
+        order: null,
+        credits: null,
+        alreadyPaid: false,
+      };
     if (order.status === "paid") {
-      return { success: true, message: "already paid", order: mapUserOrder(order), credits: centiCreditToCredits(order.credits as number), alreadyPaid: true };
+      if (order.trade_no !== input.tradeNo) throw new Error("PAYMENT_TRANSACTION_CONFLICT");
+      return {
+        success: true,
+        message: "already paid",
+        order: mapUserOrder(order),
+        credits: centiCreditToCredits(order.credits as number),
+        alreadyPaid: true,
+      };
     }
     if (order.status !== "pending") {
-      return { success: false, message: "order is not pending", order: mapUserOrder(order), credits: null, alreadyPaid: false };
+      return {
+        success: false,
+        message: "order is not pending",
+        order: mapUserOrder(order),
+        credits: null,
+        alreadyPaid: false,
+      };
     }
-    const profile = await this.ensureProfile({ id: String(order.user_id), now });
+    const profile = await this.ensureProfile({
+      id: String(order.user_id),
+      now,
+    });
     const amountCenti = Number(order.credits);
-    const creditsAfterCenti = creditsToCentiCredit(profile.credits, "profiles.credits") + amountCenti;
+    const creditsAfterCenti =
+      creditsToCentiCredit(profile.credits, "profiles.credits") + amountCenti;
     const ledgerKey = `payment:${input.outTradeNo}`;
     const ledgerRow = {
       id: randomId(),
@@ -804,55 +1461,194 @@ export class D1BusinessDatabase implements BusinessDatabase {
       generation_task_id: null,
       idempotency_key: ledgerKey,
       created_at: now,
-      metadata: jsonToD1({ direction: "credit", reason: "payment", out_trade_no: input.outTradeNo, order_id: String(order.id) }, {}),
+      metadata: jsonToD1(
+        {
+          direction: "credit",
+          reason: "payment",
+          out_trade_no: input.outTradeNo,
+          order_id: String(order.id),
+        },
+        {},
+      ),
     };
-    const orderRow = { ...order, status: "paid", trade_no: input.tradeNo, paid_at: now, updated_at: now };
-    const profileRow = { ...profileToRaw(profile), credits: creditsAfterCenti, updated_at: now };
-    const ledgerCondition = { sql: "EXISTS (SELECT 1 FROM credit_usage_logs WHERE idempotency_key = ?)", values: [ledgerKey] };
+    const orderRow = {
+      ...order,
+      status: "paid",
+      trade_no: input.tradeNo,
+      paid_at: now,
+      updated_at: now,
+    };
+    const profileRow = {
+      ...profileToRaw(profile),
+      credits: creditsAfterCenti,
+      updated_at: now,
+    };
+    const ledgerCondition = {
+      sql: "EXISTS (SELECT 1 FROM credit_usage_logs WHERE idempotency_key = ?)",
+      values: [ledgerKey],
+    };
 
-    const results = await this.batchWithOutbox([
-      this.db.prepare("UPDATE user_orders SET status = 'paid', trade_no = ?, paid_at = ?, updated_at = ? WHERE out_trade_no = ? AND status = 'pending'")
-        .bind(input.tradeNo, now, now, input.outTradeNo),
-      this.db.prepare(`
+    let results: unknown[];
+    try {
+      results = await this.batchWithOutbox(
+        [
+          this.db
+            .prepare(
+              "UPDATE user_orders SET status = 'paid', trade_no = ?, paid_at = ?, updated_at = ? WHERE out_trade_no = ? AND status = 'pending'",
+            )
+            .bind(input.tradeNo, now, now, input.outTradeNo),
+          this.db
+            .prepare(
+              `
         UPDATE profiles
         SET credits = credits + ?, updated_at = ?
-        WHERE id = ? AND changes() = 1
-      `).bind(amountCenti, now, order.user_id as string),
-      this.db.prepare(`
+        WHERE id = ? AND changes() = 1 AND credits = ?
+      `,
+            )
+            .bind(
+              amountCenti,
+              now,
+              order.user_id as string,
+              creditsToCentiCredit(profile.credits, "profiles.credits"),
+            ),
+          this.db
+            .prepare(
+              `
         INSERT INTO credit_usage_logs (
           id, user_id, amount, source, model_key, model_name, generation_history_id, generation_task_id, idempotency_key, created_at, metadata
-        ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() = 1
-      `).bind(
-        ledgerRow.id, ledgerRow.user_id, ledgerRow.amount, ledgerRow.source, ledgerRow.model_key, ledgerRow.model_name,
-        ledgerRow.generation_history_id, ledgerRow.generation_task_id, ledgerRow.idempotency_key, ledgerRow.created_at, ledgerRow.metadata,
-      ),
-    ], [
-      { ...rowStateEvent("user_orders", String(order.id), orderRow, `user_orders:${input.outTradeNo}:paid`), condition: ledgerCondition },
-      { ...rowStateEvent("profiles", String(order.user_id), profileRow, `profiles:${String(order.user_id)}:order:${input.outTradeNo}`), condition: ledgerCondition },
-      { ...rowStateEvent("credit_usage_logs", ledgerRow.id, ledgerRow, `credit_usage_logs:${ledgerKey}`), condition: ledgerCondition },
-    ]);
+        ) SELECT ?, CASE WHEN changes() = 1 THEN ? ELSE NULL END, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      `,
+            )
+            .bind(
+              ledgerRow.id,
+              ledgerRow.user_id,
+              ledgerRow.amount,
+              ledgerRow.source,
+              ledgerRow.model_key,
+              ledgerRow.model_name,
+              ledgerRow.generation_history_id,
+              ledgerRow.generation_task_id,
+              ledgerRow.idempotency_key,
+              ledgerRow.created_at,
+              ledgerRow.metadata,
+            ),
+        ],
+        [
+          {
+            ...rowStateEvent(
+              "user_orders",
+              String(order.id),
+              orderRow,
+              `user_orders:${input.outTradeNo}:paid`,
+            ),
+            condition: ledgerCondition,
+          },
+          {
+            ...rowStateEvent(
+              "profiles",
+              String(order.user_id),
+              profileRow,
+              `profiles:${String(order.user_id)}:order:${input.outTradeNo}`,
+            ),
+            condition: ledgerCondition,
+          },
+          {
+            ...rowStateEvent(
+              "credit_usage_logs",
+              ledgerRow.id,
+              ledgerRow,
+              `credit_usage_logs:${ledgerKey}`,
+            ),
+            condition: ledgerCondition,
+          },
+        ],
+      );
+    } catch {
+      const paid = await this.getOrderByOutTradeNo(input.outTradeNo);
+      const ledger = await this.first<RawRow>(
+        "SELECT user_id,amount FROM credit_usage_logs WHERE idempotency_key=?",
+        ledgerKey,
+      );
+      if (
+        paid?.status === "paid" &&
+        paid.trade_no === input.tradeNo &&
+        paid.user_id === String(order.user_id) &&
+        ledger?.user_id === order.user_id &&
+        ledger?.amount === amountCenti
+      ) {
+        return {
+          success: true,
+          message: "already paid",
+          order: paid,
+          credits: paid.credits,
+          alreadyPaid: true,
+        };
+      }
+      throw new Error("PAYMENT_COMMIT_NOT_CONFIRMED_RETRY_SAME_ORDER");
+    }
 
     if (Number((results[0] as D1RunResult | undefined)?.meta?.changes ?? 0) !== 1) {
       const paidOrder = await this.getOrderByOutTradeNo(input.outTradeNo);
-      return { success: true, message: "already paid", order: paidOrder, credits: paidOrder?.credits ?? null, alreadyPaid: true };
+      return {
+        success: true,
+        message: "already paid",
+        order: paidOrder,
+        credits: paidOrder?.credits ?? null,
+        alreadyPaid: true,
+      };
     }
 
-    return { success: true, message: "paid", order: mapUserOrder(orderRow), credits: centiCreditToCredits(Number(order.credits)), alreadyPaid: false };
+    return {
+      success: true,
+      message: "paid",
+      order: mapUserOrder(orderRow),
+      credits: centiCreditToCredits(Number(order.credits)),
+      alreadyPaid: false,
+    };
   }
 
   async redeemCoupon(input: RedeemCouponInput): Promise<RedeemCouponResult> {
     const code = input.code.trim();
     const now = input.now ?? nowIso();
     const coupon = await this.first<RawRow>("SELECT * FROM coupons WHERE code = ?", code);
-    if (!coupon) return { success: false, message: "卡密无效", amount: 0, credits: await this.getCredits(input.userId), redeem_log_id: null };
-    if (boolFromD1(coupon.is_used)) return { success: false, message: "卡密已被使用", amount: 0, credits: await this.getCredits(input.userId), redeem_log_id: null };
-    const profile = await this.ensureProfile({ id: input.userId, email: input.userEmail ?? null, now });
+    if (!coupon)
+      return {
+        success: false,
+        message: "卡密无效",
+        amount: 0,
+        credits: await this.getCredits(input.userId),
+        redeem_log_id: null,
+      };
+    if (boolFromD1(coupon.is_used))
+      return {
+        success: false,
+        message: "卡密已被使用",
+        amount: 0,
+        credits: await this.getCredits(input.userId),
+        redeem_log_id: null,
+      };
+    const profile = await this.ensureProfile({
+      id: input.userId,
+      email: input.userEmail ?? null,
+      now,
+    });
     const redeemLogId = input.redeemLogId ?? randomId();
     const amountCenti = Number(coupon.amount);
-    const creditsAfterCenti = creditsToCentiCredit(profile.credits, "profiles.credits") + amountCenti;
+    const creditsAfterCenti =
+      creditsToCentiCredit(profile.credits, "profiles.credits") + amountCenti;
     const ledgerKey = `coupon:${code}`;
-    const couponRow = { ...coupon, is_used: 1, used_by: input.userId, used_by_email: input.userEmail ?? (profile.email ?? null), used_at: now };
-    const profileRow = { ...profileToRaw(profile), credits: creditsAfterCenti, updated_at: now };
+    const couponRow = {
+      ...coupon,
+      is_used: 1,
+      used_by: input.userId,
+      used_by_email: input.userEmail ?? profile.email ?? null,
+      used_at: now,
+    };
+    const profileRow = {
+      ...profileToRaw(profile),
+      credits: creditsAfterCenti,
+      updated_at: now,
+    };
     const redeemRow = {
       id: redeemLogId,
       user_id: input.userId,
@@ -873,42 +1669,144 @@ export class D1BusinessDatabase implements BusinessDatabase {
       generation_task_id: null,
       idempotency_key: ledgerKey,
       created_at: now,
-      metadata: jsonToD1({ direction: "credit", reason: "coupon_redeem", coupon_code: code, redeem_log_id: redeemLogId }, {}),
+      metadata: jsonToD1(
+        {
+          direction: "credit",
+          reason: "coupon_redeem",
+          coupon_code: code,
+          redeem_log_id: redeemLogId,
+        },
+        {},
+      ),
     };
-    const redeemCondition = { sql: "EXISTS (SELECT 1 FROM redeem_logs WHERE id = ?)", values: [redeemLogId] };
+    const redeemCondition = {
+      sql: "EXISTS (SELECT 1 FROM redeem_logs WHERE id = ?)",
+      values: [redeemLogId],
+    };
 
-    const results = await this.batchWithOutbox([
-      this.db.prepare("UPDATE coupons SET is_used = 1, used_by = ?, used_by_email = ?, used_at = ? WHERE code = ? AND is_used = 0")
-        .bind(input.userId, couponRow.used_by_email as string | null, now, code),
-      this.db.prepare(`
+    let results: unknown[];
+    try {
+      results = await this.batchWithOutbox(
+        [
+          this.db
+            .prepare(
+              "UPDATE coupons SET is_used = 1, used_by = ?, used_by_email = ?, used_at = ? WHERE code = ? AND is_used = 0",
+            )
+            .bind(input.userId, couponRow.used_by_email as string | null, now, code),
+          this.db
+            .prepare(
+              `
         UPDATE profiles
         SET credits = credits + ?, updated_at = ?
-        WHERE id = ? AND changes() = 1
-      `).bind(amountCenti, now, input.userId),
-      this.db.prepare(`
+        WHERE id = ? AND changes() = 1 AND credits = ?
+      `,
+            )
+            .bind(
+              amountCenti,
+              now,
+              input.userId,
+              creditsToCentiCredit(profile.credits, "profiles.credits"),
+            ),
+          this.db
+            .prepare(
+              `
         INSERT INTO credit_usage_logs (
           id, user_id, amount, source, model_key, model_name, generation_history_id, generation_task_id, idempotency_key, created_at, metadata
-        ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() = 1
-      `).bind(
-        ledgerRow.id, ledgerRow.user_id, ledgerRow.amount, ledgerRow.source, ledgerRow.model_key, ledgerRow.model_name,
-        ledgerRow.generation_history_id, ledgerRow.generation_task_id, ledgerRow.idempotency_key, ledgerRow.created_at, ledgerRow.metadata,
-      ),
-      this.db.prepare(`
+        ) SELECT ?, CASE WHEN changes() = 1 THEN ? ELSE NULL END, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      `,
+            )
+            .bind(
+              ledgerRow.id,
+              ledgerRow.user_id,
+              ledgerRow.amount,
+              ledgerRow.source,
+              ledgerRow.model_key,
+              ledgerRow.model_name,
+              ledgerRow.generation_history_id,
+              ledgerRow.generation_task_id,
+              ledgerRow.idempotency_key,
+              ledgerRow.created_at,
+              ledgerRow.metadata,
+            ),
+          this.db
+            .prepare(
+              `
         INSERT INTO redeem_logs (id, user_id, code, amount, success, error_message, redeemed_at)
         SELECT ?, ?, ?, ?, 1, NULL, ? WHERE changes() = 1
-      `).bind(redeemRow.id, redeemRow.user_id, redeemRow.code, redeemRow.amount, redeemRow.redeemed_at),
-    ], [
-      { ...rowStateEvent("coupons", String(coupon.id), couponRow, `coupons:${code}:redeem`), condition: redeemCondition },
-      { ...rowStateEvent("profiles", input.userId, profileRow, `profiles:${input.userId}:coupon:${code}`), condition: redeemCondition },
-      { ...rowStateEvent("credit_usage_logs", ledgerRow.id, ledgerRow, `credit_usage_logs:${ledgerKey}`), condition: redeemCondition },
-      { ...rowStateEvent("redeem_logs", redeemLogId, redeemRow, `redeem_logs:${redeemLogId}:redeem`), condition: redeemCondition },
-    ]);
-
-    if (Number((results[0] as D1RunResult | undefined)?.meta?.changes ?? 0) !== 1) {
-      return { success: false, message: "卡密已被使用", amount: 0, credits: await this.getCredits(input.userId), redeem_log_id: null };
+      `,
+            )
+            .bind(
+              redeemRow.id,
+              redeemRow.user_id,
+              redeemRow.code,
+              redeemRow.amount,
+              redeemRow.redeemed_at,
+            ),
+        ],
+        [
+          {
+            ...rowStateEvent("coupons", String(coupon.id), couponRow, `coupons:${code}:redeem`),
+            condition: redeemCondition,
+          },
+          {
+            ...rowStateEvent(
+              "profiles",
+              input.userId,
+              profileRow,
+              `profiles:${input.userId}:coupon:${code}`,
+            ),
+            condition: redeemCondition,
+          },
+          {
+            ...rowStateEvent(
+              "credit_usage_logs",
+              ledgerRow.id,
+              ledgerRow,
+              `credit_usage_logs:${ledgerKey}`,
+            ),
+            condition: redeemCondition,
+          },
+          {
+            ...rowStateEvent(
+              "redeem_logs",
+              redeemLogId,
+              redeemRow,
+              `redeem_logs:${redeemLogId}:redeem`,
+            ),
+            condition: redeemCondition,
+          },
+        ],
+      );
+    } catch {
+      const current = await this.first<RawRow>("SELECT is_used FROM coupons WHERE code=?", code);
+      if (current && boolFromD1(current.is_used))
+        return {
+          success: false,
+          message: "卡密已被使用",
+          amount: 0,
+          credits: await this.getCredits(input.userId),
+          redeem_log_id: null,
+        };
+      throw new Error("COUPON_COMMIT_NOT_CONFIRMED_RETRY_SAME_CODE");
     }
 
-    return { success: true, message: "兑换成功", amount: centiCreditToCredits(amountCenti), credits: centiCreditToCredits(creditsAfterCenti), redeem_log_id: redeemLogId };
+    if (Number((results[0] as D1RunResult | undefined)?.meta?.changes ?? 0) !== 1) {
+      return {
+        success: false,
+        message: "卡密已被使用",
+        amount: 0,
+        credits: await this.getCredits(input.userId),
+        redeem_log_id: null,
+      };
+    }
+
+    return {
+      success: true,
+      message: "兑换成功",
+      amount: centiCreditToCredits(amountCenti),
+      credits: centiCreditToCredits(creditsAfterCenti),
+      redeem_log_id: redeemLogId,
+    };
   }
 
   async listAdminCoupons(): Promise<Coupon[]> {
@@ -916,7 +1814,11 @@ export class D1BusinessDatabase implements BusinessDatabase {
     return rows.map(mapCoupon);
   }
 
-  async generateAdminCoupons(input: { count: number; amount: number; createdBy: string }): Promise<Array<{ code: string; amount: number }>> {
+  async generateAdminCoupons(input: {
+    count: number;
+    amount: number;
+    createdBy: string;
+  }): Promise<Array<{ code: string; amount: number }>> {
     const amountCenti = creditsToCentiCredit(input.amount, "coupon.amount");
     const now = nowIso();
     const rows = Array.from({ length: input.count }, () => {
@@ -936,14 +1838,31 @@ export class D1BusinessDatabase implements BusinessDatabase {
     });
 
     await this.batchWithOutbox(
-      rows.map((row) => this.db.prepare(`
+      rows.map((row) =>
+        this.db
+          .prepare(
+            `
         INSERT INTO coupons (id, code, amount, is_used, used_by, used_by_email, used_at, created_at, created_by)
         VALUES (?, ?, ?, 0, NULL, NULL, NULL, ?, ?)
-      `).bind(row.id as string, row.code as string, row.amount as number, row.created_at as string, row.created_by as string)),
-      rows.map((row) => rowStateEvent("coupons", row.id as string, row, `coupons:${row.id}:create`)),
+      `,
+          )
+          .bind(
+            row.id as string,
+            row.code as string,
+            row.amount as number,
+            row.created_at as string,
+            row.created_by as string,
+          ),
+      ),
+      rows.map((row) =>
+        rowStateEvent("coupons", row.id as string, row, `coupons:${row.id}:create`),
+      ),
     );
 
-    return rows.map((row) => ({ code: String(row.code), amount: input.amount }));
+    return rows.map((row) => ({
+      code: String(row.code),
+      amount: input.amount,
+    }));
   }
 
   async deleteAdminCoupon(couponId: string): Promise<void> {
@@ -952,52 +1871,112 @@ export class D1BusinessDatabase implements BusinessDatabase {
     if (boolFromD1(row.is_used)) throw new Error("已使用的卡密不可删除");
     const result = await this.batchWithOutbox(
       [this.db.prepare("DELETE FROM coupons WHERE id = ? AND is_used = 0").bind(couponId)],
-      [{
-        eventType: "coupons.delete",
-        entityType: "coupons",
-        entityId: couponId,
-        payload: { row },
-        idempotencyKey: `coupons:${couponId}:delete`,
-      }],
+      [
+        {
+          eventType: "coupons.delete",
+          entityType: "coupons",
+          entityId: couponId,
+          payload: { row },
+          idempotencyKey: `coupons:${couponId}:delete`,
+        },
+      ],
     );
     if (Number((result[0] as D1RunResult | undefined)?.meta?.changes ?? 0) !== 1) {
       throw new Error("已使用的卡密不可删除");
     }
   }
 
-  async listModelsConfig(input: { includeSecrets?: boolean; enabledOnly?: boolean } = {}): Promise<ModelConfig[]> {
+  async listModelsConfig(
+    input: { includeSecrets?: boolean; enabledOnly?: boolean } = {},
+  ): Promise<ModelConfig[]> {
     const columns = input.includeSecrets
       ? "*"
       : "id, model_key, name, description, cost, sort_order, extra_params, is_enabled, updated_at";
-    const rows = input.enabledOnly === false
-      ? await this.all<RawRow>(`SELECT ${columns} FROM models_config ORDER BY sort_order ASC`)
-      : await this.all<RawRow>(`SELECT ${columns} FROM models_config WHERE is_enabled = 1 ORDER BY sort_order ASC`);
+    const rows =
+      input.enabledOnly === false
+        ? await this.all<RawRow>(`SELECT ${columns} FROM models_config ORDER BY sort_order ASC`)
+        : await this.all<RawRow>(
+            `SELECT ${columns} FROM models_config WHERE is_enabled = 1 ORDER BY sort_order ASC`,
+          );
     return rows.map(mapModelConfig);
   }
 
   async updateModel(input: { id: string; patch: Record<string, unknown> }): Promise<void> {
-    const allowed = ["model_key", "name", "description", "cost", "api_url", "api_key", "request_format", "prompt_key", "fetch_url", "extra_params", "is_enabled", "sort_order"];
+    if (Object.hasOwn(input.patch, "api_key")) throw new Error("MODEL_API_KEY_D1_STORAGE_DISABLED");
+    const allowed = [
+      "model_key",
+      "name",
+      "description",
+      "cost",
+      "api_url",
+      "secret_ref",
+      "request_format",
+      "prompt_key",
+      "fetch_url",
+      "extra_params",
+      "is_enabled",
+      "sort_order",
+    ];
     const entries = Object.entries(input.patch).filter(([key]) => allowed.includes(key));
     if (!entries.length) return;
     const assignments = entries.map(([key]) => `${key} = ?`).join(", ");
-    const values = entries.map(([key, value]) => key === "is_enabled" && typeof value === "boolean"
-      ? boolToD1(value)
-      : key === "extra_params"
-        ? jsonToD1((value as JsonValue | null) ?? {}, {})
-        : bindValue(value));
+    const values = entries.map(([key, value]) =>
+      key === "is_enabled" && typeof value === "boolean"
+        ? boolToD1(value)
+        : key === "extra_params"
+          ? jsonToD1((value as JsonValue | null) ?? {}, {})
+          : bindValue(value),
+    );
     values.push(nowIso(), input.id);
-    await this.db.prepare(`UPDATE models_config SET ${assignments}, updated_at = ? WHERE id = ?`).bind(...values).run();
+    await this.db
+      .prepare(`UPDATE models_config SET ${assignments}, updated_at = ? WHERE id = ?`)
+      .bind(...values)
+      .run();
   }
 
   async createModel(input: Record<string, unknown> & { id?: string }): Promise<{ id: string }> {
+    if (typeof input.api_key === "string" && input.api_key.trim())
+      throw new Error("MODEL_API_KEY_D1_STORAGE_DISABLED");
     const id = input.id ?? randomId();
     const now = nowIso();
-    await this.db.prepare(`INSERT INTO models_config (id, model_key, name, description, cost, api_url, api_key, request_format, prompt_key, fetch_url, extra_params, is_enabled, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(id, input.model_key as string, input.name as string, (input.description as string | null) ?? null, Number(input.cost ?? 1), (input.api_url as string | null) ?? null, (input.api_key as string | null) ?? null, input.request_format as string ?? "async_id", input.prompt_key as string ?? "prompt", (input.fetch_url as string | null) ?? null, jsonToD1((input.extra_params as JsonValue | null) ?? {}, {}), boolToD1(input.is_enabled !== false), Number(input.sort_order ?? 999), now, now).run();
+    await this.db
+      .prepare(
+        `INSERT INTO models_config (id, model_key, name, description, cost, api_url, api_key, secret_ref, request_format, prompt_key, fetch_url, extra_params, is_enabled, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        id,
+        input.model_key as string,
+        input.name as string,
+        (input.description as string | null) ?? null,
+        Number(input.cost ?? 1),
+        (input.api_url as string | null) ?? null,
+        null,
+        (input.secret_ref as string | null) ?? null,
+        (input.request_format as string) ?? "async_id",
+        (input.prompt_key as string) ?? "prompt",
+        (input.fetch_url as string | null) ?? null,
+        jsonToD1((input.extra_params as JsonValue | null) ?? {}, {}),
+        boolToD1(input.is_enabled !== false),
+        Number(input.sort_order ?? 999),
+        now,
+        now,
+      )
+      .run();
     return { id };
   }
 
-  async deleteModel(id: string): Promise<void> { await this.db.prepare("DELETE FROM models_config WHERE id = ?").bind(id).run(); }
+  async deleteModel(id: string): Promise<void> {
+    await this.db.prepare("DELETE FROM models_config WHERE id = ?").bind(id).run();
+  }
+
+  async updateGlobalConfig(input: { base_url: string }): Promise<void> {
+    await this.db
+      .prepare(
+        "INSERT INTO global_config (id, base_url, updated_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET base_url=excluded.base_url, updated_at=excluded.updated_at",
+      )
+      .bind(input.base_url.replace(/\/+$/, ""), nowIso())
+      .run();
+  }
 
   async getGlobalConfig(): Promise<Record<string, unknown> | null> {
     return await this.first<RawRow>("SELECT * FROM global_config LIMIT 1");
@@ -1007,63 +1986,245 @@ export class D1BusinessDatabase implements BusinessDatabase {
     return await this.first<RawRow>("SELECT * FROM admin_settings WHERE id = 1 LIMIT 1");
   }
 
-  async updateAdminSettings(patch: { access_password?: string; system_prompt?: string; contact_wechat?: string; contact_qq?: string; image_preview_mode?: "auto" | "preview_only" | "original_only" }): Promise<void> {
+  async updateAdminSettings(patch: {
+    access_password?: string;
+    system_prompt?: string;
+    contact_wechat?: string;
+    contact_qq?: string;
+    image_preview_mode?: "auto" | "preview_only" | "original_only";
+  }): Promise<void> {
     await this.db.prepare("INSERT OR IGNORE INTO admin_settings (id) VALUES (1)").run();
-    const entries = Object.entries(patch).filter(([key]) => ["access_password", "system_prompt", "contact_wechat", "contact_qq", "image_preview_mode"].includes(key));
+    const entries = Object.entries(patch).filter(([key]) =>
+      [
+        "access_password",
+        "system_prompt",
+        "contact_wechat",
+        "contact_qq",
+        "image_preview_mode",
+      ].includes(key),
+    );
     if (!entries.length) return;
-    await this.db.prepare(`UPDATE admin_settings SET ${entries.map(([key]) => `${key} = ?`).join(", ")}, updated_at = ? WHERE id = 1`)
-      .bind(...entries.map(([, value]) => bindValue(value)), nowIso()).run();
+    await this.db
+      .prepare(
+        `UPDATE admin_settings SET ${entries.map(([key]) => `${key} = ?`).join(", ")}, updated_at = ? WHERE id = 1`,
+      )
+      .bind(...entries.map(([, value]) => bindValue(value)), nowIso())
+      .run();
   }
 
   async listAnnouncements(): Promise<Record<string, unknown>[]> {
     return await this.all<RawRow>("SELECT * FROM announcements ORDER BY created_at DESC");
   }
 
-  async upsertAnnouncement(input: { id?: string; title: string; content: string; type: string; image_url: string | null; link_url: string | null; link_label: string | null; is_pinned: boolean; is_published: boolean }): Promise<{ id: string }> {
-    const id = input.id ?? randomId(); const now = nowIso();
-    if (input.id) await this.db.prepare("UPDATE announcements SET title = ?, content = ?, type = ?, image_url = ?, link_url = ?, link_label = ?, is_pinned = ?, is_published = ?, updated_at = ? WHERE id = ?").bind(input.title, input.content, input.type, input.image_url, input.link_url, input.link_label, boolToD1(input.is_pinned), boolToD1(input.is_published), now, id).run();
-    else await this.db.prepare("INSERT INTO announcements (id, title, content, type, image_url, link_url, link_label, is_pinned, is_published, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.title, input.content, input.type, input.image_url, input.link_url, input.link_label, boolToD1(input.is_pinned), boolToD1(input.is_published), now, now).run();
+  async upsertAnnouncement(input: {
+    id?: string;
+    title: string;
+    content: string;
+    type: string;
+    image_url: string | null;
+    link_url: string | null;
+    link_label: string | null;
+    is_pinned: boolean;
+    is_published: boolean;
+  }): Promise<{ id: string }> {
+    const id = input.id ?? randomId();
+    const now = nowIso();
+    if (input.id)
+      await this.db
+        .prepare(
+          "UPDATE announcements SET title = ?, content = ?, type = ?, image_url = ?, link_url = ?, link_label = ?, is_pinned = ?, is_published = ?, updated_at = ? WHERE id = ?",
+        )
+        .bind(
+          input.title,
+          input.content,
+          input.type,
+          input.image_url,
+          input.link_url,
+          input.link_label,
+          boolToD1(input.is_pinned),
+          boolToD1(input.is_published),
+          now,
+          id,
+        )
+        .run();
+    else
+      await this.db
+        .prepare(
+          "INSERT INTO announcements (id, title, content, type, image_url, link_url, link_label, is_pinned, is_published, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(
+          id,
+          input.title,
+          input.content,
+          input.type,
+          input.image_url,
+          input.link_url,
+          input.link_label,
+          boolToD1(input.is_pinned),
+          boolToD1(input.is_published),
+          now,
+          now,
+        )
+        .run();
     return { id };
   }
-  async deleteAnnouncement(id: string): Promise<void> { await this.db.prepare("DELETE FROM announcements WHERE id = ?").bind(id).run(); }
+  async deleteAnnouncement(id: string): Promise<void> {
+    await this.db.prepare("DELETE FROM announcements WHERE id = ?").bind(id).run();
+  }
 
   async listAds(): Promise<Record<string, unknown>[]> {
     return await this.all<RawRow>("SELECT * FROM ads ORDER BY sort_order ASC");
   }
 
-  async upsertAd(input: { id?: string; title: string; link_url: string | null; is_active: boolean; sort_order: number }): Promise<{ id: string }> {
-    const id = input.id ?? randomId(); const now = nowIso();
-    if (input.id) await this.db.prepare("UPDATE ads SET title = ?, link_url = ?, is_active = ?, sort_order = ?, updated_at = ? WHERE id = ?").bind(input.title, input.link_url, boolToD1(input.is_active), input.sort_order, now, id).run();
-    else await this.db.prepare("INSERT INTO ads (id, title, link_url, is_active, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(id, input.title, input.link_url, boolToD1(input.is_active), input.sort_order, now, now).run();
+  async upsertAd(input: {
+    id?: string;
+    title: string;
+    link_url: string | null;
+    is_active: boolean;
+    sort_order: number;
+  }): Promise<{ id: string }> {
+    const id = input.id ?? randomId();
+    const now = nowIso();
+    if (input.id)
+      await this.db
+        .prepare(
+          "UPDATE ads SET title = ?, link_url = ?, is_active = ?, sort_order = ?, updated_at = ? WHERE id = ?",
+        )
+        .bind(input.title, input.link_url, boolToD1(input.is_active), input.sort_order, now, id)
+        .run();
+    else
+      await this.db
+        .prepare(
+          "INSERT INTO ads (id, title, link_url, is_active, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(
+          id,
+          input.title,
+          input.link_url,
+          boolToD1(input.is_active),
+          input.sort_order,
+          now,
+          now,
+        )
+        .run();
     return { id };
   }
-  async deleteAd(id: string): Promise<void> { await this.db.prepare("DELETE FROM ads WHERE id = ?").bind(id).run(); }
+  async deleteAd(id: string): Promise<void> {
+    await this.db.prepare("DELETE FROM ads WHERE id = ?").bind(id).run();
+  }
 
   async listStyleTemplates(): Promise<Record<string, unknown>[]> {
     return await this.all<RawRow>("SELECT * FROM style_templates ORDER BY sort_order ASC");
   }
-  async updateStyleTemplate(input: { id: string; patch: { name?: string; prompt?: string; image_url?: string | null; sort_order?: number } }): Promise<void> {
-    const entries = Object.entries(input.patch).filter(([key]) => ["name", "prompt", "image_url", "sort_order"].includes(key)); if (!entries.length) return;
-    await this.db.prepare(`UPDATE style_templates SET ${entries.map(([key]) => `${key} = ?`).join(", ")}, updated_at = ? WHERE id = ?`).bind(...entries.map(([, value]) => bindValue(value)), nowIso(), input.id).run();
+  async updateStyleTemplate(input: {
+    id: string;
+    patch: {
+      name?: string;
+      prompt?: string;
+      image_url?: string | null;
+      sort_order?: number;
+    };
+  }): Promise<void> {
+    const entries = Object.entries(input.patch).filter(([key]) =>
+      ["name", "prompt", "image_url", "sort_order"].includes(key),
+    );
+    if (!entries.length) return;
+    await this.db
+      .prepare(
+        `UPDATE style_templates SET ${entries.map(([key]) => `${key} = ?`).join(", ")}, updated_at = ? WHERE id = ?`,
+      )
+      .bind(...entries.map(([, value]) => bindValue(value)), nowIso(), input.id)
+      .run();
   }
-  async createStyleTemplate(input: { id: string; name: string; prompt: string; image_url: string | null; sort_order: number }): Promise<{ id: string }> { const now = nowIso(); await this.db.prepare("INSERT INTO style_templates (id, name, prompt, image_url, sort_order, updated_at) VALUES (?, ?, ?, ?, ?, ?)").bind(input.id, input.name, input.prompt, input.image_url, input.sort_order, now).run(); return { id: input.id }; }
-  async deleteStyleTemplate(id: string): Promise<void> { await this.db.prepare("DELETE FROM style_templates WHERE id = ?").bind(id).run(); }
+  async createStyleTemplate(input: {
+    id: string;
+    name: string;
+    prompt: string;
+    image_url: string | null;
+    sort_order: number;
+  }): Promise<{ id: string }> {
+    const now = nowIso();
+    await this.db
+      .prepare(
+        "INSERT INTO style_templates (id, name, prompt, image_url, sort_order, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+      .bind(input.id, input.name, input.prompt, input.image_url, input.sort_order, now)
+      .run();
+    return { id: input.id };
+  }
+  async deleteStyleTemplate(id: string): Promise<void> {
+    await this.db.prepare("DELETE FROM style_templates WHERE id = ?").bind(id).run();
+  }
 
-  async listRechargePackages(): Promise<RechargePackage[]> {
-    const rows = await this.all<RawRow>("SELECT * FROM recharge_packages WHERE is_visible = 1 ORDER BY sort_order ASC");
+  async listRechargePackages(options?: { includeHidden?: boolean }): Promise<RechargePackage[]> {
+    const rows = await this.all<RawRow>(
+      options?.includeHidden
+        ? "SELECT * FROM recharge_packages ORDER BY sort_order ASC, created_at ASC"
+        : "SELECT * FROM recharge_packages WHERE is_visible = 1 ORDER BY sort_order ASC",
+    );
     return rows.map(mapRechargePackage);
   }
-  async upsertRechargePackage(input: { id?: string; title: string; subtitle: string | null; price: string; credits: number; features: JsonValue; badge_text: string | null; is_popular: boolean; highlighted: boolean; is_visible: boolean; sort_order: number; button_text: string; purchase_url: string | null }): Promise<{ id: string }> {
-    const id = input.id ?? randomId(); const now = nowIso(); const values = [input.title, input.subtitle, input.price, creditsToCentiCredit(input.credits), jsonToD1(input.features, []), boolToD1(input.is_popular), boolToD1(input.highlighted), boolToD1(input.is_visible), input.sort_order, input.button_text, input.purchase_url];
-    if (input.id) await this.db.prepare("UPDATE recharge_packages SET title = ?, subtitle = ?, price = ?, credits = ?, features = ?, is_popular = ?, highlighted = ?, is_visible = ?, sort_order = ?, button_text = ?, purchase_url = ?, updated_at = ? WHERE id = ?").bind(...values, now, id).run();
-    else await this.db.prepare("INSERT INTO recharge_packages (id, title, subtitle, price, credits, features, is_popular, highlighted, is_visible, sort_order, button_text, purchase_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, ...values, now, now).run();
+  async upsertRechargePackage(input: {
+    id?: string;
+    title: string;
+    subtitle: string | null;
+    price: string;
+    credits: number;
+    features: JsonValue;
+    badge_text: string | null;
+    is_popular: boolean;
+    highlighted: boolean;
+    is_visible: boolean;
+    sort_order: number;
+    button_text: string;
+    purchase_url: string | null;
+  }): Promise<{ id: string }> {
+    const id = input.id ?? randomId();
+    const now = nowIso();
+    const values = [
+      input.title,
+      input.subtitle,
+      input.price,
+      creditsToCentiCredit(input.credits),
+      jsonToD1(input.features, []),
+      boolToD1(input.is_popular),
+      boolToD1(input.highlighted),
+      boolToD1(input.is_visible),
+      input.sort_order,
+      input.button_text,
+      input.purchase_url,
+    ];
+    if (input.id)
+      await this.db
+        .prepare(
+          "UPDATE recharge_packages SET title = ?, subtitle = ?, price = ?, credits = ?, features = ?, is_popular = ?, highlighted = ?, is_visible = ?, sort_order = ?, button_text = ?, purchase_url = ?, updated_at = ? WHERE id = ?",
+        )
+        .bind(...values, now, id)
+        .run();
+    else
+      await this.db
+        .prepare(
+          "INSERT INTO recharge_packages (id, title, subtitle, price, credits, features, is_popular, highlighted, is_visible, sort_order, button_text, purchase_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(id, ...values, now, now)
+        .run();
     return { id };
   }
-  async hideRechargePackage(id: string): Promise<void> { await this.db.prepare("UPDATE recharge_packages SET is_visible = 0, updated_at = ? WHERE id = ?").bind(nowIso(), id).run(); }
-  async deleteRechargePackage(id: string): Promise<void> { await this.db.prepare("DELETE FROM recharge_packages WHERE id = ?").bind(id).run(); }
+  async hideRechargePackage(id: string): Promise<void> {
+    await this.db
+      .prepare("UPDATE recharge_packages SET is_visible = 0, updated_at = ? WHERE id = ?")
+      .bind(nowIso(), id)
+      .run();
+  }
+  async deleteRechargePackage(id: string): Promise<void> {
+    await this.db.prepare("DELETE FROM recharge_packages WHERE id = ?").bind(id).run();
+  }
 
   async getReplicationHealth(now = new Date()) {
-    const pending = await this.first<{ pendingReplication: number; oldestPendingAt: string | null }>(`
+    const pending = await this.first<{
+      pendingReplication: number;
+      oldestPendingAt: string | null;
+    }>(`
       SELECT COUNT(*) AS pendingReplication, MIN(created_at) AS oldestPendingAt
       FROM replication_outbox
       WHERE status IN ('pending', 'processing', 'failed')
@@ -1074,7 +2235,10 @@ export class D1BusinessDatabase implements BusinessDatabase {
       WHERE status = 'synced'
     `);
     const oldestPendingSeconds = pending?.oldestPendingAt
-      ? Math.max(0, Math.floor((now.getTime() - new Date(pending.oldestPendingAt).getTime()) / 1000))
+      ? Math.max(
+          0,
+          Math.floor((now.getTime() - new Date(pending.oldestPendingAt).getTime()) / 1000),
+        )
       : null;
     return {
       d1Primary: true,
@@ -1085,34 +2249,63 @@ export class D1BusinessDatabase implements BusinessDatabase {
   }
 
   private async readEnabledModel(modelKey: string): Promise<RawRow | null> {
-    return await this.first<RawRow>("SELECT * FROM models_config WHERE model_key = ? AND is_enabled = 1", modelKey);
+    return await this.first<RawRow>(
+      "SELECT * FROM models_config WHERE model_key = ? AND is_enabled = 1",
+      modelKey,
+    );
   }
 
-  private async getUserScopedTaskForUpdate(taskId: string, userId?: string): Promise<{ raw: RawRow } | null> {
+  private async getUserScopedTaskForUpdate(
+    taskId: string,
+    userId?: string,
+  ): Promise<{ raw: RawRow } | null> {
     const row = userId
-      ? await this.first<RawRow>("SELECT * FROM generation_tasks WHERE id = ? AND user_id = ?", taskId, userId)
+      ? await this.first<RawRow>(
+          "SELECT * FROM generation_tasks WHERE id = ? AND user_id = ?",
+          taskId,
+          userId,
+        )
       : await this.first<RawRow>("SELECT * FROM generation_tasks WHERE id = ?", taskId);
     return row ? { raw: row } : null;
   }
 
   private async first<T = RawRow>(sql: string, ...values: BoundValue[]): Promise<T | null> {
-    return await this.db.prepare(sql).bind(...values).first<T>();
+    return await this.db
+      .prepare(sql)
+      .bind(...values)
+      .first<T>();
   }
 
   private async all<T = RawRow>(sql: string, ...values: BoundValue[]): Promise<T[]> {
-    const result = await this.db.prepare(sql).bind(...values).all<T>();
-    return Array.isArray(result) ? result : result.results ?? [];
+    const result = await this.db
+      .prepare(sql)
+      .bind(...values)
+      .all<T>();
+    return Array.isArray(result) ? result : (result.results ?? []);
   }
 
-  private async batchWithOutbox(businessStatements: D1PreparedStatementLike[], events: ReplicationOutboxEvent[]) {
-    if (businessStatements.length === 0) throw new Error("D1 business transaction requires business statements");
-    if (events.length === 0) throw new Error("D1 business transaction requires replication outbox events");
+  private async batchWithOutbox(
+    businessStatements: D1PreparedStatementLike[],
+    events: ReplicationOutboxEvent[],
+  ) {
+    if (businessStatements.length === 0)
+      throw new Error("D1 business transaction requires business statements");
+    if (events.length === 0)
+      throw new Error("D1 business transaction requires replication outbox events");
     const outbox = events.map((event) => buildReplicationOutboxStatement(this.db, event));
-    return await this.db.batch([...businessStatements, ...(outbox as unknown as D1PreparedStatementLike[])]);
+    return await this.db.batch([
+      ...businessStatements,
+      ...(outbox as unknown as D1PreparedStatementLike[]),
+    ]);
   }
 }
 
-function rowStateEvent(entityType: ReplicatedEntityType, entityId: string, row: RawRow, idempotencyKey: string) {
+function rowStateEvent(
+  entityType: ReplicatedEntityType,
+  entityId: string,
+  row: RawRow,
+  idempotencyKey: string,
+) {
   return {
     eventType: `${entityType}.upsert` as ReplicationEventType,
     entityType,
@@ -1218,7 +2411,10 @@ function generationTaskToRaw(row: GenerationTask): RawRow {
   return {
     ...row,
     input_params: jsonToD1(row.input_params, {}),
-    credits_required: creditsToCentiCredit(row.credits_required, "generation_tasks.credits_required"),
+    credits_required: creditsToCentiCredit(
+      row.credits_required,
+      "generation_tasks.credits_required",
+    ),
     result_payload: row.result_payload == null ? null : jsonToD1(row.result_payload, null),
   };
 }
@@ -1261,7 +2457,8 @@ function mapModelConfig(row: RawRow): ModelConfig {
     cost: centiCreditToCredits(row.cost as number),
     sort_order: Number(row.sort_order ?? 0),
     api_url: asNullableString(row.api_url),
-    api_key: asNullableString(row.api_key),
+    api_key: null,
+    secret_ref: asNullableString(row.secret_ref),
     request_format: asNullableString(row.request_format),
     prompt_key: asNullableString(row.prompt_key),
     fetch_url: asNullableString(row.fetch_url),

@@ -4,7 +4,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
-const repoRoot = path.resolve(new URL("../..", import.meta.url).pathname.replace(/^\/(.:\/)/, "$1"));
+const repoRoot = path.resolve(
+  new URL("../..", import.meta.url).pathname.replace(/^\/(.:\/)/, "$1"),
+);
 const manifestPath = path.join(repoRoot, "d1/reports/legacy-image-externalization-manifest.json");
 const stagingDir = path.join(repoRoot, "d1/staging/legacy-generated-images");
 const wranglerPath = path.join(repoRoot, "wrangler.jsonc");
@@ -39,38 +41,51 @@ function main() {
   }));
 
   if (dryRun) {
-    console.log(JSON.stringify({
-      ok: true,
-      dryRun: true,
-      execute: false,
-      bucket,
-      plannedUploads: planned.length,
-      totalBytes: planned.reduce((sum, row) => sum + row.bytes, 0),
-      sha256Verification: "PASS",
-      commandsAreNotExecuted: true,
-      uploadCommandShape: "npx wrangler r2 object put <bucket>/<key> --file <staging_file> --content-type <mime> --remote --force",
-    }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          ok: true,
+          dryRun: true,
+          execute: false,
+          bucket,
+          plannedUploads: planned.length,
+          totalBytes: planned.reduce((sum, row) => sum + row.bytes, 0),
+          sha256Verification: "PASS",
+          commandsAreNotExecuted: true,
+          uploadCommandShape:
+            "npx wrangler r2 object put <bucket>/<key> --file <staging_file> --content-type <mime> --remote --force",
+        },
+        null,
+        2,
+      ),
+    );
     return;
   }
 
   for (const row of validation) {
-    const result = spawnSync("npx", [
-      "wrangler",
-      "r2",
-      "object",
-      "put",
-      `${bucket}/${row.key}`,
-      "--file",
-      row.file,
-      "--content-type",
-      row.mimeType,
-      "--remote",
-      "--force",
-    ], { cwd: repoRoot, stdio: "inherit", shell: process.platform === "win32" });
+    const result = spawnSync(
+      "npx",
+      [
+        "wrangler",
+        "r2",
+        "object",
+        "put",
+        `${bucket}/${row.key}`,
+        "--file",
+        row.file,
+        "--content-type",
+        row.mimeType,
+        "--remote",
+        "--force",
+      ],
+      { cwd: repoRoot, stdio: "inherit", shell: process.platform === "win32" },
+    );
     if (result.status !== 0) throw new Error(`R2_UPLOAD_FAILED: ${row.key}`);
   }
 
-  console.log(JSON.stringify({ ok: true, dryRun: false, bucket, uploaded: validation.length }, null, 2));
+  console.log(
+    JSON.stringify({ ok: true, dryRun: false, bucket, uploaded: validation.length }, null, 2),
+  );
 }
 
 function validateObject(object) {
@@ -89,7 +104,12 @@ function validateObject(object) {
     key: object.fallback_proposed_r2_key,
     publicUrl: object.fallback_proposed_public_url,
     file,
-    reason: sha256 !== object.sha256 ? "sha256 mismatch" : bytes !== object.decoded_bytes ? "byte length mismatch" : null,
+    reason:
+      sha256 !== object.sha256
+        ? "sha256 mismatch"
+        : bytes !== object.decoded_bytes
+          ? "byte length mismatch"
+          : null,
   };
 }
 

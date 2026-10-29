@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireD1Auth } from "@/lib/d1-auth-middleware";
 import type { Profile } from "@/lib/business-database";
 import { createBusinessDatabaseFromContext } from "@/lib/business-database-router";
 
@@ -12,11 +12,15 @@ const updateProfileInput = z.object({
 });
 
 function getBusinessDb(context: unknown) {
-  return createBusinessDatabaseFromContext(context as Parameters<typeof createBusinessDatabaseFromContext>[0]);
+  return createBusinessDatabaseFromContext(
+    context as Parameters<typeof createBusinessDatabaseFromContext>[0],
+  );
 }
 
 function claimEmail(claims: unknown): string | null {
-  return claims && typeof claims === "object" && typeof (claims as { email?: unknown }).email === "string"
+  return claims &&
+    typeof claims === "object" &&
+    typeof (claims as { email?: unknown }).email === "string"
     ? (claims as { email: string }).email
     : null;
 }
@@ -32,7 +36,7 @@ function toPublicProfile(profile: Profile): PublicProfile {
 }
 
 export const getCurrentProfile = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .handler(async ({ context }) => {
     const db = getBusinessDb(context);
     const existing = await db.getProfile(context.userId);
@@ -47,7 +51,7 @@ export const getCurrentProfile = createServerFn({ method: "GET" })
   });
 
 export const updateCurrentProfile = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((input) => updateProfileInput.parse(input))
   .handler(async ({ context, data }) => {
     const db = getBusinessDb(context);

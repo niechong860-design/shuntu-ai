@@ -8,7 +8,9 @@ export type ReplicatedEntityType =
   | "coupons"
   | "redeem_logs";
 
-export type ReplicationEventType = `${ReplicatedEntityType}.upsert` | `${ReplicatedEntityType}.delete`;
+export type ReplicationEventType =
+  | `${ReplicatedEntityType}.upsert`
+  | `${ReplicatedEntityType}.delete`;
 
 type BoundValue = string | number | null;
 
@@ -35,17 +37,22 @@ export type ReplicationOutboxEvent = {
   };
 };
 
-const forbiddenPayloadKeyPattern = /api[_-]?key|secret|token|jwt|authorization|service[_-]?role|provider[_-]?secret|private[_-]?key|credential|signature|^sig$/i;
+const forbiddenPayloadKeyPattern =
+  /api[_-]?key|secret|token|jwt|authorization|service[_-]?role|provider[_-]?secret|private[_-]?key|credential|signature|^sig$/i;
 const bearerLikeValuePattern = /\bBearer\s+[A-Za-z0-9._~+/=-]+|eyJ[A-Za-z0-9_-]{20,}/i;
-const inputParamSecretKeyPattern = /api[_-]?key|access[_-]?token|secret|token|jwt|authorization|service[_-]?role|provider[_-]?secret|private[_-]?key|credential|signature|^sig$/i;
-const signedUrlQueryKeyPattern = /^(?:x-amz-(?:algorithm|credential|date|expires|security-token|signature|signedheaders)|x-goog-(?:algorithm|credential|date|expires|signedheaders|signature)|awsaccesskeyid|signature|sig|token|access[_-]?token|sv|st|se|spr|sp|sr|skoid|sktid|skt|ske|sks|skv)$/i;
+const inputParamSecretKeyPattern =
+  /api[_-]?key|access[_-]?token|secret|token|jwt|authorization|service[_-]?role|provider[_-]?secret|private[_-]?key|credential|signature|^sig$/i;
+const signedUrlQueryKeyPattern =
+  /^(?:x-amz-(?:algorithm|credential|date|expires|security-token|signature|signedheaders)|x-goog-(?:algorithm|credential|date|expires|signedheaders|signature)|awsaccesskeyid|signature|sig|token|access[_-]?token|sv|st|se|spr|sp|sr|skoid|sktid|skt|ske|sks|skv)$/i;
 
 function sanitizeSignedUrl(value: string): string {
   if (!/^https?:\/\//i.test(value)) return value;
 
   try {
     const url = new URL(value);
-    const retainedParams = Array.from(url.searchParams.entries()).filter(([key]) => !signedUrlQueryKeyPattern.test(key));
+    const retainedParams = Array.from(url.searchParams.entries()).filter(
+      ([key]) => !signedUrlQueryKeyPattern.test(key),
+    );
     url.search = "";
     for (const [key, paramValue] of retainedParams) url.searchParams.append(key, paramValue);
     return url.toString();
@@ -93,9 +100,10 @@ function cloneAndSanitizeReplicationPayload(value: unknown): unknown {
   if (value && typeof value === "object") {
     const cloned: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(value)) {
-      cloned[key] = key === "input_params"
-        ? sanitizeInputParamsField(child)
-        : cloneAndSanitizeReplicationPayload(child);
+      cloned[key] =
+        key === "input_params"
+          ? sanitizeInputParamsField(child)
+          : cloneAndSanitizeReplicationPayload(child);
     }
     return cloned;
   }
@@ -107,7 +115,10 @@ export function sanitizeReplicationPayload(value: unknown): unknown {
   return cloneAndSanitizeReplicationPayload(value);
 }
 
-export function buildReplicationOutboxStatement(db: D1DatabaseLike, event: ReplicationOutboxEvent): D1PreparedStatementLike {
+export function buildReplicationOutboxStatement(
+  db: D1DatabaseLike,
+  event: ReplicationOutboxEvent,
+): D1PreparedStatementLike {
   const sanitizedPayload = sanitizeReplicationPayload(event.payload);
   assertSafeReplicationPayload(sanitizedPayload);
   const createdAt = event.createdAt ?? new Date().toISOString();
@@ -117,7 +128,9 @@ export function buildReplicationOutboxStatement(db: D1DatabaseLike, event: Repli
   const conditionSql = event.condition ? ` WHERE ${event.condition.sql}` : "";
   const conditionValues = event.condition?.values ?? [];
 
-  return db.prepare(`
+  return db
+    .prepare(
+      `
     INSERT INTO replication_outbox (
       id,
       event_type,
@@ -130,16 +143,18 @@ export function buildReplicationOutboxStatement(db: D1DatabaseLike, event: Repli
       created_at
     ) SELECT ?, ?, ?, ?, ?, ?, 'pending', 0, ?${conditionSql}
     ON CONFLICT(idempotency_key) DO NOTHING
-  `).bind(
-    id,
-    event.eventType,
-    event.entityType,
-    event.entityId,
-    payloadJson,
-    event.idempotencyKey,
-    createdAt,
-    ...conditionValues,
-  );
+  `,
+    )
+    .bind(
+      id,
+      event.eventType,
+      event.entityType,
+      event.entityId,
+      payloadJson,
+      event.idempotencyKey,
+      createdAt,
+      ...conditionValues,
+    );
 }
 
 export async function executeBusinessBatchWithOutbox(input: {
@@ -154,7 +169,9 @@ export async function executeBusinessBatchWithOutbox(input: {
     throw new Error("D1 authoritative writes must include at least one replication outbox event");
   }
 
-  const outboxStatements = input.outboxEvents.map((event) => buildReplicationOutboxStatement(input.db, event));
+  const outboxStatements = input.outboxEvents.map((event) =>
+    buildReplicationOutboxStatement(input.db, event),
+  );
   return input.db.batch([...input.businessStatements, ...outboxStatements]);
 }
 

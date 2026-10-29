@@ -1,3 +1,4 @@
+import { errorMessage } from "@/lib/error-message";
 import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { uploadImageToR2 } from "@/lib/r2-upload-client";
@@ -10,9 +11,29 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, RefreshCw, Trash2, Pencil, Pin, Megaphone, Sparkles, AlertTriangle, CheckCircle2, Upload, X as XIcon, Loader2 } from "lucide-react";
+import {
+  Plus,
+  RefreshCw,
+  Trash2,
+  Pencil,
+  Pin,
+  Megaphone,
+  Sparkles,
+  AlertTriangle,
+  CheckCircle2,
+  Upload,
+  X as XIcon,
+  Loader2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 type Announcement = {
@@ -28,7 +49,12 @@ type Announcement = {
   created_at: string;
 };
 
-const TYPE_OPTIONS: { value: Announcement["type"]; label: string; icon: typeof Megaphone; color: string }[] = [
+const TYPE_OPTIONS: {
+  value: Announcement["type"];
+  label: string;
+  icon: typeof Megaphone;
+  color: string;
+}[] = [
   { value: "info", label: "公告", icon: Megaphone, color: "text-primary" },
   { value: "success", label: "新功能", icon: CheckCircle2, color: "text-emerald-300" },
   { value: "warning", label: "提醒", icon: AlertTriangle, color: "text-amber-300" },
@@ -52,8 +78,8 @@ export function AnnouncementsPanel() {
       const { url } = await uploadImageToR2(file, "announcement-image");
       setEditing((prev) => (prev ? { ...prev, image_url: url } : prev));
       toast.success("图片已上传");
-    } catch (e: any) {
-      toast.error(e.message || "上传失败");
+    } catch (e: unknown) {
+      toast.error(errorMessage(e) || "上传失败");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -63,8 +89,8 @@ export function AnnouncementsPanel() {
   const load = async () => {
     try {
       setItems((await list({})) as Announcement[]);
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      toast.error(errorMessage(e));
     }
   };
   useEffect(() => {
@@ -90,8 +116,8 @@ export function AnnouncementsPanel() {
       toast.success("已保存");
       setEditing(null);
       load();
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      toast.error(errorMessage(e));
     }
   };
 
@@ -111,8 +137,8 @@ export function AnnouncementsPanel() {
         },
       });
       load();
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      toast.error(errorMessage(e));
     }
   };
 
@@ -202,8 +228,8 @@ export function AnnouncementsPanel() {
                           await del({ data: { id: a.id } });
                           toast.success("已删除");
                           load();
-                        } catch (e: any) {
-                          toast.error(e.message);
+                        } catch (e: unknown) {
+                          toast.error(errorMessage(e));
                         }
                       }}
                     >
@@ -276,10 +302,16 @@ export function AnnouncementsPanel() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[11px] text-muted-foreground">封面图（可选，建议 16:9 或 4:3，&lt;10MB）</label>
+                <label className="text-[11px] text-muted-foreground">
+                  封面图（可选，建议 16:9 或 4:3，&lt;10MB）
+                </label>
                 {editing.image_url ? (
                   <div className="relative overflow-hidden rounded-lg border border-border/60">
-                    <img src={editing.image_url} alt="封面预览" className="max-h-56 w-full object-contain bg-black/30" />
+                    <img
+                      src={editing.image_url}
+                      alt="封面预览"
+                      className="max-h-56 w-full object-contain bg-black/30"
+                    />
                     <button
                       type="button"
                       onClick={() => setEditing({ ...editing, image_url: "" })}
@@ -360,7 +392,10 @@ export function AnnouncementsPanel() {
                 </label>
               </div>
 
-              <Button className="w-full bg-gradient-aurora text-primary-foreground" onClick={() => save(editing)}>
+              <Button
+                className="w-full bg-gradient-aurora text-primary-foreground"
+                onClick={() => save(editing)}
+              >
                 保存并发布
               </Button>
             </div>

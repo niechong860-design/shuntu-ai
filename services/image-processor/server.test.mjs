@@ -17,7 +17,9 @@ before(async () => {
 });
 
 after(async () => {
-  await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  await new Promise((resolve, reject) =>
+    server.close((error) => (error ? reject(error) : resolve())),
+  );
 });
 
 test("health check does not require credentials", async () => {
@@ -43,7 +45,9 @@ test("returns 480px, 1024px, and 1536px JPEG variants", async () => {
       channels: 3,
       background: { r: 20, g: 80, b: 140 },
     },
-  }).png().toBuffer();
+  })
+    .png()
+    .toBuffer();
 
   const response = await fetch(baseUrl + "/v1/previews", {
     method: "POST",

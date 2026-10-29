@@ -1,3 +1,4 @@
+import type { Database } from "@/integrations/supabase/types";
 import type {
   BusinessDatabase,
   CompletePaidOrderInput,
@@ -25,13 +26,13 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 type SupabaseLike = typeof supabaseAdmin;
 type LovableBusinessDatabaseOptions = {
   admin?: SupabaseLike;
-  user?: unknown;
+  user?: SupabaseLike;
 };
 
 export class LovableBusinessDatabase implements BusinessDatabase {
   readonly primary = "lovable" as const;
   private readonly admin: SupabaseLike;
-  private readonly user: any;
+  private readonly user: SupabaseLike;
 
   constructor(options: LovableBusinessDatabaseOptions | SupabaseLike = {}) {
     if (isSupabaseLike(options)) {
@@ -44,12 +45,22 @@ export class LovableBusinessDatabase implements BusinessDatabase {
   }
 
   async getProfile(userId: string): Promise<Profile | null> {
-    const { data, error } = await this.admin.from("profiles").select("*").eq("id", userId).maybeSingle();
+    const { data, error } = await this.admin
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .maybeSingle();
     if (error) throw new Error(error.message);
     return (data as Profile | null) ?? null;
   }
 
-  async ensureProfile(input: { id: string; email?: string | null; displayName?: string | null; avatarUrl?: string | null; now?: string }): Promise<Profile> {
+  async ensureProfile(input: {
+    id: string;
+    email?: string | null;
+    displayName?: string | null;
+    avatarUrl?: string | null;
+    now?: string;
+  }): Promise<Profile> {
     const existing = await this.getProfile(input.id);
     if (existing) return existing;
     const now = input.now ?? new Date().toISOString();
@@ -61,7 +72,11 @@ export class LovableBusinessDatabase implements BusinessDatabase {
       created_at: now,
       updated_at: now,
     };
-    const { data, error } = await this.admin.from("profiles").insert(insert as never).select("*").single();
+    const { data, error } = await this.admin
+      .from("profiles")
+      .insert(insert as never)
+      .select("*")
+      .single();
     if (error) throw new Error(error.message);
     return data as Profile;
   }
@@ -115,19 +130,30 @@ export class LovableBusinessDatabase implements BusinessDatabase {
       created_at: now,
       updated_at: now,
     };
-    const { data, error } = await (this.admin as any).from("generation_tasks").insert(row).select("*").single();
+    const { data, error } = await this.admin
+      .from("generation_tasks")
+      .insert(row)
+      .select("*")
+      .single();
     if (error) throw new Error(error.message);
     return data as GenerationTask;
   }
 
   async getGenerationTask(taskId: string): Promise<GenerationTask | null> {
-    const { data, error } = await (this.admin as any).from("generation_tasks").select("*").eq("id", taskId).maybeSingle();
+    const { data, error } = await this.admin
+      .from("generation_tasks")
+      .select("*")
+      .eq("id", taskId)
+      .maybeSingle();
     if (error) throw new Error(error.message);
     return (data as GenerationTask | null) ?? null;
   }
 
-  async getUserGenerationTask(input: { taskId: string; userId: string }): Promise<GenerationTask | null> {
-    const { data, error } = await (this.admin as any)
+  async getUserGenerationTask(input: {
+    taskId: string;
+    userId: string;
+  }): Promise<GenerationTask | null> {
+    const { data, error } = await this.admin
       .from("generation_tasks")
       .select("*")
       .eq("id", input.taskId)
@@ -138,7 +164,11 @@ export class LovableBusinessDatabase implements BusinessDatabase {
   }
 
   async getGenerationTaskByRequestId(requestId: string): Promise<GenerationTask | null> {
-    const { data, error } = await (this.admin as any).from("generation_tasks").select("*").eq("request_id", requestId).maybeSingle();
+    const { data, error } = await this.admin
+      .from("generation_tasks")
+      .select("*")
+      .eq("request_id", requestId)
+      .maybeSingle();
     if (error) throw new Error(error.message);
     return (data as GenerationTask | null) ?? null;
   }
@@ -150,7 +180,7 @@ export class LovableBusinessDatabase implements BusinessDatabase {
     limit?: number;
     order?: "asc" | "desc";
   }): Promise<GenerationTask[]> {
-    let query = (this.admin as any).from("generation_tasks").select("*").eq("user_id", input.userId);
+    let query = this.admin.from("generation_tasks").select("*").eq("user_id", input.userId);
     if (input.statuses?.length) query = query.in("status", input.statuses);
     if (input.deductionStatus) query = query.eq("deduction_status", input.deductionStatus);
     query = query.order("created_at", { ascending: input.order !== "desc" });
@@ -165,7 +195,7 @@ export class LovableBusinessDatabase implements BusinessDatabase {
     statuses?: GenerationTask["status"][];
     deductionStatus?: GenerationTask["deduction_status"];
   }): Promise<number> {
-    let query = (this.admin as any)
+    let query = this.admin
       .from("generation_tasks")
       .select("id", { count: "exact", head: true })
       .eq("user_id", input.userId);
@@ -176,9 +206,13 @@ export class LovableBusinessDatabase implements BusinessDatabase {
     return count ?? 0;
   }
 
-  async claimQueuedGenerationTask(input: { taskId: string; userId: string; now?: string }): Promise<GenerationTask | null> {
+  async claimQueuedGenerationTask(input: {
+    taskId: string;
+    userId: string;
+    now?: string;
+  }): Promise<GenerationTask | null> {
     const now = input.now ?? new Date().toISOString();
-    const { data, error } = await (this.admin as any)
+    const { data, error } = await this.admin
       .from("generation_tasks")
       .update({ status: "running", started_at: now, updated_at: now })
       .eq("id", input.taskId)
@@ -193,7 +227,7 @@ export class LovableBusinessDatabase implements BusinessDatabase {
 
   async cancelUserQueuedGenerationTasks(input: { userId: string; now?: string }): Promise<number> {
     const now = input.now ?? new Date().toISOString();
-    const { data, error } = await (this.admin as any)
+    const { data, error } = await this.admin
       .from("generation_tasks")
       .update({ status: "canceled", completed_at: now, updated_at: now })
       .eq("user_id", input.userId)
@@ -204,9 +238,13 @@ export class LovableBusinessDatabase implements BusinessDatabase {
     return (data ?? []).length;
   }
 
-  async cancelQueuedGenerationTask(input: { taskId: string; userId: string; now?: string }): Promise<GenerationTask | null> {
+  async cancelQueuedGenerationTask(input: {
+    taskId: string;
+    userId: string;
+    now?: string;
+  }): Promise<GenerationTask | null> {
     const now = input.now ?? new Date().toISOString();
-    const { data, error } = await (this.admin as any)
+    const { data, error } = await this.admin
       .from("generation_tasks")
       .update({ status: "canceled", completed_at: now, updated_at: now })
       .eq("id", input.taskId)
@@ -219,8 +257,12 @@ export class LovableBusinessDatabase implements BusinessDatabase {
     return (data as GenerationTask | null) ?? null;
   }
 
-  async updateGenerationTaskLifecycle(input: UpdateGenerationTaskLifecycleInput): Promise<GenerationTask> {
-    const patch: Record<string, unknown> = { updated_at: input.now ?? new Date().toISOString() };
+  async updateGenerationTaskLifecycle(
+    input: UpdateGenerationTaskLifecycleInput,
+  ): Promise<GenerationTask> {
+    const patch: Database["public"]["Tables"]["generation_tasks"]["Update"] = {
+      updated_at: input.now ?? new Date().toISOString(),
+    };
     assignDefined(patch, "status", input.status);
     assignDefined(patch, "deduction_status", input.deductionStatus);
     assignDefined(patch, "deduction_id", input.deductionId);
@@ -233,14 +275,16 @@ export class LovableBusinessDatabase implements BusinessDatabase {
     assignDefined(patch, "started_at", input.startedAt);
     assignDefined(patch, "completed_at", input.completedAt);
 
-    let query = (this.admin as any).from("generation_tasks").update(patch).eq("id", input.taskId);
+    let query = this.admin.from("generation_tasks").update(patch).eq("id", input.taskId);
     if (input.userId) query = query.eq("user_id", input.userId);
     const { data, error } = await query.select("*").single();
     if (error) throw new Error(error.message);
     return data as GenerationTask;
   }
 
-  async consumeCreditsForGeneration(input: ConsumeCreditsForGenerationInput): Promise<ConsumeCreditsResult> {
+  async consumeCreditsForGeneration(
+    input: ConsumeCreditsForGenerationInput,
+  ): Promise<ConsumeCreditsResult> {
     const { data, error } = await this.user.rpc("consume_credits_for_generation", {
       _model_key: input.modelKey,
       _prompt: input.prompt ?? "",
@@ -252,11 +296,14 @@ export class LovableBusinessDatabase implements BusinessDatabase {
       message: String(row?.message ?? ""),
       credits: Number(row?.credits ?? 0),
       cost: Number(row?.cost ?? input.cost ?? 0),
-      history_id: row?.history_id ?? null,
+      history_id:
+        row && "history_id" in row && typeof row.history_id === "string" ? row.history_id : null,
     };
   }
 
-  async finalizeUserGenerationTaskOnce(input: FinalizeGenerationTaskInput): Promise<FinalizeGenerationTaskResult> {
+  async finalizeUserGenerationTaskOnce(
+    input: FinalizeGenerationTaskInput,
+  ): Promise<FinalizeGenerationTaskResult> {
     const { data, error } = await this.user.rpc("finalize_user_generation_task_once", {
       p_task_id: input.taskId,
       p_image_url: input.imageUrl,
@@ -268,13 +315,22 @@ export class LovableBusinessDatabase implements BusinessDatabase {
       message: String(row?.message ?? ""),
       credits: row?.credits == null ? 0 : Number(row.credits),
       cost: row?.cost == null ? 0 : Number(row.cost),
-      history_id: row?.history_id ?? null,
-      deduction_status: row?.deduction_status ?? null,
+      history_id:
+        row && "history_id" in row && typeof row.history_id === "string" ? row.history_id : null,
+      deduction_status:
+        row?.deduction_status === "charged" ||
+        row?.deduction_status === "not_charged" ||
+        row?.deduction_status === "refunded"
+          ? row.deduction_status
+          : null,
     };
   }
 
-  async getGenerationHistory(input: { historyId: string; userId?: string }): Promise<GenerationHistory | null> {
-    let query = (this.admin as any).from("generation_history").select("*").eq("id", input.historyId);
+  async getGenerationHistory(input: {
+    historyId: string;
+    userId?: string;
+  }): Promise<GenerationHistory | null> {
+    let query = this.admin.from("generation_history").select("*").eq("id", input.historyId);
     if (input.userId) query = query.eq("user_id", input.userId);
     const { data, error } = await query.maybeSingle();
     if (error) throw new Error(error.message);
@@ -289,7 +345,7 @@ export class LovableBusinessDatabase implements BusinessDatabase {
     offset: number;
   }): Promise<{ rows: GenerationHistory[]; total: number }> {
     const endIdx = input.offset + input.limit - 1;
-    let query = (this.admin as any)
+    let query = this.admin
       .from("generation_history")
       .select("*", { count: "exact" })
       .order("created_at", { ascending: false })
@@ -304,20 +360,25 @@ export class LovableBusinessDatabase implements BusinessDatabase {
 
   async getGenerationTasksByIds(taskIds: string[]): Promise<GenerationTask[]> {
     if (taskIds.length === 0) return [];
-    const { data, error } = await (this.admin as any).from("generation_tasks").select("*").in("id", taskIds);
+    const { data, error } = await this.admin.from("generation_tasks").select("*").in("id", taskIds);
     if (error) throw new Error(error.message);
     return (data ?? []) as GenerationTask[];
   }
 
   async getProfilesByIds(userIds: string[]): Promise<Profile[]> {
     if (userIds.length === 0) return [];
-    const { data, error } = await (this.admin as any).from("profiles").select("*").in("id", userIds);
+    const { data, error } = await this.admin.from("profiles").select("*").in("id", userIds);
     if (error) throw new Error(error.message);
     return (data ?? []) as Profile[];
   }
 
-  async setGenerationHistoryImageUrl(input: { historyId: string; userId: string; imageUrl: string; now?: string }): Promise<GenerationHistory> {
-    const { data, error } = await (this.admin as any)
+  async setGenerationHistoryImageUrl(input: {
+    historyId: string;
+    userId: string;
+    imageUrl: string;
+    now?: string;
+  }): Promise<GenerationHistory> {
+    const { data, error } = await this.admin
       .from("generation_history")
       .update({ image_url: input.imageUrl })
       .eq("id", input.historyId)
@@ -328,7 +389,11 @@ export class LovableBusinessDatabase implements BusinessDatabase {
     return data as GenerationHistory;
   }
 
-  async setLatestGenerationHistoryImageUrl(input: { userId: string; modelName: string; imageUrl: string }): Promise<void> {
+  async setLatestGenerationHistoryImageUrl(input: {
+    userId: string;
+    modelName: string;
+    imageUrl: string;
+  }): Promise<void> {
     const { error } = await this.user.rpc("set_latest_history_image", {
       _model: input.modelName,
       _image_url: input.imageUrl,
@@ -336,25 +401,37 @@ export class LovableBusinessDatabase implements BusinessDatabase {
     if (error) throw new Error(error.message);
   }
 
-  async createUserOrder(input: { id?: string; userId: string; outTradeNo: string; amount: number; credits: number; payType?: string | null; now?: string }): Promise<UserOrder> {
+  async createUserOrder(input: {
+    id?: string;
+    userId: string;
+    outTradeNo: string;
+    amount: number;
+    credits: number;
+    payType?: string | null;
+    now?: string;
+  }): Promise<UserOrder> {
     const now = input.now ?? new Date().toISOString();
-    const { data, error } = await (this.admin as any).from("user_orders").insert({
-      id: input.id ?? randomId(),
-      user_id: input.userId,
-      out_trade_no: input.outTradeNo,
-      amount: input.amount,
-      credits: input.credits,
-      status: "pending",
-      pay_type: input.payType ?? null,
-      created_at: now,
-      updated_at: now,
-    }).select("*").single();
+    const { data, error } = await this.admin
+      .from("user_orders")
+      .insert({
+        id: input.id ?? randomId(),
+        user_id: input.userId,
+        out_trade_no: input.outTradeNo,
+        amount: input.amount,
+        credits: input.credits,
+        status: "pending",
+        pay_type: input.payType ?? null,
+        created_at: now,
+        updated_at: now,
+      })
+      .select("*")
+      .single();
     if (error) throw new Error(error.message);
     return data as UserOrder;
   }
 
   async getUserOrder(input: { outTradeNo: string; userId: string }): Promise<UserOrder | null> {
-    const { data, error } = await (this.admin as any)
+    const { data, error } = await this.admin
       .from("user_orders")
       .select("*")
       .eq("out_trade_no", input.outTradeNo)
@@ -365,27 +442,60 @@ export class LovableBusinessDatabase implements BusinessDatabase {
   }
 
   async getOrderByOutTradeNo(outTradeNo: string): Promise<UserOrder | null> {
-    const { data, error } = await (this.admin as any).from("user_orders").select("*").eq("out_trade_no", outTradeNo).maybeSingle();
+    const { data, error } = await this.admin
+      .from("user_orders")
+      .select("*")
+      .eq("out_trade_no", outTradeNo)
+      .maybeSingle();
     if (error) throw new Error(error.message);
     return (data as UserOrder | null) ?? null;
   }
 
   async completePaidOrder(input: CompletePaidOrderInput): Promise<CompletePaidOrderResult> {
     const before = await this.getOrderByOutTradeNo(input.outTradeNo);
-    if (!before) return { success: false, message: "order not found", order: null, credits: null, alreadyPaid: false };
-    if (before.status === "paid") return { success: true, message: "already paid", order: before, credits: before.credits, alreadyPaid: true };
-    const { error } = await (this.admin as any).rpc("complete_paid_order", {
+    if (!before)
+      return {
+        success: false,
+        message: "order not found",
+        order: null,
+        credits: null,
+        alreadyPaid: false,
+      };
+    if (before.status === "paid")
+      return {
+        success: true,
+        message: "already paid",
+        order: before,
+        credits: before.credits,
+        alreadyPaid: true,
+      };
+    const { error } = await this.admin.rpc("complete_paid_order", {
       _out_trade_no: input.outTradeNo,
       _trade_no: input.tradeNo,
     });
     if (error) throw new Error(error.message);
     const order = await this.getOrderByOutTradeNo(input.outTradeNo);
-    return { success: order?.status === "paid", message: "paid", order, credits: order?.credits ?? null, alreadyPaid: false };
+    return {
+      success: order?.status === "paid",
+      message: "paid",
+      order,
+      credits: order?.credits ?? null,
+      alreadyPaid: false,
+    };
   }
 
   async redeemCoupon(input: RedeemCouponInput): Promise<RedeemCouponResult> {
-    const { data, error } = await this.user.rpc("redeem_gift_card", { input_code: input.code.trim() });
-    if (error) return { success: false, message: error.message || "兑换失败", amount: 0, credits: await this.getCredits(input.userId), redeem_log_id: null };
+    const { data, error } = await this.user.rpc("redeem_gift_card", {
+      input_code: input.code.trim(),
+    });
+    if (error)
+      return {
+        success: false,
+        message: error.message || "兑换失败",
+        amount: 0,
+        credits: await this.getCredits(input.userId),
+        redeem_log_id: null,
+      };
     const row = Array.isArray(data) ? data[0] : data;
     return {
       success: Boolean(row?.success),
@@ -396,11 +506,19 @@ export class LovableBusinessDatabase implements BusinessDatabase {
     };
   }
 
-  async listModelsConfig(input: { includeSecrets?: boolean; enabledOnly?: boolean } = {}): Promise<ModelConfig[]> {
-    const columns = input.includeSecrets
-      ? "id, model_key, name, description, cost, api_url, api_key, request_format, prompt_key, fetch_url, extra_params, is_enabled, sort_order, created_at, updated_at"
-      : "id, model_key, name, description, cost, extra_params, is_enabled, sort_order, updated_at";
-    let query = (this.admin as any).from("models_config").select(columns).order("sort_order", { ascending: true });
+  async listModelsConfig(
+    input: { includeSecrets?: boolean; enabledOnly?: boolean } = {},
+  ): Promise<ModelConfig[]> {
+    const table = this.admin.from("models_config");
+    let query = (
+      input.includeSecrets
+        ? table.select(
+            "id, model_key, name, description, cost, api_url, api_key, request_format, prompt_key, fetch_url, extra_params, is_enabled, sort_order, created_at, updated_at",
+          )
+        : table.select(
+            "id, model_key, name, description, cost, extra_params, is_enabled, sort_order, updated_at",
+          )
+    ).order("sort_order", { ascending: true });
     if (input.enabledOnly !== false) query = query.eq("is_enabled", true);
     const { data, error } = await query;
     if (error) throw new Error(error.message);
@@ -408,37 +526,54 @@ export class LovableBusinessDatabase implements BusinessDatabase {
   }
 
   async getGlobalConfig(): Promise<Record<string, unknown> | null> {
-    const { data, error } = await (this.admin as any).from("global_config").select("*").limit(1).maybeSingle();
+    const { data, error } = await this.admin
+      .from("global_config")
+      .select("*")
+      .limit(1)
+      .maybeSingle();
     if (error) throw new Error(error.message);
     return data ?? null;
   }
 
   async getAdminSettings(): Promise<Record<string, unknown> | null> {
-    const { data, error } = await (this.admin as any).from("admin_settings").select("*").eq("id", 1).maybeSingle();
+    const { data, error } = await this.admin
+      .from("admin_settings")
+      .select("*")
+      .eq("id", 1)
+      .maybeSingle();
     if (error) throw new Error(error.message);
     return data ?? null;
   }
 
   async listAnnouncements(): Promise<Record<string, unknown>[]> {
-    const { data, error } = await (this.admin as any).from("announcements").select("*").order("created_at", { ascending: false });
+    const { data, error } = await this.admin
+      .from("announcements")
+      .select("*")
+      .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     return data ?? [];
   }
 
   async listAds(): Promise<Record<string, unknown>[]> {
-    const { data, error } = await (this.admin as any).from("ads").select("*").order("sort_order", { ascending: true });
+    const { data, error } = await this.admin
+      .from("ads")
+      .select("*")
+      .order("sort_order", { ascending: true });
     if (error) throw new Error(error.message);
     return data ?? [];
   }
 
   async listStyleTemplates(): Promise<Record<string, unknown>[]> {
-    const { data, error } = await (this.admin as any).from("style_templates").select("*").order("sort_order", { ascending: true });
+    const { data, error } = await this.admin
+      .from("style_templates")
+      .select("*")
+      .order("sort_order", { ascending: true });
     if (error) throw new Error(error.message);
     return data ?? [];
   }
 
   async listRechargePackages(): Promise<RechargePackage[]> {
-    const { data, error } = await (this.admin as any)
+    const { data, error } = await this.admin
       .from("recharge_packages")
       .select("*")
       .eq("is_visible", true)
@@ -446,7 +581,6 @@ export class LovableBusinessDatabase implements BusinessDatabase {
     if (error) throw new Error(error.message);
     return (data ?? []) as RechargePackage[];
   }
-
 }
 
 function assignDefined(target: Record<string, unknown>, key: string, value: unknown): void {

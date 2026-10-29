@@ -27,7 +27,9 @@ function isAuthorized(request, token) {
   const supplied = request.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
   const expectedBytes = Buffer.from(token);
   const suppliedBytes = Buffer.from(supplied);
-  return expectedBytes.length === suppliedBytes.length && timingSafeEqual(expectedBytes, suppliedBytes);
+  return (
+    expectedBytes.length === suppliedBytes.length && timingSafeEqual(expectedBytes, suppliedBytes)
+  );
 }
 
 async function readImageBody(request) {
@@ -57,7 +59,12 @@ export async function createPreviewPayload(imageBytes) {
     limitInputPixels: MAX_INPUT_PIXELS,
   }).rotate();
   const metadata = await source.metadata();
-  if (!metadata.width || !metadata.height || !metadata.format || !["png", "jpeg", "webp"].includes(metadata.format)) {
+  if (
+    !metadata.width ||
+    !metadata.height ||
+    !metadata.format ||
+    !["png", "jpeg", "webp"].includes(metadata.format)
+  ) {
     const error = new Error("Unsupported or invalid image");
     error.statusCode = 400;
     throw error;
@@ -77,7 +84,12 @@ export async function createPreviewPayload(imageBytes) {
         withoutEnlargement: true,
       })
       .sharpen(variant.size === 480 ? 0.4 : 0.65)
-      .jpeg({ quality: variant.quality, chromaSubsampling: "4:4:4", mozjpeg: true, progressive: true })
+      .jpeg({
+        quality: variant.quality,
+        chromaSubsampling: "4:4:4",
+        mozjpeg: true,
+        progressive: true,
+      })
       .toBuffer({ resolveWithObject: true });
 
     variants[variant.size] = {
@@ -111,7 +123,8 @@ export function createImageProcessorServer({ token }) {
       return;
     }
 
-    const contentType = request.headers["content-type"]?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+    const contentType =
+      request.headers["content-type"]?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
     if (!ALLOWED_CONTENT_TYPES.has(contentType)) {
       sendJson(response, 415, { error: "Unsupported image content type" });
       return;
@@ -129,7 +142,9 @@ export function createImageProcessorServer({ token }) {
       sendJson(response, 200, payload);
     } catch (error) {
       const status = Number(error?.statusCode) || 400;
-      sendJson(response, status, { error: status === 413 ? "Image exceeds the maximum input size" : "Unable to process image" });
+      sendJson(response, status, {
+        error: status === 413 ? "Image exceeds the maximum input size" : "Unable to process image",
+      });
     }
   });
 }

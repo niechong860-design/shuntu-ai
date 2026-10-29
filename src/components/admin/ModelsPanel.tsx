@@ -1,3 +1,4 @@
+import { errorMessage } from "@/lib/error-message";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -9,24 +10,52 @@ import {
   adminUpdateGlobalConfig,
   adminTestModel,
 } from "@/lib/admin.functions";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
-import { Pencil, RefreshCw, Sparkles, Plus, Trash2, KeyRound, Link as LinkIcon, Globe, Save, FlaskConical, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import {
+  Pencil,
+  RefreshCw,
+  Sparkles,
+  Plus,
+  Trash2,
+  KeyRound,
+  Link as LinkIcon,
+  Globe,
+  Save,
+  FlaskConical,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 type ModelCfg = {
-  id: string; model_key: string; name: string; description: string | null;
-  cost: number; api_url: string | null; api_key: string | null;
+  id: string;
+  model_key: string;
+  name: string;
+  description: string | null;
+  cost: number;
+  api_url: string | null;
+  secret_ref: string | null;
+  secret_configured?: boolean;
   request_format: "async_id" | "sync_url" | null;
   prompt_key: string | null;
   fetch_url: string | null;
   extra_params?: Record<string, unknown> | null;
   is_enabled?: boolean;
-  sort_order?: number; updated_at: string;
+  sort_order?: number;
+  updated_at: string;
 };
 
 type EditState = {
@@ -36,7 +65,7 @@ type EditState = {
   description: string;
   cost: string;
   api_url: string;
-  api_key: string;
+  secret_ref: string;
   request_format: "async_id" | "sync_url";
   prompt_key: string;
   fetch_url: string;
@@ -48,9 +77,20 @@ type EditState = {
 };
 
 const empty = (): EditState => ({
-  id: "", name: "", model_key: "", description: "", cost: "1",
-  api_url: "", api_key: "", request_format: "async_id", prompt_key: "prompt", fetch_url: "",
-  ui_badge_enabled: false, ui_badge_text: "", ui_badge_color: "cyan", ui_default_model: false,
+  id: "",
+  name: "",
+  model_key: "",
+  description: "",
+  cost: "1",
+  api_url: "",
+  secret_ref: "",
+  request_format: "async_id",
+  prompt_key: "prompt",
+  fetch_url: "",
+  ui_badge_enabled: false,
+  ui_badge_text: "",
+  ui_badge_color: "cyan",
+  ui_default_model: false,
   extra_params: "{}",
 });
 
@@ -62,12 +102,6 @@ const BADGE_COLOR_OPTIONS = [
   { value: "purple", label: "紫色" },
   { value: "gray", label: "灰色" },
 ];
-
-const maskKey = (k: string | null) => {
-  if (!k) return "";
-  if (k.length <= 8) return "•".repeat(k.length);
-  return `${k.slice(0, 4)}••••${k.slice(-4)}`;
-};
 
 export function ModelsPanel() {
   const list = useServerFn(adminListModelsConfig);
@@ -81,25 +115,39 @@ export function ModelsPanel() {
   const [creating, setCreating] = useState<EditState | null>(null);
   const [busy, setBusy] = useState(false);
   const [testingKey, setTestingKey] = useState<string | null>(null);
-  const [testResult, setTestResult] = useState<
-    | { modelName: string; ok: boolean; stage: string; message: string; elapsedMs: number; imageUrl: string | null }
-    | null
-  >(null);
+  const [testResult, setTestResult] = useState<{
+    modelName: string;
+    ok: boolean;
+    stage: string;
+    message: string;
+    elapsedMs: number;
+    imageUrl: string | null;
+  } | null>(null);
 
   const load = async () => {
     setLoading(true);
-    try { setRows(((await list({})) ?? []) as ModelCfg[]); }
-    catch (e: any) { toast.error(e.message); }
-    finally { setLoading(false); }
+    try {
+      setRows(((await list({})) ?? []) as ModelCfg[]);
+    } catch (e: unknown) {
+      toast.error(errorMessage(e));
+    } finally {
+      setLoading(false);
+    }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const openEdit = (r: ModelCfg) => {
     const extra = r.extra_params ?? {};
     setEditing({
-      id: r.id, name: r.name, model_key: r.model_key,
-      description: r.description ?? "", cost: String(r.cost),
-      api_url: r.api_url ?? "", api_key: r.api_key ?? "",
+      id: r.id,
+      name: r.name,
+      model_key: r.model_key,
+      description: r.description ?? "",
+      cost: String(r.cost),
+      api_url: r.api_url ?? "",
+      secret_ref: "",
       request_format: (r.request_format ?? "async_id") as "async_id" | "sync_url",
       prompt_key: r.prompt_key ?? "prompt",
       fetch_url: r.fetch_url ?? "",
@@ -118,10 +166,15 @@ export function ModelsPanel() {
       const v = JSON.parse(t);
       if (!v || typeof v !== "object" || Array.isArray(v)) return null;
       return v as Record<string, unknown>;
-    } catch { return null; }
+    } catch {
+      return null;
+    }
   };
 
-  const mergeUiExtra = (extra: Record<string, unknown>, state: EditState): Record<string, unknown> => ({
+  const mergeUiExtra = (
+    extra: Record<string, unknown>,
+    state: EditState,
+  ): Record<string, unknown> => ({
     ...extra,
     ui_badge_enabled: state.ui_badge_enabled,
     ui_badge_text: state.ui_badge_text.trim(),
@@ -132,80 +185,97 @@ export function ModelsPanel() {
   const save = async () => {
     if (!editing) return;
     const n = Number(editing.cost);
-    if (!editing.name.trim() || !editing.model_key.trim()) return toast.error("名称和 Key 不能为空");
+    if (!editing.name.trim() || !editing.model_key.trim())
+      return toast.error("名称和 Key 不能为空");
     if (!Number.isFinite(n) || n < 0) return toast.error("请输入有效的点数");
-    if (editing.api_url && !/^https?:\/\//i.test(editing.api_url)) return toast.error("API 接口地址必须是 http(s) URL");
+    if (editing.api_url && !/^https?:\/\//i.test(editing.api_url))
+      return toast.error("API 接口地址必须是 http(s) URL");
     const extra = parseExtra(editing.extra_params);
     if (extra === null) return toast.error("额外请求参数必须是合法的 JSON 对象");
     const nextExtra = mergeUiExtra(extra, editing);
     setBusy(true);
     try {
-      await update({ data: {
-        id: editing.id,
-        name: editing.name.trim(),
-        model_key: editing.model_key.trim(),
-        description: editing.description.trim() || null,
-        cost: n,
-        api_url: editing.api_url.trim() || null,
-        api_key: editing.api_key.trim() || null,
-        request_format: editing.request_format,
-        prompt_key: editing.prompt_key.trim() || "prompt",
-        fetch_url: editing.fetch_url.trim() || null,
-        extra_params: nextExtra,
-      }});
+      await update({
+        data: {
+          id: editing.id,
+          name: editing.name.trim(),
+          model_key: editing.model_key.trim(),
+          description: editing.description.trim() || null,
+          cost: n,
+          api_url: editing.api_url.trim() || null,
+          ...(editing.secret_ref.trim() ? { secret_ref: editing.secret_ref.trim() } : {}),
+          request_format: editing.request_format,
+          prompt_key: editing.prompt_key.trim() || "prompt",
+          fetch_url: editing.fetch_url.trim() || null,
+          extra_params: nextExtra,
+        },
+      });
       toast.success("模型已更新");
       setEditing(null);
       load();
-    } catch (e: any) { toast.error(e.message); }
-    finally { setBusy(false); }
+    } catch (e: unknown) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const submitCreate = async () => {
     if (!creating) return;
     const n = Number(creating.cost);
-    if (!creating.name.trim() || !creating.model_key.trim()) return toast.error("名称和 Key 不能为空");
+    if (!creating.name.trim() || !creating.model_key.trim())
+      return toast.error("名称和 Key 不能为空");
     if (!Number.isFinite(n) || n < 0) return toast.error("请输入有效的点数");
-    if (creating.api_url && !/^https?:\/\//i.test(creating.api_url)) return toast.error("API 接口地址必须是 http(s) URL");
+    if (creating.api_url && !/^https?:\/\//i.test(creating.api_url))
+      return toast.error("API 接口地址必须是 http(s) URL");
     const extra = parseExtra(creating.extra_params);
     if (extra === null) return toast.error("额外请求参数必须是合法的 JSON 对象");
     const nextExtra = mergeUiExtra(extra, creating);
     setBusy(true);
     try {
-      await create({ data: {
-        name: creating.name.trim(),
-        model_key: creating.model_key.trim(),
-        description: creating.description.trim() || undefined,
-        cost: n,
-        api_url: creating.api_url.trim() || undefined,
-        api_key: creating.api_key.trim() || undefined,
-        request_format: creating.request_format,
-        prompt_key: creating.prompt_key.trim() || "prompt",
-        fetch_url: creating.fetch_url.trim() || undefined,
-        extra_params: nextExtra,
-      }});
+      await create({
+        data: {
+          name: creating.name.trim(),
+          model_key: creating.model_key.trim(),
+          description: creating.description.trim() || undefined,
+          cost: n,
+          api_url: creating.api_url.trim() || undefined,
+          secret_ref: creating.secret_ref.trim() || undefined,
+          request_format: creating.request_format,
+          prompt_key: creating.prompt_key.trim() || "prompt",
+          fetch_url: creating.fetch_url.trim() || undefined,
+          extra_params: nextExtra,
+        },
+      });
       toast.success("模型添加成功");
       setCreating(null);
       load();
-    } catch (e: any) { toast.error(e.message); }
-    finally { setBusy(false); }
+    } catch (e: unknown) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleDelete = async (r: ModelCfg) => {
-    setRows(prev => prev.filter(x => x.id !== r.id));
+    setRows((prev) => prev.filter((x) => x.id !== r.id));
     try {
       await del({ data: { id: r.id } });
       toast.success("模型已删除");
-    } catch (e: any) { toast.error(e.message); load(); }
+    } catch (e: unknown) {
+      toast.error(errorMessage(e));
+      load();
+    }
   };
 
   const toggleEnabled = async (r: ModelCfg, next: boolean) => {
-    setRows(prev => prev.map(x => x.id === r.id ? { ...x, is_enabled: next } : x));
+    setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, is_enabled: next } : x)));
     try {
       await update({ data: { id: r.id, is_enabled: next } });
       toast.success(next ? `已启用「${r.name}」` : `已停用「${r.name}」`);
-    } catch (e: any) {
-      toast.error(e.message);
-      setRows(prev => prev.map(x => x.id === r.id ? { ...x, is_enabled: !next } : x));
+    } catch (e: unknown) {
+      toast.error(errorMessage(e));
+      setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, is_enabled: !next } : x)));
     }
   };
 
@@ -213,13 +283,21 @@ export function ModelsPanel() {
     <div className="space-y-3">
       <GlobalConfigCard />
       <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">每个模型可配置独立的 API 接口地址、密钥与扣点费率（留空则使用全局 API Key）</p>
+        <p className="text-xs text-muted-foreground">
+          每个模型可配置独立的 API 接口地址、密钥与扣点费率（留空则使用全局 API Key）
+        </p>
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={() => setCreating(empty())} className="bg-gradient-aurora text-primary-foreground">
-            <Plus className="mr-1.5 h-3.5 w-3.5" />添加模型
+          <Button
+            size="sm"
+            onClick={() => setCreating(empty())}
+            className="bg-gradient-aurora text-primary-foreground"
+          >
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            添加模型
           </Button>
           <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />刷新
+            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+            刷新
           </Button>
         </div>
       </div>
@@ -231,14 +309,14 @@ export function ModelsPanel() {
               <TableHead>Key</TableHead>
               <TableHead>模式</TableHead>
               <TableHead>API 接口地址</TableHead>
-              <TableHead>API Key</TableHead>
+              <TableHead>Worker Secret</TableHead>
               <TableHead className="text-right">费率</TableHead>
               <TableHead className="text-center">启用</TableHead>
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map(r => (
+            {rows.map((r) => (
               <TableRow key={r.id}>
                 <TableCell>
                   <div className="flex items-center gap-2">
@@ -247,38 +325,61 @@ export function ModelsPanel() {
                     </div>
                     <div>
                       <div className="text-sm font-medium">{r.name}</div>
-                      {r.description && <div className="text-[10px] text-muted-foreground">{r.description}</div>}
+                      {r.description && (
+                        <div className="text-[10px] text-muted-foreground">{r.description}</div>
+                      )}
                     </div>
                   </div>
                 </TableCell>
-                <TableCell className="font-mono text-[11px] text-muted-foreground">{r.model_key}</TableCell>
+                <TableCell className="font-mono text-[11px] text-muted-foreground">
+                  {r.model_key}
+                </TableCell>
                 <TableCell>
-                  <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium ${
-                    r.request_format === "sync_url"
-                      ? "bg-emerald-500/10 text-emerald-400"
-                      : "bg-primary/10 text-primary"
-                  }`}>
+                  <span
+                    className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium ${
+                      r.request_format === "sync_url"
+                        ? "bg-emerald-500/10 text-emerald-400"
+                        : "bg-primary/10 text-primary"
+                    }`}
+                  >
                     {r.request_format === "sync_url" ? "同步直出" : "异步轮询"}
                   </span>
                 </TableCell>
-                <TableCell className="max-w-[240px] truncate font-mono text-[11px] text-muted-foreground" title={r.api_url ?? ""}>
+                <TableCell
+                  className="max-w-[240px] truncate font-mono text-[11px] text-muted-foreground"
+                  title={r.api_url ?? ""}
+                >
                   {r.api_url ? (
-                    <span className="inline-flex items-center gap-1"><LinkIcon className="h-3 w-3 text-primary/80" />{r.api_url}</span>
-                  ) : <span className="text-destructive/80">未配置</span>}
+                    <span className="inline-flex items-center gap-1">
+                      <LinkIcon className="h-3 w-3 text-primary/80" />
+                      {r.api_url}
+                    </span>
+                  ) : (
+                    <span className="text-destructive/80">未配置</span>
+                  )}
                 </TableCell>
                 <TableCell className="font-mono text-[11px] text-muted-foreground">
-                  {r.api_key ? (
-                    <span className="inline-flex items-center gap-1"><KeyRound className="h-3 w-3 text-primary/80" />{maskKey(r.api_key)}</span>
-                  ) : <span className="text-muted-foreground/60">—</span>}
+                  {r.secret_configured ? (
+                    <span className="inline-flex items-center gap-1">
+                      <KeyRound className="h-3 w-3 text-primary/80" />
+                      已配置（服务端保管）
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground/60">—</span>
+                  )}
                 </TableCell>
-                <TableCell className="text-right font-mono tabular-nums text-primary">{Number(r.cost)} 点</TableCell>
+                <TableCell className="text-right font-mono tabular-nums text-primary">
+                  {Number(r.cost)} 点
+                </TableCell>
                 <TableCell className="text-center">
                   <div className="flex items-center justify-center gap-2">
                     <Switch
                       checked={r.is_enabled !== false}
                       onCheckedChange={(v) => toggleEnabled(r, v)}
                     />
-                    <span className={`text-[10px] ${r.is_enabled !== false ? "text-emerald-400" : "text-muted-foreground"}`}>
+                    <span
+                      className={`text-[10px] ${r.is_enabled !== false ? "text-emerald-400" : "text-muted-foreground"}`}
+                    >
                       {r.is_enabled !== false ? "启用" : "停用"}
                     </span>
                   </div>
@@ -293,37 +394,63 @@ export function ModelsPanel() {
                         setTestingKey(r.model_key);
                         setTestResult(null);
                         try {
-                          const res = await testFn({ data: { modelKey: r.model_key } });
+                          const res = await testFn({
+                            data: { modelKey: r.model_key },
+                          });
                           setTestResult({ modelName: r.name, ...res });
-                          if (res.ok) toast.success(`「${r.name}」测试通过 · ${(res.elapsedMs / 1000).toFixed(1)}s`);
+                          if (res.ok)
+                            toast.success(
+                              `「${r.name}」测试通过 · ${(res.elapsedMs / 1000).toFixed(1)}s`,
+                            );
                           else toast.error(`「${r.name}」测试失败：${res.message}`);
-                        } catch (e: any) {
-                          setTestResult({ modelName: r.name, ok: false, stage: "exception", message: e.message ?? "调用失败", elapsedMs: 0, imageUrl: null });
-                          toast.error(e.message ?? "测试调用失败");
+                        } catch (e: unknown) {
+                          setTestResult({
+                            modelName: r.name,
+                            ok: false,
+                            stage: "exception",
+                            message: errorMessage(e) ?? "调用失败",
+                            elapsedMs: 0,
+                            imageUrl: null,
+                          });
+                          toast.error(errorMessage(e) ?? "测试调用失败");
                         } finally {
                           setTestingKey(null);
                         }
                       }}
                     >
-                      {testingKey === r.model_key
-                        ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                        : <FlaskConical className="mr-1 h-3.5 w-3.5" />}
+                      {testingKey === r.model_key ? (
+                        <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <FlaskConical className="mr-1 h-3.5 w-3.5" />
+                      )}
                       测试
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => openEdit(r)}>
-                      <Pencil className="mr-1 h-3.5 w-3.5" />修改
+                      <Pencil className="mr-1 h-3.5 w-3.5" />
+                      修改
                     </Button>
                     <Popover>
                       <PopoverTrigger asChild>
-                        <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </PopoverTrigger>
-                      <PopoverContent align="end" className="w-64 border-border/70 bg-card/90 backdrop-blur-xl">
+                      <PopoverContent
+                        align="end"
+                        className="w-64 border-border/70 bg-card/90 backdrop-blur-xl"
+                      >
                         <p className="text-xs text-foreground">确定要删除该模型吗？</p>
-                        <p className="mt-1 text-[11px] text-muted-foreground">删除后用户将无法选择该模型生成图片。</p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          删除后用户将无法选择该模型生成图片。
+                        </p>
                         <div className="mt-3 flex justify-end">
-                          <Button size="sm" variant="destructive" onClick={() => handleDelete(r)}>确认删除</Button>
+                          <Button size="sm" variant="destructive" onClick={() => handleDelete(r)}>
+                            确认删除
+                          </Button>
                         </div>
                       </PopoverContent>
                     </Popover>
@@ -332,7 +459,11 @@ export function ModelsPanel() {
               </TableRow>
             ))}
             {rows.length === 0 && !loading && (
-              <TableRow><TableCell colSpan={8} className="text-center text-xs text-muted-foreground">暂无模型</TableCell></TableRow>
+              <TableRow>
+                <TableCell colSpan={8} className="text-center text-xs text-muted-foreground">
+                  暂无模型
+                </TableCell>
+              </TableRow>
             )}
           </TableBody>
         </Table>
@@ -340,31 +471,43 @@ export function ModelsPanel() {
 
       <ModelFormDialog
         title={editing ? `修改模型 · ${editing.name}` : ""}
-        state={editing} setState={setEditing} onSubmit={save} busy={busy}
+        state={editing}
+        setState={setEditing}
+        onSubmit={save}
+        busy={busy}
       />
       <ModelFormDialog
         title="添加新模型"
-        state={creating} setState={setCreating} onSubmit={submitCreate} busy={busy}
+        state={creating}
+        setState={setCreating}
+        onSubmit={submitCreate}
+        busy={busy}
       />
 
       <Dialog open={!!testResult} onOpenChange={(v) => !v && setTestResult(null)}>
         <DialogContent className="max-w-md border-border/70 bg-card/80 backdrop-blur-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              {testResult?.ok
-                ? <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                : <XCircle className="h-4 w-4 text-destructive" />}
+              {testResult?.ok ? (
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              ) : (
+                <XCircle className="h-4 w-4 text-destructive" />
+              )}
               测试结果 · {testResult?.modelName}
             </DialogTitle>
           </DialogHeader>
           {testResult && (
             <div className="space-y-3 pt-1 text-xs">
               <div className="flex items-center gap-2">
-                <span className={`rounded-full px-2 py-0.5 text-[10px] ${testResult.ok ? "bg-emerald-500/15 text-emerald-400" : "bg-destructive/15 text-destructive"}`}>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] ${testResult.ok ? "bg-emerald-500/15 text-emerald-400" : "bg-destructive/15 text-destructive"}`}
+                >
                   {testResult.ok ? "通过" : "失败"}
                 </span>
                 <span className="text-muted-foreground">阶段：{testResult.stage}</span>
-                <span className="text-muted-foreground">耗时 {(testResult.elapsedMs / 1000).toFixed(1)}s</span>
+                <span className="text-muted-foreground">
+                  耗时 {(testResult.elapsedMs / 1000).toFixed(1)}s
+                </span>
               </div>
               <p className="break-words text-foreground/90">{testResult.message}</p>
               {testResult.imageUrl && (
@@ -374,7 +517,8 @@ export function ModelsPanel() {
               )}
               {!testResult.ok && (
                 <p className="text-[11px] text-muted-foreground">
-                  提示：常见原因包括 API 接口地址错误、Key 无权限或额度不足、extra_params 与上游契约不一致。
+                  提示：常见原因包括 API 接口地址错误、Key 无权限或额度不足、extra_params
+                  与上游契约不一致。
                 </p>
               )}
             </div>
@@ -386,7 +530,11 @@ export function ModelsPanel() {
 }
 
 function ModelFormDialog({
-  title, state, setState, onSubmit, busy,
+  title,
+  state,
+  setState,
+  onSubmit,
+  busy,
 }: {
   title: string;
   state: EditState | null;
@@ -397,134 +545,211 @@ function ModelFormDialog({
   return (
     <Dialog open={!!state} onOpenChange={(v) => !v && setState(null)}>
       <DialogContent className="flex max-h-[90vh] max-w-md flex-col overflow-hidden border-border/70 bg-card/80 backdrop-blur-2xl">
-        <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
         {state && (
           <>
-          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-          <div className="space-y-3 pb-4 pt-2">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-[11px] text-muted-foreground">显示名称</label>
-                <Input value={state.name} onChange={(e) => setState({ ...state, name: e.target.value })} placeholder="GPT-Image-2" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[11px] text-muted-foreground">Model Key</label>
-                <Input value={state.model_key} onChange={(e) => setState({ ...state, model_key: e.target.value })} placeholder="gpt-image-2" />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] text-muted-foreground">描述（选填）</label>
-              <Input value={state.description} onChange={(e) => setState({ ...state, description: e.target.value })} placeholder="OpenAI · 新一代图像生成" />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] text-muted-foreground inline-flex items-center gap-1"><LinkIcon className="h-3 w-3" />API 接口地址（该模型专属）</label>
-              <Input value={state.api_url} onChange={(e) => setState({ ...state, api_url: e.target.value })} placeholder="https://api.example.com/v1/images/generations" />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] text-muted-foreground inline-flex items-center gap-1"><KeyRound className="h-3 w-3" />API Key（Bearer Token）</label>
-              <Input value={state.api_key} onChange={(e) => setState({ ...state, api_key: e.target.value })} placeholder="sk-..." />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] text-muted-foreground">单次出图消耗点数</label>
-              <Input type="number" min={0} step="0.1" value={state.cost} onChange={(e) => setState({ ...state, cost: e.target.value })} placeholder="2" />
-            </div>
-
-            <div className="border-t border-border/40 pt-3">
-              <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">前台展示</div>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="flex items-center gap-2 rounded-md border border-border/60 px-3 py-2 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={state.ui_badge_enabled}
-                    onChange={(e) => setState({ ...state, ui_badge_enabled: e.target.checked })}
-                    className="h-3.5 w-3.5"
-                  />
-                  显示模型标签
-                </label>
-                <label className="flex items-center gap-2 rounded-md border border-border/60 px-3 py-2 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={state.ui_default_model}
-                    onChange={(e) => setState({ ...state, ui_default_model: e.target.checked })}
-                    className="h-3.5 w-3.5"
-                  />
-                  前台默认模型
-                </label>
-              </div>
-              <div className="mt-3 space-y-1">
-                <label className="text-[11px] text-muted-foreground">模型标签文字</label>
-                <Input
-                  value={state.ui_badge_text}
-                  onChange={(e) => setState({ ...state, ui_badge_text: e.target.value })}
-                  placeholder="推荐 / 热门 / 最强 / 最新 / 备用"
-                />
-              </div>
-              <div className="mt-3 space-y-1">
-                <label className="text-[11px] text-muted-foreground">标签颜色</label>
-                <select
-                  value={state.ui_badge_color}
-                  onChange={(e) => setState({ ...state, ui_badge_color: e.target.value })}
-                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-xs"
-                >
-                  {BADGE_COLOR_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="border-t border-border/40 pt-3">
-              <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">动态接口适配</div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-[11px] text-muted-foreground">返回格式</label>
-                  <select
-                    value={state.request_format}
-                    onChange={(e) => setState({ ...state, request_format: e.target.value as "async_id" | "sync_url" })}
-                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-xs"
-                  >
-                    <option value="async_id">异步轮询（返回任务ID）</option>
-                    <option value="sync_url">同步直出（直接返回URL）</option>
-                  </select>
+            <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+              <div className="space-y-3 pb-4 pt-2">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-muted-foreground">显示名称</label>
+                    <Input
+                      value={state.name}
+                      onChange={(e) => setState({ ...state, name: e.target.value })}
+                      placeholder="GPT-Image-2"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-muted-foreground">Model Key</label>
+                    <Input
+                      value={state.model_key}
+                      onChange={(e) => setState({ ...state, model_key: e.target.value })}
+                      placeholder="gpt-image-2"
+                    />
+                  </div>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[11px] text-muted-foreground">提示词参数名</label>
-                  <Input value={state.prompt_key} onChange={(e) => setState({ ...state, prompt_key: e.target.value })} placeholder="prompt" />
+                  <label className="text-[11px] text-muted-foreground">描述（选填）</label>
+                  <Input
+                    value={state.description}
+                    onChange={(e) => setState({ ...state, description: e.target.value })}
+                    placeholder="OpenAI · 新一代图像生成"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground inline-flex items-center gap-1">
+                    <LinkIcon className="h-3 w-3" />
+                    API 接口地址（该模型专属）
+                  </label>
+                  <Input
+                    value={state.api_url}
+                    onChange={(e) => setState({ ...state, api_url: e.target.value })}
+                    placeholder="https://api.example.com/v1/images/generations"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground inline-flex items-center gap-1">
+                    <KeyRound className="h-3 w-3" />
+                    Worker Secret 引用
+                  </label>
+                  <Input
+                    value={state.secret_ref}
+                    onChange={(e) => setState({ ...state, secret_ref: e.target.value })}
+                    placeholder="例如 wuyin:gpt-image-2（密钥值只配置在 Cloudflare Secret）"
+                    type="text"
+                    autoComplete="new-password"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">单次出图消耗点数</label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.1"
+                    value={state.cost}
+                    onChange={(e) => setState({ ...state, cost: e.target.value })}
+                    placeholder="2"
+                  />
+                </div>
+
+                <div className="border-t border-border/40 pt-3">
+                  <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    前台展示
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="flex items-center gap-2 rounded-md border border-border/60 px-3 py-2 text-xs text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={state.ui_badge_enabled}
+                        onChange={(e) =>
+                          setState({
+                            ...state,
+                            ui_badge_enabled: e.target.checked,
+                          })
+                        }
+                        className="h-3.5 w-3.5"
+                      />
+                      显示模型标签
+                    </label>
+                    <label className="flex items-center gap-2 rounded-md border border-border/60 px-3 py-2 text-xs text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={state.ui_default_model}
+                        onChange={(e) =>
+                          setState({
+                            ...state,
+                            ui_default_model: e.target.checked,
+                          })
+                        }
+                        className="h-3.5 w-3.5"
+                      />
+                      前台默认模型
+                    </label>
+                  </div>
+                  <div className="mt-3 space-y-1">
+                    <label className="text-[11px] text-muted-foreground">模型标签文字</label>
+                    <Input
+                      value={state.ui_badge_text}
+                      onChange={(e) => setState({ ...state, ui_badge_text: e.target.value })}
+                      placeholder="推荐 / 热门 / 最强 / 最新 / 备用"
+                    />
+                  </div>
+                  <div className="mt-3 space-y-1">
+                    <label className="text-[11px] text-muted-foreground">标签颜色</label>
+                    <select
+                      value={state.ui_badge_color}
+                      onChange={(e) => setState({ ...state, ui_badge_color: e.target.value })}
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-xs"
+                    >
+                      {BADGE_COLOR_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="border-t border-border/40 pt-3">
+                  <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    动态接口适配
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-muted-foreground">返回格式</label>
+                      <select
+                        value={state.request_format}
+                        onChange={(e) =>
+                          setState({
+                            ...state,
+                            request_format: e.target.value as "async_id" | "sync_url",
+                          })
+                        }
+                        className="h-9 w-full rounded-md border border-input bg-background px-3 text-xs"
+                      >
+                        <option value="async_id">异步轮询（返回任务ID）</option>
+                        <option value="sync_url">同步直出（直接返回URL）</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-muted-foreground">提示词参数名</label>
+                      <Input
+                        value={state.prompt_key}
+                        onChange={(e) => setState({ ...state, prompt_key: e.target.value })}
+                        placeholder="prompt"
+                      />
+                    </div>
+                  </div>
+                  {state.request_format === "async_id" && (
+                    <div className="mt-3 space-y-1">
+                      <label className="text-[11px] text-muted-foreground">
+                        查询结果接口（选填，留空将自动派生 /fetch_result）
+                      </label>
+                      <Input
+                        value={state.fetch_url}
+                        onChange={(e) => setState({ ...state, fetch_url: e.target.value })}
+                        placeholder="选填，留空将自动生成 wuyinkeji 的查询地址"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">
+                    额外请求参数（JSON 对象，按该模型上游 API 文档填写）
+                  </label>
+                  <textarea
+                    value={state.extra_params}
+                    onChange={(e) => setState({ ...state, extra_params: e.target.value })}
+                    className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-[11px] shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    placeholder={`{\n  "size": "{{aspect}}",\n  "image_weight": 0.6,\n  "num_inference_steps": 30\n}`}
+                    spellCheck={false}
+                  />
+                  <p className="text-[10px] text-muted-foreground/80">
+                    这些参数会与 prompt / urls 一起合并进上游请求体。支持占位符：
+                    <code className="mx-1 rounded bg-white/5 px-1">{"{{aspect}}"}</code>
+                    （比例如 1:1）、
+                    <code className="mx-1 rounded bg-white/5 px-1">{"{{prompt}}"}</code>。
+                    留空则不发送任何额外字段。
+                  </p>
                 </div>
               </div>
-              {state.request_format === "async_id" && (
-                <div className="mt-3 space-y-1">
-                  <label className="text-[11px] text-muted-foreground">查询结果接口（选填，留空将自动派生 /fetch_result）</label>
-                  <Input value={state.fetch_url} onChange={(e) => setState({ ...state, fetch_url: e.target.value })} placeholder="选填，留空将自动生成 wuyinkeji 的查询地址" />
-                </div>
-              )}
             </div>
-
-            <div className="space-y-1">
-              <label className="text-[11px] text-muted-foreground">
-                额外请求参数（JSON 对象，按该模型上游 API 文档填写）
-              </label>
-              <textarea
-                value={state.extra_params}
-                onChange={(e) => setState({ ...state, extra_params: e.target.value })}
-                className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-[11px] shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                placeholder={`{\n  "size": "{{aspect}}",\n  "image_weight": 0.6,\n  "num_inference_steps": 30\n}`}
-                spellCheck={false}
-              />
-              <p className="text-[10px] text-muted-foreground/80">
-                这些参数会与 prompt / urls 一起合并进上游请求体。支持占位符：
-                <code className="mx-1 rounded bg-white/5 px-1">{"{{aspect}}"}</code>（比例如 1:1）、
-                <code className="mx-1 rounded bg-white/5 px-1">{"{{prompt}}"}</code>。
-                留空则不发送任何额外字段。
-              </p>
+            <div className="flex shrink-0 gap-2 border-t border-border/60 bg-card/95 pt-3">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setState(null)}
+                disabled={busy}
+              >
+                取消
+              </Button>
+              <Button className="flex-1" onClick={onSubmit} disabled={busy}>
+                保存
+              </Button>
             </div>
-
-          </div>
-          </div>
-          <div className="flex shrink-0 gap-2 border-t border-border/60 bg-card/95 pt-3">
-            <Button variant="outline" className="flex-1" onClick={() => setState(null)} disabled={busy}>取消</Button>
-            <Button className="flex-1" onClick={onSubmit} disabled={busy}>保存</Button>
-          </div>
           </>
         )}
       </DialogContent>
@@ -536,7 +761,7 @@ function GlobalConfigCard() {
   const getCfg = useServerFn(adminGetGlobalConfig);
   const setCfg = useServerFn(adminUpdateGlobalConfig);
   const [baseUrl, setBaseUrl] = useState("https://api.wuyinkeji.com");
-  const [apiKey, setApiKey] = useState("");
+  const [secretStatus, setSecretStatus] = useState("missing");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -544,11 +769,18 @@ function GlobalConfigCard() {
     (async () => {
       setLoading(true);
       try {
-        const r = (await getCfg({})) as { base_url: string; global_api_key: string | null };
+        const r = (await getCfg({})) as {
+          base_url: string;
+          api_key_configured: boolean;
+          api_key_source: string;
+        };
         setBaseUrl(r.base_url || "https://api.wuyinkeji.com");
-        setApiKey(r.global_api_key ?? "");
-      } catch (e: any) { toast.error(e.message); }
-      finally { setLoading(false); }
+        setSecretStatus(r.api_key_configured ? r.api_key_source : "missing");
+      } catch (e: unknown) {
+        toast.error(errorMessage(e));
+      } finally {
+        setLoading(false);
+      }
     })();
   }, []);
 
@@ -556,10 +788,13 @@ function GlobalConfigCard() {
     if (!/^https?:\/\//i.test(baseUrl.trim())) return toast.error("请填写合法的 Base URL");
     setSaving(true);
     try {
-      await setCfg({ data: { base_url: baseUrl.trim(), global_api_key: apiKey.trim() || null } });
+      await setCfg({ data: { base_url: baseUrl.trim() } });
       toast.success("全局接口配置已保存");
-    } catch (e: any) { toast.error(e.message); }
-    finally { setSaving(false); }
+    } catch (e: unknown) {
+      toast.error(errorMessage(e));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -567,20 +802,40 @@ function GlobalConfigCard() {
       <div className="mb-3 flex items-center gap-2">
         <Globe className="h-4 w-4 text-primary" />
         <h3 className="text-sm font-medium">全局接口设置</h3>
-        <span className="text-[10px] text-muted-foreground">所有模型默认使用此 Base URL 与 API Key</span>
+        <span className="text-[10px] text-muted-foreground">
+          所有模型默认使用此 Base URL 与 Worker Secret
+        </span>
       </div>
       <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
         <div className="space-y-1">
           <label className="text-[11px] text-muted-foreground">上游总域名 (Base URL)</label>
-          <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.wuyinkeji.com" disabled={loading} />
+          <Input
+            value={baseUrl}
+            onChange={(e) => setBaseUrl(e.target.value)}
+            placeholder="https://api.wuyinkeji.com"
+            disabled={loading}
+          />
         </div>
         <div className="space-y-1">
-          <label className="text-[11px] text-muted-foreground">全局中转 API Key</label>
-          <Input value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-..." type="password" disabled={loading} />
+          <label className="text-[11px] text-muted-foreground">服务端密钥状态</label>
+          <div className="flex h-10 items-center rounded-md border border-border px-3 text-xs text-muted-foreground">
+            {secretStatus === "server_only"
+              ? "已配置（仅服务端使用）"
+              : secretStatus === "worker_secret"
+                ? "已配置（Cloudflare Secret）"
+                : secretStatus === "legacy_d1"
+                  ? "已配置（遗留 D1，待迁移）"
+                  : "未配置"}
+          </div>
         </div>
         <div className="flex items-end">
-          <Button onClick={save} disabled={saving || loading} className="bg-gradient-aurora text-primary-foreground">
-            <Save className="mr-1.5 h-3.5 w-3.5" />保存
+          <Button
+            onClick={save}
+            disabled={saving || loading}
+            className="bg-gradient-aurora text-primary-foreground"
+          >
+            <Save className="mr-1.5 h-3.5 w-3.5" />
+            保存
           </Button>
         </div>
       </div>

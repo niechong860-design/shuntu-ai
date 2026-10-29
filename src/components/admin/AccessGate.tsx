@@ -1,5 +1,12 @@
+import { errorMessage } from "@/lib/error-message";
 import { useEffect, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Lock } from "lucide-react";
@@ -20,7 +27,9 @@ export function AccessGate({
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { if (open) setPw(""); }, [open]);
+  useEffect(() => {
+    if (open) setPw("");
+  }, [open]);
 
   const submit = async () => {
     if (!pw.trim()) return toast.error("请输入访问密码");
@@ -28,8 +37,8 @@ export function AccessGate({
     try {
       await verify({ data: { password: pw } });
       onPass();
-    } catch (e: any) {
-      toast.error(e.message || "验证失败");
+    } catch (e: unknown) {
+      toast.error(errorMessage(e) || "验证失败");
     } finally {
       setBusy(false);
     }
@@ -51,7 +60,9 @@ export function AccessGate({
             placeholder="访问密码（支持中文）"
             value={pw}
             onChange={(e) => setPw(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submit();
+            }}
           />
           <Button className="w-full" onClick={submit} disabled={busy}>
             {busy ? "验证中…" : "进入后台"}

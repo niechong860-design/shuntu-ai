@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { supabase } from "@/integrations/supabase/client";
+import { d1Auth } from "@/lib/d1-auth-client";
 import { useAuth } from "@/hooks/use-auth";
 import { updateCurrentProfile } from "@/lib/profile.functions";
 import { Loader2, Upload, Lock, User as UserIcon } from "lucide-react";
@@ -9,7 +9,13 @@ import { toast } from "sonner";
 import { thumbUrl } from "@/lib/image-url";
 import { uploadImageToR2 } from "@/lib/r2-upload-client";
 
-export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+export function SettingsDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
   const { user, profile, refreshProfile } = useAuth();
   const [tab, setTab] = useState("security");
 
@@ -32,18 +38,22 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
     setSavingPwd(true);
     try {
       // verify current password
-      const { error: signinErr } = await supabase.auth.signInWithPassword({
+      const { error: signinErr } = await d1Auth.auth.signInWithPassword({
         email: user!.email!,
         password: currentPwd,
       });
       if (signinErr) throw new Error("当前密码不正确");
-      const { error } = await supabase.auth.updateUser({ password: newPwd });
+      const { error } = await d1Auth.auth.updateUser({ password: newPwd });
       if (error) throw error;
       toast.success("密码已更新");
-      setCurrentPwd(""); setNewPwd(""); setConfirmPwd("");
+      setCurrentPwd("");
+      setNewPwd("");
+      setConfirmPwd("");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "更新失败");
-    } finally { setSavingPwd(false); }
+    } finally {
+      setSavingPwd(false);
+    }
   };
 
   const uploadAvatar = async (file: File) => {
@@ -56,7 +66,9 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
       toast.success("头像已更新");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "上传失败");
-    } finally { setUploading(false); }
+    } finally {
+      setUploading(false);
+    }
   };
 
   const saveProfile = async () => {
@@ -68,7 +80,9 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
       toast.success("资料已保存");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "保存失败");
-    } finally { setSavingProfile(false); }
+    } finally {
+      setSavingProfile(false);
+    }
   };
 
   const initial = (profile?.display_name || profile?.email || "U")[0].toUpperCase();
@@ -83,15 +97,24 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
 
         <Tabs value={tab} onValueChange={setTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2 bg-white/[0.03]">
-            <TabsTrigger value="security" className="gap-1.5 text-xs"><Lock className="h-3.5 w-3.5" /> 安全设置</TabsTrigger>
-            <TabsTrigger value="profile" className="gap-1.5 text-xs"><UserIcon className="h-3.5 w-3.5" /> 资料修改</TabsTrigger>
+            <TabsTrigger value="security" className="gap-1.5 text-xs">
+              <Lock className="h-3.5 w-3.5" /> 安全设置
+            </TabsTrigger>
+            <TabsTrigger value="profile" className="gap-1.5 text-xs">
+              <UserIcon className="h-3.5 w-3.5" /> 资料修改
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="security" className="mt-5">
             <form onSubmit={updatePassword} className="space-y-3">
               <Input label="当前密码" type="password" value={currentPwd} onChange={setCurrentPwd} />
               <Input label="新密码" type="password" value={newPwd} onChange={setNewPwd} />
-              <Input label="确认新密码" type="password" value={confirmPwd} onChange={setConfirmPwd} />
+              <Input
+                label="确认新密码"
+                type="password"
+                value={confirmPwd}
+                onChange={setConfirmPwd}
+              />
               <button
                 type="submit"
                 disabled={savingPwd}
@@ -109,15 +132,27 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
                 className="group relative h-20 w-20 overflow-hidden rounded-full ring-1 ring-border transition-all hover:ring-primary/60"
               >
                 {avatar ? (
-                  <img src={thumbUrl(avatar, { quality: 75 })} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                  <img
+                    src={thumbUrl(avatar, { quality: 75 })}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    className="h-full w-full object-cover"
+                  />
                 ) : (
                   <>
                     <div className="h-full w-full bg-gradient-to-br from-primary/40 via-accent to-secondary" />
-                    <div className="absolute inset-0 flex items-center justify-center text-2xl font-semibold">{initial}</div>
+                    <div className="absolute inset-0 flex items-center justify-center text-2xl font-semibold">
+                      {initial}
+                    </div>
                   </>
                 )}
                 <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
-                  {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
+                  {uploading ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Upload className="h-5 w-5" />
+                  )}
                 </div>
               </button>
               <input
@@ -134,7 +169,13 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
             </div>
 
             <Input label="昵称" type="text" value={displayName} onChange={setDisplayName} />
-            <Input label="邮箱" type="email" value={user?.email || ""} onChange={() => {}} disabled />
+            <Input
+              label="邮箱"
+              type="email"
+              value={user?.email || ""}
+              onChange={() => {}}
+              disabled
+            />
 
             <button
               onClick={saveProfile}
@@ -150,7 +191,19 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
   );
 }
 
-function Input({ label, type, value, onChange, disabled }: { label: string; type: string; value: string; onChange: (v: string) => void; disabled?: boolean }) {
+function Input({
+  label,
+  type,
+  value,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  type: string;
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-[11px] font-medium text-muted-foreground">{label}</span>

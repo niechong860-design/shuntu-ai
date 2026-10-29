@@ -1,3 +1,4 @@
+import { errorMessage } from "@/lib/error-message";
 import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,17 @@ import {
 import { uploadImageToR2 } from "@/lib/r2-upload-client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
-import { Save, Upload, RefreshCw, ImageIcon, FileText, Palette, Headphones, Plus, Trash2 } from "lucide-react";
+import {
+  Save,
+  Upload,
+  RefreshCw,
+  ImageIcon,
+  FileText,
+  Palette,
+  Headphones,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { thumbUrl } from "@/lib/image-url";
 
 type Tpl = {
@@ -38,7 +49,9 @@ export function StyleTemplatesPanel() {
           <ImageIcon className="h-4 w-4 text-primary" />
           图片预览
         </div>
-        <p className="text-xs text-muted-foreground">历史列表、画布和大图统一使用 480px 预览。原图仅用于下载。</p>
+        <p className="text-xs text-muted-foreground">
+          历史列表、画布和大图统一使用 480px 预览。原图仅用于下载。
+        </p>
       </div>
     </div>
   );
@@ -54,13 +67,17 @@ function ContactInfoCard() {
 
   const load = async () => {
     try {
-      const r: any = await getFn({});
+      const r = await getFn({});
       setWechat(r.wechat ?? "");
       setQq(r.qq ?? "");
-      setUpdatedAt(r.updated_at ?? null);
-    } catch (e: any) { toast.error(e.message); }
+      setUpdatedAt(typeof r.updated_at === "string" ? r.updated_at : null);
+    } catch (e: unknown) {
+      toast.error(errorMessage(e));
+    }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const save = async () => {
     setBusy(true);
@@ -68,8 +85,11 @@ function ContactInfoCard() {
       await setFn({ data: { wechat, qq } });
       toast.success("已保存联系方式");
       load();
-    } catch (e: any) { toast.error(e.message); }
-    finally { setBusy(false); }
+    } catch (e: unknown) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -84,7 +104,11 @@ function ContactInfoCard() {
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">
           <label className="text-[11px] text-muted-foreground">微信 (WX)</label>
-          <Input value={wechat} onChange={(e) => setWechat(e.target.value)} placeholder="例如：shuntu_service" />
+          <Input
+            value={wechat}
+            onChange={(e) => setWechat(e.target.value)}
+            placeholder="例如：shuntu_service"
+          />
         </div>
         <div className="space-y-1">
           <label className="text-[11px] text-muted-foreground">QQ</label>
@@ -97,10 +121,12 @@ function ContactInfoCard() {
         </span>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={load}>
-            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />刷新
+            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+            刷新
           </Button>
           <Button size="sm" onClick={save} disabled={busy}>
-            <Save className="mr-1.5 h-3.5 w-3.5" />保存
+            <Save className="mr-1.5 h-3.5 w-3.5" />
+            保存
           </Button>
         </div>
       </div>
@@ -117,12 +143,16 @@ function SystemPromptCard() {
 
   const load = async () => {
     try {
-      const r: any = await getFn({});
-      setVal(r.system_prompt ?? "");
-      setUpdatedAt(r.updated_at ?? null);
-    } catch (e: any) { toast.error(e.message); }
+      const r = await getFn({});
+      setVal(typeof r.system_prompt === "string" ? r.system_prompt : "");
+      setUpdatedAt(typeof r.updated_at === "string" ? r.updated_at : null);
+    } catch (e: unknown) {
+      toast.error(errorMessage(e));
+    }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const save = async () => {
     setBusy(true);
@@ -130,8 +160,11 @@ function SystemPromptCard() {
       await setFn({ data: { system_prompt: val } });
       toast.success("已保存固定提示词");
       load();
-    } catch (e: any) { toast.error(e.message); }
-    finally { setBusy(false); }
+    } catch (e: unknown) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -141,7 +174,8 @@ function SystemPromptCard() {
         后台固定提示词
       </div>
       <p className="text-xs text-muted-foreground">
-        所有生成请求将自动在用户原始提示词后追加此内容。<strong>不会修改用户的提示词</strong>，仅在请求上游模型时拼接。可用于全局画质增强、负面词或安全约束。
+        所有生成请求将自动在用户原始提示词后追加此内容。<strong>不会修改用户的提示词</strong>
+        ，仅在请求上游模型时拼接。可用于全局画质增强、负面词或安全约束。
       </p>
       <Textarea
         value={val}
@@ -156,10 +190,12 @@ function SystemPromptCard() {
         </span>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={load}>
-            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />刷新
+            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+            刷新
           </Button>
           <Button size="sm" onClick={save} disabled={busy}>
-            <Save className="mr-1.5 h-3.5 w-3.5" />保存
+            <Save className="mr-1.5 h-3.5 w-3.5" />
+            保存
           </Button>
         </div>
       </div>
@@ -177,11 +213,17 @@ function TemplatesGrid() {
 
   const load = async () => {
     setLoading(true);
-    try { setItems((await listFn({})) as Tpl[]); }
-    catch (e: any) { toast.error(e.message); }
-    finally { setLoading(false); }
+    try {
+      setItems((await listFn({})) as Tpl[]);
+    } catch (e: unknown) {
+      toast.error(errorMessage(e));
+    } finally {
+      setLoading(false);
+    }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const create = async () => {
     const name = newName.trim();
@@ -192,8 +234,11 @@ function TemplatesGrid() {
       toast.success(`已新增模板：${name}`);
       setNewName("");
       load();
-    } catch (e: any) { toast.error(e.message); }
-    finally { setCreating(false); }
+    } catch (e: unknown) {
+      toast.error(errorMessage(e));
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
@@ -204,11 +249,13 @@ function TemplatesGrid() {
           风格模板管理
         </div>
         <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-          <RefreshCw className="mr-1.5 h-3.5 w-3.5" />刷新
+          <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+          刷新
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        每个模板可单独修改名称、示例图（9:16）和风格 Prompt。Prompt 仅控制视觉风格（灯光/背景/氛围/色调等），不要写比例或分辨率。
+        每个模板可单独修改名称、示例图（9:16）和风格 Prompt。Prompt
+        仅控制视觉风格（灯光/背景/氛围/色调等），不要写比例或分辨率。
       </p>
       <div className="flex gap-2 rounded-lg border border-dashed border-primary/30 bg-primary/[0.04] p-3">
         <Input
@@ -216,7 +263,9 @@ function TemplatesGrid() {
           onChange={(e) => setNewName(e.target.value)}
           placeholder="新模板名称，例如：赛博朋克"
           className="h-9"
-          onKeyDown={(e) => { if (e.key === "Enter") create(); }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") create();
+          }}
         />
         <Button size="sm" onClick={create} disabled={creating}>
           <Plus className="mr-1.5 h-3.5 w-3.5" />
@@ -253,11 +302,16 @@ function TemplateCard({ tpl, onSaved }: { tpl: Tpl; onSaved: () => void }) {
     if (!name.trim()) return toast.error("模板名称不能为空");
     setBusy(true);
     try {
-      await updateFn({ data: { id: tpl.id, name: name.trim(), image_url: imageUrl || null, prompt } });
+      await updateFn({
+        data: { id: tpl.id, name: name.trim(), image_url: imageUrl || null, prompt },
+      });
       toast.success(`已保存：${name}`);
       onSaved();
-    } catch (e: any) { toast.error(e.message); }
-    finally { setBusy(false); }
+    } catch (e: unknown) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const remove = async () => {
@@ -267,8 +321,11 @@ function TemplateCard({ tpl, onSaved }: { tpl: Tpl; onSaved: () => void }) {
       await deleteFn({ data: { id: tpl.id } });
       toast.success(`已删除：${tpl.name}`);
       onSaved();
-    } catch (e: any) { toast.error(e.message); }
-    finally { setDeleting(false); }
+    } catch (e: unknown) {
+      toast.error(errorMessage(e));
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -284,8 +341,8 @@ function TemplateCard({ tpl, onSaved }: { tpl: Tpl; onSaved: () => void }) {
       const { url } = await uploadImageToR2(f, "style-template-image");
       setImageUrl(url);
       toast.success("图片已上传，记得点保存");
-    } catch (err: any) {
-      toast.error(err.message ?? "上传失败");
+    } catch (err: unknown) {
+      toast.error(errorMessage(err) ?? "上传失败");
     } finally {
       setUploading(false);
     }
@@ -300,13 +357,21 @@ function TemplateCard({ tpl, onSaved }: { tpl: Tpl; onSaved: () => void }) {
           placeholder="模板名称"
           className="h-8 text-sm font-medium"
         />
-        <span className="font-mono text-[10px] text-muted-foreground shrink-0">{tpl.id.slice(0, 12)}</span>
+        <span className="font-mono text-[10px] text-muted-foreground shrink-0">
+          {tpl.id.slice(0, 12)}
+        </span>
       </div>
 
       <div className="flex gap-3">
         <div className="relative aspect-[9/16] w-[90px] shrink-0 overflow-hidden rounded-lg border border-border bg-black/30">
           {imageUrl ? (
-            <img src={thumbUrl(imageUrl, { quality: 65 })} alt={tpl.name} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+            <img
+              src={thumbUrl(imageUrl, { quality: 65 })}
+              alt={tpl.name}
+              loading="lazy"
+              decoding="async"
+              className="h-full w-full object-cover"
+            />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-muted-foreground">
               <ImageIcon className="h-5 w-5" strokeWidth={1.5} />
@@ -321,9 +386,17 @@ function TemplateCard({ tpl, onSaved }: { tpl: Tpl; onSaved: () => void }) {
             placeholder="图片 URL"
             className="h-8 font-mono text-[11px]"
           />
-          <input type="file" accept="image/*" ref={fileRef} className="hidden" onChange={onPickFile} />
+          <input
+            type="file"
+            accept="image/*"
+            ref={fileRef}
+            className="hidden"
+            onChange={onPickFile}
+          />
           <Button
-            variant="outline" size="sm" disabled={uploading}
+            variant="outline"
+            size="sm"
+            disabled={uploading}
             onClick={() => fileRef.current?.click()}
             className="w-full"
           >
@@ -343,10 +416,16 @@ function TemplateCard({ tpl, onSaved }: { tpl: Tpl; onSaved: () => void }) {
 
       <div className="flex gap-2">
         <Button size="sm" className="flex-1" onClick={save} disabled={busy || !dirty}>
-          <Save className="mr-1.5 h-3.5 w-3.5" />保存
+          <Save className="mr-1.5 h-3.5 w-3.5" />
+          保存
         </Button>
-        <Button size="sm" variant="outline" onClick={remove} disabled={deleting}
-          className="text-destructive hover:bg-destructive/10 hover:text-destructive">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={remove}
+          disabled={deleting}
+          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+        >
           <Trash2 className="h-3.5 w-3.5" />
         </Button>
       </div>

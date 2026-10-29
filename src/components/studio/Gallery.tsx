@@ -17,12 +17,54 @@ type Item = {
 };
 
 const ITEMS: Item[] = [
-  { id: "1", src: img1, ratio: "1/1", prompt: "Surreal aurora over dark mountains, ethereal mist, cinematic dreamscape", model: "Flux Pro Ultra", time: "2m ago" },
-  { id: "2", src: img2, ratio: "3/4", prompt: "Cyberpunk portrait with holographic green visor, moody neon lighting", model: "GPT Image 2", time: "6m ago" },
-  { id: "3", src: img3, ratio: "16/9", prompt: "Brutalist concrete architecture under stormy sky, ultra wide cinematic", model: "Nano Banana", time: "14m ago" },
-  { id: "4", src: img4, ratio: "1/1", prompt: "Abstract liquid metal sculpture, iridescent green chrome, studio lighting", model: "Flux Pro Ultra", time: "1h ago" },
-  { id: "5", src: img5, ratio: "3/4", prompt: "Macro bioluminescent jellyfish in deep dark ocean, emerald light", model: "GPT Image 2", time: "2h ago" },
-  { id: "6", src: img6, ratio: "1/1", prompt: "Vintage analog synthesizer close up, knobs and cables, dark photography", model: "SD 3.5 Turbo", time: "3h ago" },
+  {
+    id: "1",
+    src: img1,
+    ratio: "1/1",
+    prompt: "Surreal aurora over dark mountains, ethereal mist, cinematic dreamscape",
+    model: "Flux Pro Ultra",
+    time: "2m ago",
+  },
+  {
+    id: "2",
+    src: img2,
+    ratio: "3/4",
+    prompt: "Cyberpunk portrait with holographic green visor, moody neon lighting",
+    model: "GPT Image 2",
+    time: "6m ago",
+  },
+  {
+    id: "3",
+    src: img3,
+    ratio: "16/9",
+    prompt: "Brutalist concrete architecture under stormy sky, ultra wide cinematic",
+    model: "Nano Banana",
+    time: "14m ago",
+  },
+  {
+    id: "4",
+    src: img4,
+    ratio: "1/1",
+    prompt: "Abstract liquid metal sculpture, iridescent green chrome, studio lighting",
+    model: "Flux Pro Ultra",
+    time: "1h ago",
+  },
+  {
+    id: "5",
+    src: img5,
+    ratio: "3/4",
+    prompt: "Macro bioluminescent jellyfish in deep dark ocean, emerald light",
+    model: "GPT Image 2",
+    time: "2h ago",
+  },
+  {
+    id: "6",
+    src: img6,
+    ratio: "1/1",
+    prompt: "Vintage analog synthesizer close up, knobs and cables, dark photography",
+    model: "SD 3.5 Turbo",
+    time: "3h ago",
+  },
 ];
 
 const TABS = ["Recent", "Liked", "Upscaled", "Drafts"];
@@ -61,7 +103,10 @@ export function Gallery() {
       {/* Generating hero */}
       <div className="px-7 pt-6">
         <div className="glass-elevated relative overflow-hidden rounded-2xl p-5">
-          <div className="absolute inset-0 -z-10 opacity-60" style={{ background: "var(--gradient-glow)" }} />
+          <div
+            className="absolute inset-0 -z-10 opacity-60"
+            style={{ background: "var(--gradient-glow)" }}
+          />
           <div className="flex items-center gap-4">
             <div className="relative flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-aurora shadow-glow">
               <Sparkles className="h-5 w-5 animate-pulse text-primary-foreground" />
@@ -109,10 +154,18 @@ export function Gallery() {
                 {item.prompt}
               </p>
               <div className="mt-2 flex items-center gap-1.5">
-                <QuickAction label="Open"><Maximize2 className="h-3 w-3" /></QuickAction>
-                <QuickAction label="Copy"><Copy className="h-3 w-3" /></QuickAction>
-                <QuickAction label="Save"><Download className="h-3 w-3" /></QuickAction>
-                <span className="ml-auto font-mono text-[10px] text-foreground/60">{item.time}</span>
+                <QuickAction label="Open">
+                  <Maximize2 className="h-3 w-3" />
+                </QuickAction>
+                <QuickAction label="Copy">
+                  <Copy className="h-3 w-3" />
+                </QuickAction>
+                <QuickAction label="Save">
+                  <Download className="h-3 w-3" />
+                </QuickAction>
+                <span className="ml-auto font-mono text-[10px] text-foreground/60">
+                  {item.time}
+                </span>
               </div>
             </div>
           </button>
@@ -151,7 +204,10 @@ function Lightbox({ item, onClose }: { item: Item; onClose: () => void }) {
             <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-primary">
               {item.model}
             </span>
-            <button onClick={onClose} className="rounded-md p-1.5 text-muted-foreground hover:bg-white/5 hover:text-foreground">
+            <button
+              onClick={onClose}
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-white/5 hover:text-foreground"
+            >
               <X className="h-4 w-4" />
             </button>
           </div>

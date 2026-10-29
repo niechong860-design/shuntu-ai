@@ -1,15 +1,35 @@
+import { errorMessage } from "@/lib/error-message";
 import { useEffect, useRef, useState } from "react";
 import {
-  Wand2, Eraser, Sparkles, Plus, X, Dices, Zap,
-  ChevronDown, Square, RectangleHorizontal, RectangleVertical, Monitor,
-  Check, ImageIcon, Crown, Flame, Star,
+  Wand2,
+  Eraser,
+  Sparkles,
+  Plus,
+  X,
+  Dices,
+  Zap,
+  ChevronDown,
+  Square,
+  RectangleHorizontal,
+  RectangleVertical,
+  Monitor,
+  Check,
+  ImageIcon,
+  Crown,
+  Flame,
+  Star,
   Loader2,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { useServerFn } from "@tanstack/react-start";
-import { listModelsConfig, generateImage, checkImageStatus, generateRandomPrompt } from "@/lib/admin.functions";
+import {
+  listModelsConfig,
+  generateImage,
+  checkImageStatus,
+  generateRandomPrompt,
+} from "@/lib/admin.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { uploadImageToR2 } from "@/lib/r2-upload-client";
 import { consumeStudioPrefill } from "@/lib/studio-prefill";
@@ -20,7 +40,11 @@ import { STYLE_TEMPLATES, applyStyleSuffix, type StyleTemplate } from "@/lib/sty
 import { toast } from "sonner";
 
 type ModelCfg = {
-  id: string; model_key: string; name: string; description: string | null; cost: number;
+  id: string;
+  model_key: string;
+  name: string;
+  description: string | null;
+  cost: number;
   sort_order?: number | null;
   extra_params?: Record<string, unknown> | null;
 };
@@ -53,14 +77,26 @@ export type GenProgress = {
   renderBudget?: number;
 };
 
-const ACTIVE_GEN_KEY = "lovable-active-gen-v1";
+const ACTIVE_GEN_KEY = "shuntu-active-gen-v1";
 
 type ModelBadge = { label: string; icon: typeof Crown; className: string };
 
 const MODEL_BADGES: Record<string, ModelBadge> = {
-  nanobanana_pro: { label: "最强", icon: Crown, className: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
-  "gpt-image-2": { label: "最火", icon: Flame, className: "bg-rose-500/15 text-rose-400 border-rose-500/30" },
-  nanobanana2: { label: "推荐", icon: Star, className: "bg-primary/15 text-primary border-primary/30" },
+  nanobanana_pro: {
+    label: "最强",
+    icon: Crown,
+    className: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+  },
+  "gpt-image-2": {
+    label: "最火",
+    icon: Flame,
+    className: "bg-rose-500/15 text-rose-400 border-rose-500/30",
+  },
+  nanobanana2: {
+    label: "推荐",
+    icon: Star,
+    className: "bg-primary/15 text-primary border-primary/30",
+  },
 };
 
 const BADGE_COLOR_CLASSES: Record<string, string> = {
@@ -148,15 +184,27 @@ function loadActive(userId: string): ActiveGen | null {
   }
 }
 function saveActive(v: ActiveGen) {
-  try { localStorage.setItem(ACTIVE_GEN_KEY, JSON.stringify(v)); } catch {}
+  try {
+    localStorage.setItem(ACTIVE_GEN_KEY, JSON.stringify(v));
+  } catch {
+    console.warn("Generation resume storage is unavailable");
+  }
 }
 function clearActive() {
-  try { localStorage.removeItem(ACTIVE_GEN_KEY); } catch {}
+  try {
+    localStorage.removeItem(ACTIVE_GEN_KEY);
+  } catch {
+    console.warn("Generation resume storage is unavailable");
+  }
 }
 
-
 type Props = {
- onGenerateStart: (info: { prompt: string; modelName: string; modelKey?: string; inputParams?: Record<string, unknown> }) => void;
+  onGenerateStart: (info: {
+    prompt: string;
+    modelName: string;
+    modelKey?: string;
+    inputParams?: Record<string, unknown>;
+  }) => void;
   onGenerateDone: (imageUrl: string | null, historyId?: string | null) => void;
   generatedImageUrl?: string | null;
   generatedHistoryId?: string | null;
@@ -240,19 +288,21 @@ export function ControlPanel({
 
   useEffect(() => {
     if (!session) return;
-    fetchModels({}).then((data) => {
-      const list = (data ?? []) as ModelCfg[];
-      const configuredDefault = pickDefaultModel(list);
-      const orderedList = putDefaultModelFirst(list, configuredDefault);
-      const initialModel = configuredDefault ?? list[0];
-      setModels(orderedList);
-      if (initialModel) {
-        setModelKey((current) => {
-          const currentStillEnabled = current && list.some((m) => m.model_key === current);
-          return currentStillEnabled ? current : initialModel.model_key;
-        });
-      }
-    }).catch(() => {});
+    fetchModels({})
+      .then((data) => {
+        const list = (data ?? []) as ModelCfg[];
+        const configuredDefault = pickDefaultModel(list);
+        const orderedList = putDefaultModelFirst(list, configuredDefault);
+        const initialModel = configuredDefault ?? list[0];
+        setModels(orderedList);
+        if (initialModel) {
+          setModelKey((current) => {
+            const currentStillEnabled = current && list.some((m) => m.model_key === current);
+            return currentStillEnabled ? current : initialModel.model_key;
+          });
+        }
+      })
+      .catch(() => {});
   }, [session]);
 
   // Apply a one-shot prefill payload coming from the inspiration plaza ("一键复用")
@@ -277,7 +327,9 @@ export function ControlPanel({
     const next = updater(refsRef.current);
     refsRef.current = next;
     setRefs(next);
-    setPreviewItem((current) => current ? next.find((item) => item.id === current.id) ?? null : null);
+    setPreviewItem((current) =>
+      current ? (next.find((item) => item.id === current.id) ?? null) : null,
+    );
   };
 
   const replaceReferenceItems = (next: ReferenceImageItem[]) => {
@@ -286,7 +338,9 @@ export function ControlPanel({
     }
     refsRef.current = next;
     setRefs(next);
-    setPreviewItem((current) => current && next.some((item) => item.id === current.id) ? current : null);
+    setPreviewItem((current) =>
+      current && next.some((item) => item.id === current.id) ? current : null,
+    );
   };
 
   const clearReferenceItems = () => replaceReferenceItems([]);
@@ -295,28 +349,40 @@ export function ControlPanel({
     refsRef.current = refs;
   }, [refs]);
 
-  useEffect(() => () => {
-    for (const item of refsRef.current) revokeReferencePreview(item);
-  }, []);
+  useEffect(
+    () => () => {
+      for (const item of refsRef.current) revokeReferencePreview(item);
+    },
+    [],
+  );
 
-  const applyPrefill = (prefill: { prompt: string; modelKey?: string; inputParams?: Record<string, unknown> }) => {
+  const applyPrefill = (prefill: {
+    prompt: string;
+    modelKey?: string;
+    inputParams?: Record<string, unknown>;
+  }) => {
     setPrompt(prefill.prompt);
     if (prefill.modelKey) setModelKey(prefill.modelKey);
     const inputParams = prefill.inputParams ?? {};
-    const aspectRatio = typeof inputParams.aspectRatio === "string" ? inputParams.aspectRatio : null;
+    const aspectRatio =
+      typeof inputParams.aspectRatio === "string" ? inputParams.aspectRatio : null;
     const nextSize = typeof inputParams.size === "string" ? inputParams.size : null;
     const referenceImages = Array.isArray(inputParams.referenceImages)
-      ? inputParams.referenceImages.filter((url): url is string => typeof url === "string").slice(0, MAX_REFERENCE_IMAGES)
+      ? inputParams.referenceImages
+          .filter((url): url is string => typeof url === "string")
+          .slice(0, MAX_REFERENCE_IMAGES)
       : [];
     if (aspectRatio && RATIOS.some((item) => item.id === aspectRatio)) setRatio(aspectRatio);
     if (nextSize === "1K" || nextSize === "2K" || nextSize === "4K") setSize(nextSize);
-    replaceReferenceItems(referenceImages.map((url) => ({
-      id: createReferenceImageId(),
-      sourceUrl: url,
-      previewUrl: url,
-      status: "ready" as const,
-      ownsPreviewUrl: false,
-    })));
+    replaceReferenceItems(
+      referenceImages.map((url) => ({
+        id: createReferenceImageId(),
+        sourceUrl: url,
+        previewUrl: url,
+        status: "ready" as const,
+        ownsPreviewUrl: false,
+      })),
+    );
     setStyleId("");
     setInspirationMode(false);
   };
@@ -337,7 +403,6 @@ export function ControlPanel({
     clearReferenceItems();
   }, [referenceResetToken]);
 
-
   const activeModel = models.find((m) => m.model_key === modelKey);
   const activeBadge = getModelBadge(activeModel);
   const activeRatio = RATIOS.find((r) => r.id === ratio)!;
@@ -347,7 +412,9 @@ export function ControlPanel({
   const TEXT_ONLY_MODELS = new Set(["wan26"]);
   const isTextOnly = activeModel ? TEXT_ONLY_MODELS.has(activeModel.model_key) : false;
   const uploadedHttpRefs = refs
-    .filter((item) => item.status === "ready" && !!item.sourceUrl && /^https?:\/\//i.test(item.sourceUrl))
+    .filter(
+      (item) => item.status === "ready" && !!item.sourceUrl && /^https?:\/\//i.test(item.sourceUrl),
+    )
     .map((item) => item.sourceUrl!);
   // 切换到仅文生图模型时，自动清空已有参考图，避免残留
   useEffect(() => {
@@ -364,7 +431,10 @@ export function ControlPanel({
         throw new Error("参考图压缩后仍超过 128KB");
       }
       if (processed.previewUrl !== item.previewUrl) URL.revokeObjectURL(processed.previewUrl);
-      const { url } = await uploadImageToR2(new File([processed.blob], `reference.${processed.ext}`, { type: processed.contentType }), "reference-image");
+      const { url } = await uploadImageToR2(
+        new File([processed.blob], `reference.${processed.ext}`, { type: processed.contentType }),
+        "reference-image",
+      );
       console.log(
         `[ref upload] ${(processed.originalSize / 1024).toFixed(0)}KB → ${(processed.processedSize / 1024).toFixed(0)}KB →`,
         url,
@@ -376,9 +446,17 @@ export function ControlPanel({
           return items;
         }
         revokeReferencePreview(existing);
-        return items.map((candidate) => candidate.id === item.id
-          ? { ...candidate, sourceUrl: url, previewUrl: url, status: "ready", ownsPreviewUrl: false }
-          : candidate);
+        return items.map((candidate) =>
+          candidate.id === item.id
+            ? {
+                ...candidate,
+                sourceUrl: url,
+                previewUrl: url,
+                status: "ready",
+                ownsPreviewUrl: false,
+              }
+            : candidate,
+        );
       });
     } catch (err) {
       console.error("[ref upload] failed", err);
@@ -389,9 +467,9 @@ export function ControlPanel({
           revokeReferencePreview(item);
           return items;
         }
-        return items.map((candidate) => candidate.id === item.id
-          ? { ...candidate, sourceUrl: null, status: "error" }
-          : candidate);
+        return items.map((candidate) =>
+          candidate.id === item.id ? { ...candidate, sourceUrl: null, status: "error" } : candidate,
+        );
       });
     }
   };
@@ -461,7 +539,13 @@ export function ControlPanel({
     const url = generatedImageUrl;
     const generatedDragToken = generatedImageDragToken;
     if (!url || !generatedDragToken) return;
-    if (refsRef.current.some((item) => item.generatedDragToken === generatedDragToken || (item.status === "ready" && item.sourceUrl === url))) {
+    if (
+      refsRef.current.some(
+        (item) =>
+          item.generatedDragToken === generatedDragToken ||
+          (item.status === "ready" && item.sourceUrl === url),
+      )
+    ) {
       toast.message("该生成图片已添加");
       return;
     }
@@ -481,14 +565,17 @@ export function ControlPanel({
       }
       pendingGeneratedReferenceTokensRef.current.add(generatedDragToken);
       try {
-        updateReferenceItems((items) => [...items, {
-          id,
-          sourceUrl: url,
-          previewUrl: url,
-          status: "ready",
-          ownsPreviewUrl: false,
-          generatedDragToken,
-        }]);
+        updateReferenceItems((items) => [
+          ...items,
+          {
+            id,
+            sourceUrl: url,
+            previewUrl: url,
+            status: "ready",
+            ownsPreviewUrl: false,
+            generatedDragToken,
+          },
+        ]);
       } catch {
         toast.error("生成图片预览读取失败，无法添加为参考图");
       } finally {
@@ -550,14 +637,20 @@ export function ControlPanel({
     let transientRetries = 0;
     let attempt = 0;
     onProgress?.({
-      stage: "queued", attempt: 0, elapsedSec: elapsed(), taskId,
-      initialPos, renderBudget,
+      stage: "queued",
+      attempt: 0,
+      elapsedSec: elapsed(),
+      taskId,
+      initialPos,
+      renderBudget,
       message: "已进入队列，等待算力分配…",
     });
-    // eslint-disable-next-line no-constant-condition
+
     while (true) {
       if (Date.now() - tStart > MAX_DURATION_MS) {
-        toast.error(`AI 生成任务超时，请检查网络或稍后重新提交（任务 ID: ${taskId}）`, { duration: 8000 });
+        toast.error(`AI 生成任务超时，请检查网络或稍后重新提交（任务 ID: ${taskId}）`, {
+          duration: 8000,
+        });
         clearActive();
         onProgress?.(null);
         onGenerateDone(null);
@@ -566,7 +659,9 @@ export function ControlPanel({
       await new Promise((res) => setTimeout(res, POLL_INTERVAL));
       attempt += 1;
       try {
-        const s = await checkStatus({ data: { taskId, modelName, modelKey: args.modelKey, prompt: args.prompt } });
+        const s = await checkStatus({
+          data: { taskId, modelName, modelKey: args.modelKey, prompt: args.prompt },
+        });
         if (s.status === "success" && s.imageUrl) {
           clearActive();
           onProgress?.(null);
@@ -575,11 +670,24 @@ export function ControlPanel({
           return;
         }
         if (s.status === "failed") {
-          console.warn("[checkImageStatus failed]", { taskId, reason: (s as any).reason, message: s.message });
-          if ((s as any).reason === "ref_url") {
-            toast.error(`参考图读取失败，请检查链接是否为公开的 HTTPS 链接${s.message ? ` · ${s.message}` : ""}`, { duration: 8000 });
-          } else if ((s as any).reason === "rejected" || (s as any).taskStatus === 3) {
-            toast.error(`生成任务失败（任务被拒绝或涉及合规限制，请尝试更换提示词）${s.message ? ` · ${s.message}` : ""}`, { duration: 8000 });
+          console.warn("[checkImageStatus failed]", {
+            taskId,
+            reason: "reason" in s ? s.reason : undefined,
+            message: s.message,
+          });
+          if (("reason" in s ? s.reason : undefined) === "ref_url") {
+            toast.error(
+              `参考图读取失败，请检查链接是否为公开的 HTTPS 链接${s.message ? ` · ${s.message}` : ""}`,
+              { duration: 8000 },
+            );
+          } else if (
+            ("reason" in s ? s.reason : undefined) === "rejected" ||
+            ("taskStatus" in s ? s.taskStatus : undefined) === 3
+          ) {
+            toast.error(
+              `生成任务失败（任务被拒绝或涉及合规限制，请尝试更换提示词）${s.message ? ` · ${s.message}` : ""}`,
+              { duration: 8000 },
+            );
           } else {
             toast.error(`生成失败：${s.message ?? "上游服务异常，请稍后重试"}`, { duration: 6000 });
           }
@@ -590,33 +698,43 @@ export function ControlPanel({
         }
         transientRetries = 0;
         onProgress?.({
-          stage: "rendering", attempt, elapsedSec: elapsed(), taskId,
-          initialPos, renderBudget,
+          stage: "rendering",
+          attempt,
+          elapsedSec: elapsed(),
+          taskId,
+          initialPos,
+          renderBudget,
           message: "AI 正在渲染图像，请稍候…",
         });
-      } catch (pollErr: any) {
-        const msg = pollErr?.message ?? "";
+      } catch (pollErr: unknown) {
+        const msg = errorMessage(pollErr) ?? "";
         console.warn("[checkImageStatus network error]", pollErr);
         const isTransient = /network|fetch|timeout|500|502|503|504/i.test(msg) || !msg;
         if (isTransient && transientRetries < MAX_TRANSIENT_RETRIES) {
           transientRetries += 1;
           onProgress?.({
-            stage: "polling", attempt, elapsedSec: elapsed(), taskId,
-            initialPos, renderBudget,
+            stage: "polling",
+            attempt,
+            elapsedSec: elapsed(),
+            taskId,
+            initialPos,
+            renderBudget,
             message: `网络抖动，自动重试 (${transientRetries}/${MAX_TRANSIENT_RETRIES})…`,
           });
           continue;
         }
         let m = "生成失败，请稍后再试";
         try {
-          const raw = pollErr?.message ?? pollErr?.error ?? pollErr?.toString?.() ?? "";
+          const raw = errorMessage(pollErr) ?? errorMessage(pollErr) ?? pollErr?.toString?.() ?? "";
           const text = typeof raw === "string" ? raw : JSON.stringify(raw);
           const jsonMatch = text.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
             const parsed = JSON.parse(jsonMatch[0]);
             m = parsed?.message || parsed?.error || parsed?.msg || text;
           } else if (text) m = text;
-        } catch {}
+        } catch {
+          m = "生成失败，请稍后再试";
+        }
         toast.error(m, { duration: 6000 });
         clearActive();
         onProgress?.(null);
@@ -690,7 +808,9 @@ export function ControlPanel({
       const finalPrompt = applyStyleSuffix(prompt, effectiveStyleId);
       const safety = checkPromptSafety(`${prompt}\n${finalPrompt}`);
       if (!safety.allowed) {
-        console.warn("[generation-task] prompt blocked by safety filter", { category: safety.category });
+        console.warn("[generation-task] prompt blocked by safety filter", {
+          category: safety.category,
+        });
         toast.error(SAFETY_BLOCK_MESSAGE);
         return;
       }
@@ -766,8 +886,11 @@ export function ControlPanel({
     const initialPos = 18 + Math.floor(Math.random() * 25);
     const renderBudget = 12 + Math.floor(Math.random() * 10);
     onProgress?.({
-      stage: "submitting", attempt: 0, elapsedSec: 0,
-      initialPos, renderBudget,
+      stage: "submitting",
+      attempt: 0,
+      elapsedSec: 0,
+      initialPos,
+      renderBudget,
       message: "正在提交任务到生成队列…",
     });
     try {
@@ -820,10 +943,10 @@ export function ControlPanel({
         initialPos,
         renderBudget,
       });
-    } catch (e: any) {
+    } catch (e: unknown) {
       let msg = "生成失败，请稍后再试";
       try {
-        const raw = e?.message ?? e?.error ?? e?.toString?.() ?? "";
+        const raw = errorMessage(e) ?? errorMessage(e) ?? e?.toString?.() ?? "";
         const text = typeof raw === "string" ? raw : JSON.stringify(raw);
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
@@ -833,7 +956,7 @@ export function ControlPanel({
           msg = text;
         }
       } catch {
-        msg = String(e?.message ?? e ?? "生成失败");
+        msg = String(errorMessage(e) ?? e ?? "生成失败");
       }
       toast.error(msg, { duration: 6000 });
       clearActive();
@@ -858,7 +981,11 @@ export function ControlPanel({
             onDragOver={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              event.dataTransfer.dropEffect = event.dataTransfer.types.includes(GENERATED_IMAGE_DRAG_MIME) || event.dataTransfer.types.includes("Files") ? "copy" : "move";
+              event.dataTransfer.dropEffect =
+                event.dataTransfer.types.includes(GENERATED_IMAGE_DRAG_MIME) ||
+                event.dataTransfer.types.includes("Files")
+                  ? "copy"
+                  : "move";
             }}
             onDragLeave={(event) => {
               event.preventDefault();
@@ -906,7 +1033,9 @@ export function ControlPanel({
                     if (!event.dataTransfer.types.includes(REFERENCE_REORDER_DRAG_MIME)) return;
                     event.preventDefault();
                     event.stopPropagation();
-                    const sourceId = event.dataTransfer.getData(REFERENCE_REORDER_DRAG_MIME) || draggedReferenceIdRef.current;
+                    const sourceId =
+                      event.dataTransfer.getData(REFERENCE_REORDER_DRAG_MIME) ||
+                      draggedReferenceIdRef.current;
                     if (sourceId) reorderReferences(sourceId, item.id);
                     draggedReferenceIdRef.current = null;
                     dragDepthRef.current = 0;
@@ -920,7 +1049,12 @@ export function ControlPanel({
                     onClick={() => setPreviewItem(item)}
                     aria-label="查看参考图大图"
                   >
-                    <img src={item.previewUrl} alt="参考图" draggable={false} className="h-full w-full object-cover" />
+                    <img
+                      src={item.previewUrl}
+                      alt="参考图"
+                      draggable={false}
+                      className="h-full w-full object-cover"
+                    />
                   </button>
                   {item.status === "uploading" && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/45 text-white">
@@ -934,7 +1068,10 @@ export function ControlPanel({
                   )}
                   <button
                     type="button"
-                    onClick={(event) => { event.stopPropagation(); removeRef(item.id); }}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      removeRef(item.id);
+                    }}
                     className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/75 text-white opacity-0 backdrop-blur transition-opacity group-hover:opacity-100 hover:bg-destructive"
                     aria-label="删除参考图"
                   >
@@ -943,16 +1080,27 @@ export function ControlPanel({
                 </div>
               ))}
               {refs.length < 5 && (
-                <label className={`group flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"} rounded-xl border border-dashed border-primary/30 bg-primary/[0.04] transition-all hover:border-primary/60 hover:bg-primary/[0.08]`}>
+                <label
+                  className={`group flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 ${uploadingRef ? "cursor-wait opacity-60" : "cursor-pointer"} rounded-xl border border-dashed border-primary/30 bg-primary/[0.04] transition-all hover:border-primary/60 hover:bg-primary/[0.08]`}
+                >
                   {uploadingRef ? (
                     <span className="text-[11px] text-muted-foreground">上传中…</span>
                   ) : (
                     <>
-                      <Plus className="h-6 w-6 text-primary/70 transition-colors group-hover:text-primary" strokeWidth={1.75} />
+                      <Plus
+                        className="h-6 w-6 text-primary/70 transition-colors group-hover:text-primary"
+                        strokeWidth={1.75}
+                      />
                       <span className="text-[10px] text-muted-foreground/80">上传参考图</span>
                     </>
                   )}
-                  <input type="file" accept="image/*" multiple className="hidden" onChange={addRef} />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={addRef}
+                  />
                 </label>
               )}
             </div>
@@ -961,9 +1109,9 @@ export function ControlPanel({
 
         {/* 提示词 — frosted glass 卡片 */}
         <section className="px-4 pt-3 pb-2">
-        <div className="relative">
-          <div className="pointer-events-none absolute -inset-px rounded-2xl bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-50" />
-          <div className="relative rounded-2xl border border-white/[0.04] bg-gradient-to-b from-white/[0.02] to-transparent shadow-inner backdrop-blur-xl">
+          <div className="relative">
+            <div className="pointer-events-none absolute -inset-px rounded-2xl bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-50" />
+            <div className="relative rounded-2xl border border-white/[0.04] bg-gradient-to-b from-white/[0.02] to-transparent shadow-inner backdrop-blur-xl">
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
@@ -978,22 +1126,32 @@ export function ControlPanel({
                       <button className="flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/[0.05] px-2.5 py-1.5 text-[11px] font-medium transition-colors hover:border-primary/45 hover:bg-primary/[0.1]">
                         <Sparkles className="h-3 w-3 text-primary" />
                         {activeModel?.name ?? "选择模型"}
-                        {activeBadge && (() => {
-                          const Ic = activeBadge.icon;
-                          return (
-                            <span className={`inline-flex items-center gap-0.5 rounded border px-1 py-px text-[9px] font-medium ${activeBadge.className}`}>
-                              <Ic className="h-2.5 w-2.5" fill="currentColor" />
-                              {activeBadge.label}
-                            </span>
-                          );
-                        })()}
+                        {activeBadge &&
+                          (() => {
+                            const Ic = activeBadge.icon;
+                            return (
+                              <span
+                                className={`inline-flex items-center gap-0.5 rounded border px-1 py-px text-[9px] font-medium ${activeBadge.className}`}
+                              >
+                                <Ic className="h-2.5 w-2.5" fill="currentColor" />
+                                {activeBadge.label}
+                              </span>
+                            );
+                          })()}
                         <ChevronDown className="h-3 w-3 text-muted-foreground" />
                       </button>
                     </PopoverTrigger>
-                    <PopoverContent align="start" className="w-72 border-border bg-popover/95 p-1.5 backdrop-blur-xl">
-                      <div className="px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">选择模型</div>
+                    <PopoverContent
+                      align="start"
+                      className="w-72 border-border bg-popover/95 p-1.5 backdrop-blur-xl"
+                    >
+                      <div className="px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                        选择模型
+                      </div>
                       {models.length === 0 && (
-                        <div className="px-2 py-3 text-center text-[11px] text-muted-foreground">加载中…</div>
+                        <div className="px-2 py-3 text-center text-[11px] text-muted-foreground">
+                          加载中…
+                        </div>
                       )}
                       {models.map((m) => {
                         const active = m.model_key === modelKey;
@@ -1002,25 +1160,40 @@ export function ControlPanel({
                         return (
                           <button
                             key={m.id}
-                            onClick={() => { setModelKey(m.model_key); setModelOpen(false); }}
+                            onClick={() => {
+                              setModelKey(m.model_key);
+                              setModelOpen(false);
+                            }}
                             className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors ${active ? "bg-primary/10" : "hover:bg-white/5"}`}
                           >
-                            <div className={`flex h-7 w-7 items-center justify-center rounded-md ${active ? "bg-gradient-aurora text-primary-foreground" : "bg-white/5 text-muted-foreground"}`}>
+                            <div
+                              className={`flex h-7 w-7 items-center justify-center rounded-md ${active ? "bg-gradient-aurora text-primary-foreground" : "bg-white/5 text-muted-foreground"}`}
+                            >
                               <Sparkles className="h-3.5 w-3.5" />
                             </div>
                             <div className="flex-1">
                               <div className="flex items-center gap-1.5">
-                                <span className={`text-xs font-medium ${active ? "text-primary" : ""}`}>{m.name}</span>
+                                <span
+                                  className={`text-xs font-medium ${active ? "text-primary" : ""}`}
+                                >
+                                  {m.name}
+                                </span>
                                 {badge && BadgeIcon && (
-                                  <span className={`inline-flex items-center gap-0.5 rounded border px-1 py-px text-[9px] font-medium ${badge.className}`}>
+                                  <span
+                                    className={`inline-flex items-center gap-0.5 rounded border px-1 py-px text-[9px] font-medium ${badge.className}`}
+                                  >
                                     <BadgeIcon className="h-2.5 w-2.5" fill="currentColor" />
                                     {badge.label}
                                   </span>
                                 )}
-                                <span className="ml-auto rounded bg-white/5 px-1.5 py-px font-mono text-[9px] text-primary">{Number(m.cost)} 点</span>
+                                <span className="ml-auto rounded bg-white/5 px-1.5 py-px font-mono text-[9px] text-primary">
+                                  {Number(m.cost)} 点
+                                </span>
                               </div>
                               {m.description && (
-                                <div className="text-[10px] font-light text-muted-foreground">{m.description}</div>
+                                <div className="text-[10px] font-light text-muted-foreground">
+                                  {m.description}
+                                </div>
                               )}
                             </div>
                             {active && <Check className="h-3.5 w-3.5 text-primary" />}
@@ -1038,8 +1211,13 @@ export function ControlPanel({
                         <ChevronDown className="h-3 w-3 text-muted-foreground" />
                       </button>
                     </PopoverTrigger>
-                    <PopoverContent align="start" className="w-auto max-w-[360px] border-border bg-popover/95 p-2 backdrop-blur-xl">
-                      <div className="mb-1.5 px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">画面比例</div>
+                    <PopoverContent
+                      align="start"
+                      className="w-auto max-w-[360px] border-border bg-popover/95 p-2 backdrop-blur-xl"
+                    >
+                      <div className="mb-1.5 px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                        画面比例
+                      </div>
                       <div className="grid grid-cols-4 gap-1.5">
                         {RATIOS.map((r) => {
                           const Icon = r.icon;
@@ -1047,7 +1225,10 @@ export function ControlPanel({
                           return (
                             <button
                               key={r.id}
-                              onClick={() => { setRatio(r.id); setRatioOpen(false); }}
+                              onClick={() => {
+                                setRatio(r.id);
+                                setRatioOpen(false);
+                              }}
                               className={`flex flex-col items-center gap-1 rounded-lg border px-2 py-2 transition-all ${active ? "border-primary/50 bg-primary/10 text-primary" : "border-border bg-white/[0.02] text-muted-foreground hover:bg-white/5"}`}
                             >
                               <Icon className="h-3.5 w-3.5" strokeWidth={1.5} />
@@ -1068,15 +1249,23 @@ export function ControlPanel({
                         <ChevronDown className="h-3 w-3 text-muted-foreground" />
                       </button>
                     </PopoverTrigger>
-                    <PopoverContent align="start" className="w-auto border-border bg-popover/95 p-2 backdrop-blur-xl">
-                      <div className="mb-1.5 px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">输出像素</div>
+                    <PopoverContent
+                      align="start"
+                      className="w-auto border-border bg-popover/95 p-2 backdrop-blur-xl"
+                    >
+                      <div className="mb-1.5 px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                        输出像素
+                      </div>
                       <div className="grid grid-cols-3 gap-1.5">
                         {(["1K", "2K", "4K"] as const).map((s) => {
                           const active = size === s;
                           return (
                             <button
                               key={s}
-                              onClick={() => { setSize(s); setSizeOpen(false); }}
+                              onClick={() => {
+                                setSize(s);
+                                setSizeOpen(false);
+                              }}
                               className={`flex flex-col items-center gap-1 rounded-lg border px-3 py-2 transition-all ${active ? "border-primary/50 bg-primary/10 text-primary" : "border-border bg-white/[0.02] text-muted-foreground hover:bg-white/5"}`}
                             >
                               <span className="font-mono text-[11px] font-semibold">{s}</span>
@@ -1084,14 +1273,20 @@ export function ControlPanel({
                           );
                         })}
                       </div>
-                      <div className="mt-2 px-1 text-[9px] font-light text-muted-foreground">像素越高生成越慢，仅部分模型支持</div>
+                      <div className="mt-2 px-1 text-[9px] font-light text-muted-foreground">
+                        像素越高生成越慢，仅部分模型支持
+                      </div>
                     </PopoverContent>
                   </Popover>
                 </div>
 
                 <div className="flex items-center gap-1">
-                  <span className="px-1 font-mono text-[10px] font-light text-muted-foreground">{prompt.length}</span>
-                  <IconBtn onClick={() => setPrompt("")} title="清空"><Eraser className="h-3.5 w-3.5" /></IconBtn>
+                  <span className="px-1 font-mono text-[10px] font-light text-muted-foreground">
+                    {prompt.length}
+                  </span>
+                  <IconBtn onClick={() => setPrompt("")} title="清空">
+                    <Eraser className="h-3.5 w-3.5" />
+                  </IconBtn>
                   <IconBtn
                     title="灵感 · 点击随机生成提示词"
                     disabled={inspiring}
@@ -1100,16 +1295,18 @@ export function ControlPanel({
                       setInspiring(true);
                       setPrompt("");
                       try {
-                        const r: any = await randomPromptFn({});
+                        const r = await randomPromptFn({});
                         if (r?.prompt) setPrompt(r.prompt);
-                      } catch (e: any) {
-                        toast.error(e?.message ?? "灵感生成失败");
+                      } catch (e: unknown) {
+                        toast.error(errorMessage(e) ?? "灵感生成失败");
                       } finally {
                         setInspiring(false);
                       }
                     }}
                   >
-                    <Dices className={`h-3.5 w-3.5 text-primary ${inspiring ? "animate-spin" : ""}`} />
+                    <Dices
+                      className={`h-3.5 w-3.5 text-primary ${inspiring ? "animate-spin" : ""}`}
+                    />
                   </IconBtn>
                 </div>
               </div>
@@ -1117,11 +1314,21 @@ export function ControlPanel({
           </div>
         </section>
       </div>
-      <Dialog open={!!previewItem} onOpenChange={(open) => { if (!open) setPreviewItem(null); }}>
+      <Dialog
+        open={!!previewItem}
+        onOpenChange={(open) => {
+          if (!open) setPreviewItem(null);
+        }}
+      >
         <DialogContent className="max-w-5xl border-border bg-black/90 p-3">
           <DialogTitle className="sr-only">参考图预览</DialogTitle>
           {previewItem && (
-            <img src={previewItem.previewUrl} alt="参考图大图" draggable={false} className="max-h-[82vh] w-full rounded-lg object-contain" />
+            <img
+              src={previewItem.previewUrl}
+              alt="参考图大图"
+              draggable={false}
+              className="max-h-[82vh] w-full rounded-lg object-contain"
+            />
           )}
         </DialogContent>
       </Dialog>
@@ -1145,9 +1352,13 @@ export function ControlPanel({
             </button>
           </div>
         )}
-        <div className={`scrollbar-thin min-h-0 flex-1 overflow-y-auto pb-3 ${inspirationMode ? "pointer-events-none opacity-40" : ""}`}>
+        <div
+          className={`scrollbar-thin min-h-0 flex-1 overflow-y-auto pb-3 ${inspirationMode ? "pointer-events-none opacity-40" : ""}`}
+        >
           {styles.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-xs text-muted-foreground">加载中…</div>
+            <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+              加载中…
+            </div>
           ) : (
             <div className="grid grid-cols-6 gap-2">
               {styles.map((s, idx) => {
@@ -1187,7 +1398,11 @@ export function ControlPanel({
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent px-2 pb-1.5 pt-4">
                       <div className="flex items-center gap-1.5">
                         {active && <div className="h-3 w-1 rounded-full bg-primary" />}
-                        <span className={`text-[11px] font-medium ${active ? "text-white" : "text-white/85"}`}>{s.name}</span>
+                        <span
+                          className={`text-[11px] font-medium ${active ? "text-white" : "text-white/85"}`}
+                        >
+                          {s.name}
+                        </span>
                       </div>
                     </div>
                     {active && (
@@ -1237,15 +1452,15 @@ export function ControlPanel({
                   ? isCreatingQueuedTask
                     ? "加入队列中..."
                     : adminCurrentBatchTaskCount >= 3
-                    ? "任务已满 3/3"
-                    : "加入任务队列"
+                      ? "任务已满 3/3"
+                      : "加入任务队列"
                   : isQueueMode && isCreatingQueuedTask
-                  ? "加入队列中..."
-                  : isQueueMode && adminCurrentBatchTaskCount >= 3
-                  ? "任务已满 3/3"
-                  : isQueueMode && adminCurrentBatchTaskCount > 0
-                  ? "加入任务队列"
-                  : "立即生成"}
+                    ? "加入队列中..."
+                    : isQueueMode && adminCurrentBatchTaskCount >= 3
+                      ? "任务已满 3/3"
+                      : isQueueMode && adminCurrentBatchTaskCount > 0
+                        ? "加入任务队列"
+                        : "立即生成"}
               </>
             )}
           </div>
@@ -1258,8 +1473,6 @@ export function ControlPanel({
   );
 }
 
-
-
 function Label({ children }: { children: React.ReactNode }) {
   return (
     <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
@@ -1269,14 +1482,30 @@ function Label({ children }: { children: React.ReactNode }) {
 }
 function IconBtn({ children, ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
-    <button {...rest} className="rounded-md p-1.5 text-muted-foreground transition-all hover:bg-white/5 hover:text-foreground">
+    <button
+      {...rest}
+      className="rounded-md p-1.5 text-muted-foreground transition-all hover:bg-white/5 hover:text-foreground"
+    >
       {children}
     </button>
   );
 }
-function SliderRow({ label, value, onChange, min, max, step, hint }: {
-  label: string; value: number; onChange: (v: number[]) => void;
-  min: number; max: number; step: number; hint: string;
+function SliderRow({
+  label,
+  value,
+  onChange,
+  min,
+  max,
+  step,
+  hint,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number[]) => void;
+  min: number;
+  max: number;
+  step: number;
+  hint: string;
 }) {
   return (
     <div>

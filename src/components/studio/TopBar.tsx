@@ -5,9 +5,14 @@ import { Link } from "@tanstack/react-router";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { AdBanner } from "./AdBanner";
 
-const RedeemDialog = lazy(() => import("@/components/auth/RedeemDialog").then((m) => ({ default: m.RedeemDialog })));
-const ContactDialog = lazy(() => import("./ContactDialog").then((m) => ({ default: m.ContactDialog })));
-
+const RedeemDialog = lazy(() =>
+  import("@/components/auth/RedeemDialog").then((m) => ({
+    default: m.RedeemDialog,
+  })),
+);
+const ContactDialog = lazy(() =>
+  import("./ContactDialog").then((m) => ({ default: m.ContactDialog })),
+);
 
 type Props = {
   credits: number;
@@ -43,20 +48,13 @@ export function TopBar({ credits, onOpenHistory, onOpenAnnouncements, onSwitchAc
       {/* Right: nav + actions */}
       <div className="hidden md:flex md:items-center md:gap-1 md:pr-3">
         <NavLinkTo to="/">在线生成</NavLinkTo>
-        <a
-          href="https://prompt.shuntu.cc/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-white/[0.05] hover:text-foreground"
-        >
-          灵感广场
-        </a>
         <NavLink onClick={() => setContactOpen(true)}>联系客服</NavLink>
       </div>
 
-
       <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1 md:ml-0 md:flex-none md:gap-2">
-        <IconBtn title="历史记录" onClick={onOpenHistory}><History className="h-4 w-4" /></IconBtn>
+        <IconBtn title="历史记录" onClick={onOpenHistory}>
+          <History className="h-4 w-4" />
+        </IconBtn>
         <IconBtn title="通知公告" onClick={onOpenAnnouncements}>
           <span className="relative">
             <Bell className="h-4 w-4" />
@@ -67,7 +65,9 @@ export function TopBar({ credits, onOpenHistory, onOpenAnnouncements, onSwitchAc
         <div className="mx-0.5 h-6 w-px shrink-0 bg-border md:mx-1" />
         <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-white/[0.03] px-2 py-1.5 md:gap-2 md:px-3">
           <Zap className="h-3.5 w-3.5 text-primary" fill="currentColor" />
-          <span className="font-mono text-xs font-semibold tabular-nums">{credits.toLocaleString()}</span>
+          <span className="font-mono text-xs font-semibold tabular-nums">
+            {credits.toLocaleString()}
+          </span>
           <span className="text-[10px] font-light text-muted-foreground">点</span>
         </div>
         <button
@@ -119,11 +119,11 @@ function NavLinkTo({ to, children }: { to: "/"; children: React.ReactNode }) {
     <Link
       to={to}
       className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-white/[0.05] hover:text-foreground"
-      activeProps={{ className: "rounded-md px-3 py-1.5 text-xs font-medium text-foreground bg-white/[0.05]" }}
+      activeProps={{
+        className: "rounded-md px-3 py-1.5 text-xs font-medium text-foreground bg-white/[0.05]",
+      }}
     >
       {children}
     </Link>
   );
 }
-
-

@@ -3,7 +3,12 @@ export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue
 
 export type BusinessDatabasePrimary = "lovable" | "d1";
 export type GenerationTaskStatus = "queued" | "running" | "succeeded" | "failed" | "canceled";
-export type DeductionStatus = "not_charged" | "charged" | "refund_pending" | "refunded" | "charge_failed";
+export type DeductionStatus =
+  | "not_charged"
+  | "charged"
+  | "refund_pending"
+  | "refunded"
+  | "charge_failed";
 export type ImagePreviewMode = "auto" | "preview_only" | "original_only";
 
 export type Profile = {
@@ -117,6 +122,7 @@ export type ModelConfig = {
   sort_order: number;
   api_url?: string | null;
   api_key?: string | null;
+  secret_ref?: string | null;
   request_format?: string | null;
   prompt_key?: string | null;
   fetch_url?: string | null;
@@ -194,6 +200,7 @@ export type ConsumeCreditsResult = {
 };
 
 export type AdminAdjustCreditsInput = {
+  requestId: string;
   adminUserId: string;
   userId: string;
   delta: number;
@@ -223,7 +230,12 @@ export type AdminAnalyticsData = {
   totalIncome: number;
   totalSpent: number;
   todayCost: number;
-  models: Array<{ model: string; todayCount: number; totalCount: number; totalCost: number }>;
+  models: Array<{
+    model: string;
+    todayCount: number;
+    totalCount: number;
+    totalCost: number;
+  }>;
   todayRegistrations: Profile[];
   unusedCoupons: number;
 };
@@ -283,7 +295,13 @@ export interface BusinessDatabase {
   readonly primary: BusinessDatabasePrimary;
 
   getProfile(userId: string): Promise<Profile | null>;
-  ensureProfile(input: { id: string; email?: string | null; displayName?: string | null; avatarUrl?: string | null; now?: string }): Promise<Profile>;
+  ensureProfile(input: {
+    id: string;
+    email?: string | null;
+    displayName?: string | null;
+    avatarUrl?: string | null;
+    now?: string;
+  }): Promise<Profile>;
   updateProfile(input: UpdateProfileInput): Promise<Profile>;
   getCredits(userId: string): Promise<number>;
 
@@ -303,17 +321,36 @@ export interface BusinessDatabase {
     statuses?: GenerationTaskStatus[];
     deductionStatus?: DeductionStatus;
   }): Promise<number>;
-  claimQueuedGenerationTask(input: { taskId: string; userId: string; now?: string }): Promise<GenerationTask | null>;
+  claimQueuedGenerationTask(input: {
+    taskId: string;
+    userId: string;
+    now?: string;
+  }): Promise<GenerationTask | null>;
   cancelUserQueuedGenerationTasks(input: { userId: string; now?: string }): Promise<number>;
-  cancelQueuedGenerationTask(input: { taskId: string; userId: string; now?: string }): Promise<GenerationTask | null>;
+  cancelQueuedGenerationTask(input: {
+    taskId: string;
+    userId: string;
+    now?: string;
+  }): Promise<GenerationTask | null>;
   updateGenerationTaskLifecycle(input: UpdateGenerationTaskLifecycleInput): Promise<GenerationTask>;
-  consumeCreditsForGeneration(input: ConsumeCreditsForGenerationInput): Promise<ConsumeCreditsResult>;
+  consumeCreditsForGeneration(
+    input: ConsumeCreditsForGenerationInput,
+  ): Promise<ConsumeCreditsResult>;
   adjustCreditsByAdmin(input: AdminAdjustCreditsInput): Promise<AdminAdjustCreditsResult>;
   listAdminUserBusinessRows?(): Promise<AdminUserBusinessRow[]>;
-  listAdminCreditUsageLogs?(input: { userId: string; limit: number; offset: number }): Promise<{ rows: AdminCreditUsageLogRow[]; total: number }>;
+  listAdminCreditUsageLogs?(input: {
+    userId: string;
+    limit: number;
+    offset: number;
+  }): Promise<{ rows: AdminCreditUsageLogRow[]; total: number }>;
   getAdminAnalyticsData?(input: { startUtc: string; endUtc: string }): Promise<AdminAnalyticsData>;
-  finalizeUserGenerationTaskOnce(input: FinalizeGenerationTaskInput): Promise<FinalizeGenerationTaskResult>;
-  getGenerationHistory(input: { historyId: string; userId?: string }): Promise<GenerationHistory | null>;
+  finalizeUserGenerationTaskOnce(
+    input: FinalizeGenerationTaskInput,
+  ): Promise<FinalizeGenerationTaskResult>;
+  getGenerationHistory(input: {
+    historyId: string;
+    userId?: string;
+  }): Promise<GenerationHistory | null>;
   listGenerationHistory(input: {
     userId?: string;
     since?: string;
@@ -323,48 +360,136 @@ export interface BusinessDatabase {
   }): Promise<{ rows: GenerationHistory[]; total: number }>;
   getGenerationTasksByIds(taskIds: string[]): Promise<GenerationTask[]>;
   getProfilesByIds(userIds: string[]): Promise<Profile[]>;
-  setGenerationHistoryImageUrl(input: { historyId: string; userId: string; imageUrl: string; now?: string }): Promise<GenerationHistory>;
-  setLatestGenerationHistoryImageUrl(input: { userId: string; modelName: string; imageUrl: string }): Promise<void>;
+  setGenerationHistoryImageUrl(input: {
+    historyId: string;
+    userId: string;
+    imageUrl: string;
+    now?: string;
+  }): Promise<GenerationHistory>;
+  setLatestGenerationHistoryImageUrl(input: {
+    userId: string;
+    modelName: string;
+    imageUrl: string;
+  }): Promise<void>;
 
-  createUserOrder(input: { id?: string; userId: string; outTradeNo: string; amount: number; credits: number; payType?: string | null; now?: string }): Promise<UserOrder>;
+  createUserOrder(input: {
+    id?: string;
+    userId: string;
+    outTradeNo: string;
+    amount: number;
+    credits: number;
+    payType?: string | null;
+    now?: string;
+  }): Promise<UserOrder>;
   getUserOrder(input: { outTradeNo: string; userId: string }): Promise<UserOrder | null>;
   getOrderByOutTradeNo(outTradeNo: string): Promise<UserOrder | null>;
   completePaidOrder(input: CompletePaidOrderInput): Promise<CompletePaidOrderResult>;
   redeemCoupon(input: RedeemCouponInput): Promise<RedeemCouponResult>;
   listAdminCoupons?(): Promise<Coupon[]>;
-  generateAdminCoupons?(input: { count: number; amount: number; createdBy: string }): Promise<Array<{ code: string; amount: number }>>;
+  generateAdminCoupons?(input: {
+    count: number;
+    amount: number;
+    createdBy: string;
+  }): Promise<Array<{ code: string; amount: number }>>;
   deleteAdminCoupon?(couponId: string): Promise<void>;
 
-  listModelsConfig(input?: { includeSecrets?: boolean; enabledOnly?: boolean }): Promise<ModelConfig[]>;
+  listModelsConfig(input?: {
+    includeSecrets?: boolean;
+    enabledOnly?: boolean;
+  }): Promise<ModelConfig[]>;
   updateModel?(input: { id: string; patch: Record<string, unknown> }): Promise<void>;
   createModel?(input: Record<string, unknown> & { id?: string }): Promise<{ id: string }>;
   deleteModel?(id: string): Promise<void>;
   getGlobalConfig(): Promise<Record<string, unknown> | null>;
+  updateGlobalConfig?(input: { base_url: string }): Promise<void>;
   getAdminSettings(): Promise<Record<string, unknown> | null>;
-  updateAdminSettings?(patch: { access_password?: string; system_prompt?: string; contact_wechat?: string; contact_qq?: string; image_preview_mode?: ImagePreviewMode }): Promise<void>;
+  updateAdminSettings?(patch: {
+    access_password?: string;
+    system_prompt?: string;
+    contact_wechat?: string;
+    contact_qq?: string;
+    image_preview_mode?: ImagePreviewMode;
+  }): Promise<void>;
   listAnnouncements(): Promise<Record<string, unknown>[]>;
-  upsertAnnouncement?(input: { id?: string; title: string; content: string; type: string; image_url: string | null; link_url: string | null; link_label: string | null; is_pinned: boolean; is_published: boolean }): Promise<{ id: string }>;
+  upsertAnnouncement?(input: {
+    id?: string;
+    title: string;
+    content: string;
+    type: string;
+    image_url: string | null;
+    link_url: string | null;
+    link_label: string | null;
+    is_pinned: boolean;
+    is_published: boolean;
+  }): Promise<{ id: string }>;
   deleteAnnouncement?(id: string): Promise<void>;
   listAds(): Promise<Record<string, unknown>[]>;
-  upsertAd?(input: { id?: string; title: string; link_url: string | null; is_active: boolean; sort_order: number }): Promise<{ id: string }>;
+  upsertAd?(input: {
+    id?: string;
+    title: string;
+    link_url: string | null;
+    is_active: boolean;
+    sort_order: number;
+  }): Promise<{ id: string }>;
   deleteAd?(id: string): Promise<void>;
   listStyleTemplates(): Promise<Record<string, unknown>[]>;
-  updateStyleTemplate?(input: { id: string; patch: { name?: string; prompt?: string; image_url?: string | null; sort_order?: number } }): Promise<void>;
-  createStyleTemplate?(input: { id: string; name: string; prompt: string; image_url: string | null; sort_order: number }): Promise<{ id: string }>;
+  updateStyleTemplate?(input: {
+    id: string;
+    patch: {
+      name?: string;
+      prompt?: string;
+      image_url?: string | null;
+      sort_order?: number;
+    };
+  }): Promise<void>;
+  createStyleTemplate?(input: {
+    id: string;
+    name: string;
+    prompt: string;
+    image_url: string | null;
+    sort_order: number;
+  }): Promise<{ id: string }>;
   deleteStyleTemplate?(id: string): Promise<void>;
-  listRechargePackages(): Promise<RechargePackage[]>;
-  upsertRechargePackage?(input: { id?: string; title: string; subtitle: string | null; price: string; credits: number; features: JsonValue; badge_text: string | null; is_popular: boolean; highlighted: boolean; is_visible: boolean; sort_order: number; button_text: string; purchase_url: string | null }): Promise<{ id: string }>;
+  listRechargePackages(options?: { includeHidden?: boolean }): Promise<RechargePackage[]>;
+  upsertRechargePackage?(input: {
+    id?: string;
+    title: string;
+    subtitle: string | null;
+    price: string;
+    credits: number;
+    features: JsonValue;
+    badge_text: string | null;
+    is_popular: boolean;
+    highlighted: boolean;
+    is_visible: boolean;
+    sort_order: number;
+    button_text: string;
+    purchase_url: string | null;
+  }): Promise<{ id: string }>;
   hideRechargePackage?(id: string): Promise<void>;
   deleteRechargePackage?(id: string): Promise<void>;
   getReplicationHealth?(now?: Date): Promise<ReplicationHealth>;
 }
 
-export type AdminConfigDatabase = Required<Pick<BusinessDatabase,
-  | "updateModel" | "createModel" | "deleteModel" | "updateAdminSettings"
-  | "upsertAnnouncement" | "deleteAnnouncement" | "upsertAd" | "deleteAd"
-  | "updateStyleTemplate" | "createStyleTemplate" | "deleteStyleTemplate"
-  | "upsertRechargePackage" | "hideRechargePackage" | "deleteRechargePackage"
->>;
+export type AdminConfigDatabase = Required<
+  Pick<
+    BusinessDatabase,
+    | "updateModel"
+    | "createModel"
+    | "deleteModel"
+    | "updateAdminSettings"
+    | "upsertAnnouncement"
+    | "deleteAnnouncement"
+    | "upsertAd"
+    | "deleteAd"
+    | "updateStyleTemplate"
+    | "createStyleTemplate"
+    | "deleteStyleTemplate"
+    | "upsertRechargePackage"
+    | "hideRechargePackage"
+    | "deleteRechargePackage"
+  >
+>;
 
 export function creditsToCentiCredit(value: number | string, label = "credits"): number {
   return decimalToScaledInteger(value, 2, label);
@@ -422,9 +547,11 @@ function decimalToScaledInteger(value: number | string, scale: number, label: st
   const text = normalizeDecimalString(String(value).trim(), label);
   const sign = text.startsWith("-") ? -1n : 1n;
   const unsigned = text.replace(/^[+-]/, "");
-  if (!/^\d+(\.\d+)?$/.test(unsigned)) throw new Error(`Invalid decimal ${label}: ${String(value)}`);
+  if (!/^\d+(\.\d+)?$/.test(unsigned))
+    throw new Error(`Invalid decimal ${label}: ${String(value)}`);
   const [whole, fraction = ""] = unsigned.split(".");
-  if (fraction.length > scale) throw new Error(`Too many decimal places for ${label}: ${String(value)}`);
+  if (fraction.length > scale)
+    throw new Error(`Too many decimal places for ${label}: ${String(value)}`);
   const scaledText = `${whole}${fraction.padEnd(scale, "0")}`.replace(/^0+(?=\d)/, "") || "0";
   const scaled = BigInt(scaledText) * sign;
   if (scaled > BigInt(Number.MAX_SAFE_INTEGER) || scaled < BigInt(Number.MIN_SAFE_INTEGER)) {
@@ -444,6 +571,7 @@ function normalizeDecimalString(input: string, label: string): string {
   const digits = `${whole}${fraction}`;
   const decimalIndex = whole.length + exponent;
   if (decimalIndex <= 0) return `${sign}0.${"0".repeat(Math.abs(decimalIndex))}${digits}`;
-  if (decimalIndex >= digits.length) return `${sign}${digits}${"0".repeat(decimalIndex - digits.length)}`;
+  if (decimalIndex >= digits.length)
+    return `${sign}${digits}${"0".repeat(decimalIndex - digits.length)}`;
   return `${sign}${digits.slice(0, decimalIndex)}.${digits.slice(decimalIndex)}`;
 }

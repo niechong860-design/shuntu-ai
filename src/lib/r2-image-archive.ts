@@ -36,9 +36,12 @@ function getRawCloudflareContextEnv(): unknown {
 function getCloudflareEnv(explicitEnv?: unknown): CloudflareEnvLike {
   const contextEnv = getRawCloudflareContextEnv();
   const globalEnv = getRawCloudflareGlobalEnv();
-  const explicitCloudflareEnv = explicitEnv && typeof explicitEnv === "object" ? (explicitEnv as CloudflareEnvLike) : {};
-  const cloudflareContextEnv = contextEnv && typeof contextEnv === "object" ? (contextEnv as CloudflareEnvLike) : {};
-  const cloudflareEnv = globalEnv && typeof globalEnv === "object" ? (globalEnv as CloudflareEnvLike) : {};
+  const explicitCloudflareEnv =
+    explicitEnv && typeof explicitEnv === "object" ? (explicitEnv as CloudflareEnvLike) : {};
+  const cloudflareContextEnv =
+    contextEnv && typeof contextEnv === "object" ? (contextEnv as CloudflareEnvLike) : {};
+  const cloudflareEnv =
+    globalEnv && typeof globalEnv === "object" ? (globalEnv as CloudflareEnvLike) : {};
   const processEnv = typeof process !== "undefined" ? process.env : undefined;
   return {
     ...cloudflareEnv,
@@ -54,7 +57,9 @@ function getCloudflareEnv(explicitEnv?: unknown): CloudflareEnvLike {
 }
 
 function normalizePublicBaseUrl(value: string | undefined): string | null {
-  const trimmed = String(value ?? "").trim().replace(/\/+$/, "");
+  const trimmed = String(value ?? "")
+    .trim()
+    .replace(/\/+$/, "");
   return trimmed || null;
 }
 
@@ -72,11 +77,14 @@ function getArchiveKey(taskId: string, extension: string, now = new Date()): str
   return `generated/${year}/${month}/${safeTaskId}.${extension}`;
 }
 
-function parseBase64ImageDataUrl(imageUrl: string): { contentType: string; body: Uint8Array } | null {
+function parseBase64ImageDataUrl(
+  imageUrl: string,
+): { contentType: string; body: Uint8Array } | null {
   const match = imageUrl.match(/^data:(image\/(?:png|jpe?g|webp));base64,([a-z0-9+/=\s]+)$/i);
   if (!match) return null;
 
-  const contentType = match[1].toLowerCase() === "image/jpg" ? "image/jpeg" : match[1].toLowerCase();
+  const contentType =
+    match[1].toLowerCase() === "image/jpg" ? "image/jpeg" : match[1].toLowerCase();
   const base64 = match[2].replace(/\s/g, "");
   try {
     const binary = atob(base64);
@@ -130,7 +138,19 @@ export async function archiveGeneratedImageToR2({
   modelKey,
   cloudflareEnv,
 }: ArchiveGeneratedImageInput): Promise<string> {
-
+  // The real-resource test uses a separate create-only archiver. Fail closed;
+  // never fall back to an upstream URL after a paid generation has completed.
+  const testEnv = getRawCloudflareGlobalEnv() as
+    | {
+        REAL_GENERATION_ENABLED?: string;
+        REAL_GENERATION_ARCHIVER?: {
+          archive(input: { imageUrl: string; taskId: string }): Promise<string>;
+        };
+      }
+    | undefined;
+  if (testEnv?.REAL_GENERATION_ENABLED === "user-triggered" && testEnv.REAL_GENERATION_ARCHIVER) {
+    return testEnv.REAL_GENERATION_ARCHIVER.archive({ imageUrl, taskId });
+  }
   if (!imageUrl) return imageUrl;
   if (imageUrl.startsWith(`${PUBLIC_IMAGE_BASE_URL}/`) || imageUrl === PUBLIC_IMAGE_BASE_URL) {
     void ensureGeneratedPreviewFromOriginalUrl(imageUrl, cloudflareEnv);
@@ -154,7 +174,9 @@ export async function archiveGeneratedImageToR2({
     try {
       const extension = getExtension(dataImage.contentType);
       const key = getArchiveKey(taskId, extension);
-      await bucket.put(key, dataImage.body, { httpMetadata: { contentType: dataImage.contentType } });
+      await bucket.put(key, dataImage.body, {
+        httpMetadata: { contentType: dataImage.contentType },
+      });
       const finalUrl = `${publicBaseUrl}/${key}`;
       await ensureGeneratedPreviewFromBytes(finalUrl, dataImage.body, env).catch((error) => {
         console.warn("[preview] archive preview failed", error);
@@ -180,7 +202,8 @@ export async function archiveGeneratedImageToR2({
       return imageUrl;
     }
 
-    const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
+    const contentType =
+      response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
     if (!contentType.startsWith("image/")) {
       return imageUrl;
     }

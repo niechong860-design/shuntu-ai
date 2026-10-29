@@ -31,8 +31,7 @@ const PAGE_SIZE = 1000;
 const useAllTables = process.argv.includes("--all");
 const tablesToBackup = useAllTables ? ALL_TABLES : CORE_TABLES;
 
-const supabaseUrl =
-  process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseUrl) {
@@ -51,20 +50,13 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
 });
 
 const timestamp = formatTimestamp(new Date());
-const backupDir = path.join(
-  process.cwd(),
-  "backups",
-  "shuntu-db",
-  timestamp,
-);
+const backupDir = path.join(process.cwd(), "backups", "shuntu-db", timestamp);
 
 await mkdir(backupDir, { recursive: true });
 
 const results = [];
 
-console.log(
-  `Backup mode: ${useAllTables ? "all public business tables" : "core tables"}`,
-);
+console.log(`Backup mode: ${useAllTables ? "all public business tables" : "core tables"}`);
 
 for (const table of tablesToBackup) {
   try {
@@ -110,10 +102,7 @@ async function readAllRows(table) {
 
   while (true) {
     const to = from + PAGE_SIZE - 1;
-    const { data, error } = await supabase
-      .from(table)
-      .select("*")
-      .range(from, to);
+    const { data, error } = await supabase.from(table).select("*").range(from, to);
 
     if (error) {
       throw error;
@@ -166,8 +155,7 @@ function escapeCsvValue(value) {
     return "";
   }
 
-  const text =
-    typeof value === "object" ? JSON.stringify(value) : String(value);
+  const text = typeof value === "object" ? JSON.stringify(value) : String(value);
 
   if (/[",\r\n]/.test(text)) {
     return `"${text.replaceAll('"', '""')}"`;

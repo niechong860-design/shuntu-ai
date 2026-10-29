@@ -60,8 +60,10 @@ function getRawCloudflareContextEnv(): unknown {
 export function getCloudflareEnv(explicitEnv?: unknown): CloudflareEnvLike {
   const contextEnv = getRawCloudflareContextEnv();
   const globalEnv = getRawCloudflareGlobalEnv();
-  const explicit = explicitEnv && typeof explicitEnv === "object" ? (explicitEnv as CloudflareEnvLike) : {};
-  const context = contextEnv && typeof contextEnv === "object" ? (contextEnv as CloudflareEnvLike) : {};
+  const explicit =
+    explicitEnv && typeof explicitEnv === "object" ? (explicitEnv as CloudflareEnvLike) : {};
+  const context =
+    contextEnv && typeof contextEnv === "object" ? (contextEnv as CloudflareEnvLike) : {};
   const global = globalEnv && typeof globalEnv === "object" ? (globalEnv as CloudflareEnvLike) : {};
   const processEnv = typeof process !== "undefined" ? process.env : undefined;
   return {
@@ -90,7 +92,14 @@ export function getCloudflareEnv(explicitEnv?: unknown): CloudflareEnvLike {
 function decodePathSegment(segment: string): string | null {
   try {
     const decoded = decodeURIComponent(segment);
-    if (!decoded || decoded === "." || decoded === ".." || decoded.includes("/") || decoded.includes("\\") || decoded.includes("\0")) {
+    if (
+      !decoded ||
+      decoded === "." ||
+      decoded === ".." ||
+      decoded.includes("/") ||
+      decoded.includes("\\") ||
+      decoded.includes("\0")
+    ) {
       return null;
     }
     return decoded;
@@ -99,7 +108,9 @@ function decodePathSegment(segment: string): string | null {
   }
 }
 
-function parseGeneratedImageUrl(imageUrl: string | null | undefined): { url: URL; key: string } | null {
+function parseGeneratedImageUrl(
+  imageUrl: string | null | undefined,
+): { url: URL; key: string } | null {
   if (!imageUrl) return null;
 
   try {
@@ -112,7 +123,8 @@ function parseGeneratedImageUrl(imageUrl: string | null | undefined): { url: URL
       url.password ||
       url.search ||
       url.hash
-    ) return null;
+    )
+      return null;
     if (!url.pathname.startsWith(`/${GENERATED_IMAGE_KEY_PREFIX}`)) return null;
 
     const rawSegments = url.pathname.slice(1).split("/");
@@ -148,7 +160,12 @@ export function getGeneratedPreviewKeyFromOriginalKey(
   const extension = filename.slice(extensionIndex + 1).toLowerCase();
   if (!stem || !/^(?:png|jpe?g|webp)$/i.test(extension)) return null;
   const directory = segments.slice(1, -1).join("/");
-  const prefix = size === 480 ? THUMBNAIL_KEY_PREFIX : size === 1536 ? LARGE_PREVIEW_KEY_PREFIX : PREVIEW_KEY_PREFIX;
+  const prefix =
+    size === 480
+      ? THUMBNAIL_KEY_PREFIX
+      : size === 1536
+        ? LARGE_PREVIEW_KEY_PREFIX
+        : PREVIEW_KEY_PREFIX;
   return prefix + (directory ? directory + "/" : "") + stem + ".jpg";
 }
 
@@ -195,10 +212,10 @@ type SharpPreviewPayload = {
 };
 
 function getOriginalContentType(originalKey: string): string {
-  const extension = originalKey.slice(originalKey.lastIndexOf('.') + 1).toLowerCase();
-  if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg';
-  if (extension === 'webp') return 'image/webp';
-  return 'image/png';
+  const extension = originalKey.slice(originalKey.lastIndexOf(".") + 1).toLowerCase();
+  if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
+  if (extension === "webp") return "image/webp";
+  return "image/png";
 }
 
 function decodeBase64Image(value: string): Uint8Array {
@@ -218,54 +235,62 @@ async function createSharpPreviewBytes(
   const rawProcessorUrl = env.SHARP_IMAGE_PROCESSOR_URL?.trim();
   const token = env.SHARP_IMAGE_PROCESSOR_TOKEN?.trim();
   if (!token) {
-    console.warn('[preview] Sharp image processor token is not configured');
+    console.warn("[preview] Sharp image processor token is not configured");
     return null;
   }
 
   const headers = {
-    Authorization: 'Bearer ' + token,
-    'Content-Type': getOriginalContentType(originalKey),
-    Accept: 'application/json',
+    Authorization: "Bearer " + token,
+    "Content-Type": getOriginalContentType(originalKey),
+    Accept: "application/json",
   };
   const container = env.SHARP_IMAGE_PROCESSOR;
   let response: Response;
   if (container) {
-    response = await container.getByName('sharp-image-processor').fetch(new Request('http://container/v1/previews', {
-      method: 'POST',
-      headers,
-      body: toArrayBuffer(originalBytes),
-      signal: AbortSignal.timeout(120_000),
-    }));
+    response = await container.getByName("sharp-image-processor").fetch(
+      new Request("http://container/v1/previews", {
+        method: "POST",
+        headers,
+        body: toArrayBuffer(originalBytes),
+        signal: AbortSignal.timeout(120_000),
+      }),
+    );
   } else {
     if (!rawProcessorUrl) {
-      console.warn('[preview] Sharp image processor is not configured');
+      console.warn("[preview] Sharp image processor is not configured");
       return null;
     }
     let processorUrl: URL;
     try {
       processorUrl = new URL(rawProcessorUrl);
     } catch {
-      throw new Error('Sharp image processor URL is invalid');
+      throw new Error("Sharp image processor URL is invalid");
     }
-    if (processorUrl.protocol !== 'https:' || processorUrl.username || processorUrl.password || processorUrl.search || processorUrl.hash) {
-      throw new Error('Sharp image processor URL must be a clean HTTPS URL');
+    if (
+      processorUrl.protocol !== "https:" ||
+      processorUrl.username ||
+      processorUrl.password ||
+      processorUrl.search ||
+      processorUrl.hash
+    ) {
+      throw new Error("Sharp image processor URL must be a clean HTTPS URL");
     }
-    processorUrl.pathname = processorUrl.pathname.replace(/\/+$/, '') + '/v1/previews';
+    processorUrl.pathname = processorUrl.pathname.replace(/\/+$/, "") + "/v1/previews";
     response = await fetch(processorUrl, {
-      method: 'POST',
+      method: "POST",
       headers,
       body: toArrayBuffer(originalBytes),
       signal: AbortSignal.timeout(20_000),
     });
   }
-  if (!response.ok) throw new Error('Sharp image processor failed: ' + response.status);
+  if (!response.ok) throw new Error("Sharp image processor failed: " + response.status);
 
-  const payload = await response.json() as Partial<SharpPreviewPayload>;
-  const small = payload.variants?.['480'];
-  const medium = payload.variants?.['1024'];
+  const payload = (await response.json()) as Partial<SharpPreviewPayload>;
+  const small = payload.variants?.["480"];
+  const medium = payload.variants?.["1024"];
   // Older container images only return 480/1024. Reuse the medium variant
   // until the new image is active so existing generations remain viewable.
-  const large = payload.variants?.['1536'] ?? medium;
+  const large = payload.variants?.["1536"] ?? medium;
   if (
     payload.version !== 1 ||
     !small ||
@@ -290,13 +315,13 @@ async function createSharpPreviewBytes(
     !medium.base64 ||
     !large.base64
   ) {
-    throw new Error('Sharp image processor returned an invalid preview payload');
+    throw new Error("Sharp image processor returned an invalid preview payload");
   }
 
   return {
-    '480': decodeBase64Image(small.base64),
-    '1024': decodeBase64Image(medium.base64),
-    '1536': decodeBase64Image(large.base64),
+    "480": decodeBase64Image(small.base64),
+    "1024": decodeBase64Image(medium.base64),
+    "1536": decodeBase64Image(large.base64),
   };
 }
 
@@ -347,13 +372,14 @@ async function ensurePreviewInternal(
       ]);
       if (preview && largePreview && thumbnail) return true;
     } catch (error) {
-      console.warn('[preview] existing preview lookup failed', error);
+      console.warn("[preview] existing preview lookup failed", error);
     }
   }
 
   let bytes = originalBytes;
   const sourceBuckets = [env.SOURCE_GENERATED_IMAGES, bucket].filter(
-    (candidate, index, list): candidate is R2BucketLike => !!candidate?.get && list.indexOf(candidate) === index,
+    (candidate, index, list): candidate is R2BucketLike =>
+      !!candidate?.get && list.indexOf(candidate) === index,
   );
   if (!bytes) {
     for (const sourceBucket of sourceBuckets) {
@@ -368,9 +394,9 @@ async function ensurePreviewInternal(
   const previewBytes = await createSharpPreviewBytes(originalKey, bytes, env);
   if (!previewBytes) return false;
   await Promise.all([
-    putGeneratedPreview(previewKey, previewBytes['1024'], env),
-    putGeneratedPreview(largePreviewKey, previewBytes['1536'], env),
-    putGeneratedPreview(thumbnailKey, previewBytes['480'], env),
+    putGeneratedPreview(previewKey, previewBytes["1024"], env),
+    putGeneratedPreview(largePreviewKey, previewBytes["1536"], env),
+    putGeneratedPreview(thumbnailKey, previewBytes["480"], env),
   ]);
   return true;
 }
@@ -387,7 +413,7 @@ export async function ensureGeneratedPreviewFromBytes(
 
   const operation = ensurePreviewInternal(imageUrl, originalKey, originalBytes, cloudflareEnv)
     .catch((error) => {
-      console.warn('[preview] best-effort creation failed', error);
+      console.warn("[preview] best-effort creation failed", error);
       return false;
     })
     .finally(() => {
@@ -408,7 +434,7 @@ export async function ensureGeneratedPreviewFromOriginalUrl(
 
   const operation = ensurePreviewInternal(parsed.url.href, parsed.key, null, cloudflareEnv)
     .catch((error) => {
-      console.warn('[preview] lazy migration failed', error);
+      console.warn("[preview] lazy migration failed", error);
       return false;
     })
     .finally(() => {
@@ -428,10 +454,14 @@ export async function deleteGeneratedPreviewForOriginalUrl(
   const bucket = getCloudflareEnv(cloudflareEnv).SHUNTU_GENERATED_IMAGES;
   if (!previewKey || !largePreviewKey || !thumbnailKey || !bucket?.delete) return false;
   try {
-    await Promise.all([bucket.delete(previewKey), bucket.delete(largePreviewKey), bucket.delete(thumbnailKey)]);
+    await Promise.all([
+      bucket.delete(previewKey),
+      bucket.delete(largePreviewKey),
+      bucket.delete(thumbnailKey),
+    ]);
     return true;
   } catch (error) {
-    console.warn('[preview] paired delete failed', error);
+    console.warn("[preview] paired delete failed", error);
     return false;
   }
 }

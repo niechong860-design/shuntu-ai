@@ -76,16 +76,22 @@ async function main() {
   fs.writeFileSync(auditReportPath, renderAuditReport(audit));
   fs.writeFileSync(secretsPlanPath, renderSecretsPlan(audit));
 
-  console.log(JSON.stringify({
-    ok: true,
-    auditJsonPath,
-    auditReportPath,
-    secretsPlanPath,
-    rechargePackagesStatus: rechargeAudit.status,
-    sensitiveFieldCount: sensitiveSourceFields.length,
-    authStillDependsOnSupabase: authAudit.still_depends_on_supabase,
-    storageBucketCount: storageAudit.buckets.length,
-  }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        ok: true,
+        auditJsonPath,
+        auditReportPath,
+        secretsPlanPath,
+        rechargePackagesStatus: rechargeAudit.status,
+        sensitiveFieldCount: sensitiveSourceFields.length,
+        authStillDependsOnSupabase: authAudit.still_depends_on_supabase,
+        storageBucketCount: storageAudit.buckets.length,
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 function assertInsideRepo(targetPath, rootPath, label) {
@@ -110,7 +116,8 @@ function collectCodeFiles() {
 
 function walk(dir, files) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (["node_modules", ".git", ".wrangler", ".output", "dist", "build"].includes(entry.name)) continue;
+    if (["node_modules", ".git", ".wrangler", ".output", "dist", "build"].includes(entry.name))
+      continue;
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) walk(fullPath, files);
     else files.push(fullPath);
@@ -127,16 +134,27 @@ function scanSensitiveSourceFields() {
       for (const [column, value] of Object.entries(row)) {
         if (!sensitiveNamePattern.test(column)) continue;
         const key = `${table}.${column}`;
-        const current = fields.get(key) ?? { table, column, rows: rows.length, non_null_count: 0, max_length: 0 };
+        const current = fields.get(key) ?? {
+          table,
+          column,
+          rows: rows.length,
+          non_null_count: 0,
+          max_length: 0,
+        };
         if (value !== null && value !== undefined && value !== "") {
           current.non_null_count += 1;
-          current.max_length = Math.max(current.max_length, Buffer.byteLength(String(value), "utf8"));
+          current.max_length = Math.max(
+            current.max_length,
+            Buffer.byteLength(String(value), "utf8"),
+          );
         }
         fields.set(key, current);
       }
     }
   }
-  return Array.from(fields.values()).sort((a, b) => `${a.table}.${a.column}`.localeCompare(`${b.table}.${b.column}`));
+  return Array.from(fields.values()).sort((a, b) =>
+    `${a.table}.${a.column}`.localeCompare(`${b.table}.${b.column}`),
+  );
 }
 
 async function auditRechargePackages(codeTextByPath) {
@@ -145,8 +163,13 @@ async function auditRechargePackages(codeTextByPath) {
   const sourceCsvPath = path.join(backupDir, "recharge_packages.csv");
   const frozenSourcePresent = fs.existsSync(sourceJsonPath) || fs.existsSync(sourceCsvPath);
   const env = loadLocalEnv();
-  const supabaseUrl = process.env.SUPABASE_URL || env.SUPABASE_URL || readWranglerVar("SUPABASE_URL");
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SERVICE_KEY || env.SUPABASE_SERVICE_ROLE;
+  const supabaseUrl =
+    process.env.SUPABASE_URL || env.SUPABASE_URL || readWranglerVar("SUPABASE_URL");
+  const serviceRoleKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    env.SUPABASE_SERVICE_ROLE_KEY ||
+    env.SUPABASE_SERVICE_KEY ||
+    env.SUPABASE_SERVICE_ROLE;
   const result = {
     frozen_source_present: frozenSourcePresent,
     code_reference_count: codeRefs.count,
@@ -157,19 +180,26 @@ async function auditRechargePackages(codeTextByPath) {
   };
   if (!supabaseUrl || !serviceRoleKey) {
     result.status = "SOURCE UNAVAILABLE";
-    result.reason = "Supabase URL or service-role key not available in local environment; no production read attempted.";
+    result.reason =
+      "Supabase URL or service-role key not available in local environment; no production read attempted.";
     return result;
   }
 
   try {
     const { createClient } = await import("@supabase/supabase-js");
-    const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+    const supabase = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
     const { data, error } = await supabase.from("recharge_packages").select("*");
     if (error) {
-      result.status = /relation .*recharge_packages.* does not exist|schema cache|42P01/i.test(error.message || error.code || "")
+      result.status = /relation .*recharge_packages.* does not exist|schema cache|42P01/i.test(
+        error.message || error.code || "",
+      )
         ? "RELATION NOT FOUND"
         : "SOURCE UNAVAILABLE";
-      result.reason = error.code ? `Supabase read error code: ${error.code}` : "Supabase read error";
+      result.reason = error.code
+        ? `Supabase read error code: ${error.code}`
+        : "Supabase read error";
       return result;
     }
     fs.mkdirSync(supplementsDir, { recursive: true });
@@ -209,7 +239,9 @@ function loadLocalEnv() {
 function readWranglerVar(name) {
   const wranglerPath = path.join(repoRoot, "wrangler.jsonc");
   if (!fs.existsSync(wranglerPath)) return null;
-  const match = fs.readFileSync(wranglerPath, "utf8").match(new RegExp(`"${name}"\\s*:\\s*"([^"]+)"`));
+  const match = fs
+    .readFileSync(wranglerPath, "utf8")
+    .match(new RegExp(`"${name}"\\s*:\\s*"([^"]+)"`));
   return match?.[1] ?? null;
 }
 
@@ -217,7 +249,12 @@ function summarizeFields(rows) {
   const fields = new Map();
   for (const row of rows) {
     for (const [column, value] of Object.entries(row)) {
-      const current = fields.get(column) ?? { column, non_null_count: 0, max_length: 0, observed_types: new Set() };
+      const current = fields.get(column) ?? {
+        column,
+        non_null_count: 0,
+        max_length: 0,
+        observed_types: new Set(),
+      };
       if (value !== null && value !== undefined) {
         current.non_null_count += 1;
         current.max_length = Math.max(current.max_length, Buffer.byteLength(String(value), "utf8"));
@@ -226,26 +263,39 @@ function summarizeFields(rows) {
       fields.set(column, current);
     }
   }
-  return Array.from(fields.values()).map((field) => ({ ...field, observed_types: Array.from(field.observed_types).sort() }));
+  return Array.from(fields.values()).map((field) => ({
+    ...field,
+    observed_types: Array.from(field.observed_types).sort(),
+  }));
 }
 
 function auditAuthDependencies(codeTextByPath) {
   const patterns = {
     "supabase.auth": /supabase\.auth/g,
-    "getUser": /\bgetUser\b/g,
-    "getSession": /\bgetSession\b/g,
-    "onAuthStateChange": /\bonAuthStateChange\b/g,
-    "getClaims": /\bgetClaims\b/g,
+    getUser: /\bgetUser\b/g,
+    getSession: /\bgetSession\b/g,
+    onAuthStateChange: /\bonAuthStateChange\b/g,
+    getClaims: /\bgetClaims\b/g,
     "auth.uid": /auth\.uid\s*\(/g,
   };
-  const counts = Object.fromEntries(Object.entries(patterns).map(([name, pattern]) => [name, countMatches(codeTextByPath, pattern)]));
-  const refs = findRefs(codeTextByPath, /supabase\.auth|\bgetUser\b|\bgetSession\b|\bonAuthStateChange\b|\bgetClaims\b|auth\.uid\s*\(/g, 80);
+  const counts = Object.fromEntries(
+    Object.entries(patterns).map(([name, pattern]) => [
+      name,
+      countMatches(codeTextByPath, pattern),
+    ]),
+  );
+  const refs = findRefs(
+    codeTextByPath,
+    /supabase\.auth|\bgetUser\b|\bgetSession\b|\bonAuthStateChange\b|\bgetClaims\b|auth\.uid\s*\(/g,
+    80,
+  );
   return {
     still_depends_on_supabase: Object.values(counts).some((count) => count > 0),
     counts,
     reference_count: refs.count,
     references: refs.refs,
-    conclusion: "YES - D1 data migration alone still depends on Supabase Auth for sessions, client auth flows, bearer claims, and legacy auth.uid SQL/RLS/RPC logic.",
+    conclusion:
+      "YES - D1 data migration alone still depends on Supabase Auth for sessions, client auth flows, bearer claims, and legacy auth.uid SQL/RLS/RPC logic.",
   };
 }
 
@@ -253,7 +303,11 @@ function auditStorageDependencies(codeTextByPath) {
   const bucketNames = ["reference-images", "avatars", "admin-assets", "case-images"];
   const buckets = bucketNames.map((bucket) => auditBucket(codeTextByPath, bucket));
   const otherStorageRefs = findRefs(codeTextByPath, /\.storage\.from\(|storage\.from\(/g, 80);
-  const r2Refs = findRefs(codeTextByPath, /SHUNTU_GENERATED_IMAGES|R2_PUBLIC_BASE_URL|r2-image-archive|generated\//g, 80);
+  const r2Refs = findRefs(
+    codeTextByPath,
+    /SHUNTU_GENERATED_IMAGES|R2_PUBLIC_BASE_URL|r2-image-archive|generated\//g,
+    80,
+  );
   return {
     buckets,
     storage_reference_count: otherStorageRefs.count,
@@ -273,7 +327,9 @@ function auditBucket(codeTextByPath, bucket) {
     const lines = codeTextByPath.get(file).split(/\r?\n/);
     for (let index = 0; index < lines.length; index += 1) {
       if (!lines[index].includes(bucket)) continue;
-      const nearby = lines.slice(Math.max(0, index - 5), Math.min(lines.length, index + 6)).join("\n");
+      const nearby = lines
+        .slice(Math.max(0, index - 5), Math.min(lines.length, index + 6))
+        .join("\n");
       if (/getPublicUrl|download|createSignedUrl|list/i.test(nearby)) read = true;
       if (/upload|remove|update|move|copy/i.test(nearby)) write = true;
     }
@@ -289,7 +345,11 @@ function auditBucket(codeTextByPath, bucket) {
 }
 
 function auditSecretsCodeReferences(codeTextByPath) {
-  const refs = findRefs(codeTextByPath, /models_config|global_config|admin_settings|api_key|global_api_key|access_password|WUYIN_API_KEY|XUNHUPAY_APPSECRET|XUNHUPAY_APPID/g, 140);
+  const refs = findRefs(
+    codeTextByPath,
+    /models_config|global_config|admin_settings|api_key|global_api_key|access_password|WUYIN_API_KEY|XUNHUPAY_APPSECRET|XUNHUPAY_APPID/g,
+    140,
+  );
   return {
     reference_count: refs.count,
     references: refs.refs,
@@ -332,23 +392,36 @@ function renderAuditReport(audit) {
 
   lines.push("## recharge_packages", "");
   lines.push(`- Status: ${audit.recharge_packages.status}`);
-  lines.push(`- Frozen backup source present: ${audit.recharge_packages.frozen_source_present ? "YES" : "NO"}`);
+  lines.push(
+    `- Frozen backup source present: ${audit.recharge_packages.frozen_source_present ? "YES" : "NO"}`,
+  );
   lines.push(`- Production code references: ${audit.recharge_packages.code_reference_count}`);
-  lines.push(`- Service-role read available: ${audit.recharge_packages.service_role_env_available ? "YES" : "NO"}`);
-  if (audit.recharge_packages.row_count != null) lines.push(`- Supplemental rows: ${audit.recharge_packages.row_count}`);
-  if (audit.recharge_packages.sha256) lines.push(`- Supplemental SHA256: ${audit.recharge_packages.sha256}`);
+  lines.push(
+    `- Service-role read available: ${audit.recharge_packages.service_role_env_available ? "YES" : "NO"}`,
+  );
+  if (audit.recharge_packages.row_count != null)
+    lines.push(`- Supplemental rows: ${audit.recharge_packages.row_count}`);
+  if (audit.recharge_packages.sha256)
+    lines.push(`- Supplemental SHA256: ${audit.recharge_packages.sha256}`);
   if (audit.recharge_packages.reason) lines.push(`- Reason: ${audit.recharge_packages.reason}`);
   lines.push("", ...renderRefs(audit.recharge_packages.code_references), "");
 
   lines.push("## Sensitive Fields", "");
-  lines.push("| table | column | source rows | non-null | max UTF-8 bytes |", "| --- | --- | ---: | ---: | ---: |");
+  lines.push(
+    "| table | column | source rows | non-null | max UTF-8 bytes |",
+    "| --- | --- | ---: | ---: | ---: |",
+  );
   for (const field of audit.sensitive_fields) {
-    lines.push(`| ${field.table} | ${field.column} | ${field.rows} | ${field.non_null_count} | ${field.max_length} |`);
+    lines.push(
+      `| ${field.table} | ${field.column} | ${field.rows} | ${field.non_null_count} | ${field.max_length} |`,
+    );
   }
   lines.push("");
 
   lines.push("## Supabase Auth Dependency", "");
-  lines.push(`- Still depends on Supabase/Lovable after D1-only migration: ${audit.auth_dependency.still_depends_on_supabase ? "YES" : "NO"}`);
+  lines.push(
+    `- Still depends on Supabase/Lovable after D1-only migration: ${audit.auth_dependency.still_depends_on_supabase ? "YES" : "NO"}`,
+  );
   lines.push(`- Conclusion: ${audit.auth_dependency.conclusion}`);
   lines.push("", "| pattern | occurrences |", "| --- | ---: |");
   for (const [pattern, count] of Object.entries(audit.auth_dependency.counts)) {
@@ -357,10 +430,18 @@ function renderAuditReport(audit) {
   lines.push("", ...renderRefs(audit.auth_dependency.references), "");
 
   lines.push("## Supabase Storage Dependency", "");
-  lines.push(`- Generated image archive has R2 references: ${audit.storage_dependency.generated_images_replaced_by_r2 ? "YES" : "NO"}`);
-  lines.push("", "| bucket | refs | read | write | already replaced by R2 |", "| --- | ---: | --- | --- | --- |");
+  lines.push(
+    `- Generated image archive has R2 references: ${audit.storage_dependency.generated_images_replaced_by_r2 ? "YES" : "NO"}`,
+  );
+  lines.push(
+    "",
+    "| bucket | refs | read | write | already replaced by R2 |",
+    "| --- | ---: | --- | --- | --- |",
+  );
   for (const bucket of audit.storage_dependency.buckets) {
-    lines.push(`| ${bucket.bucket} | ${bucket.reference_count} | ${bucket.still_production_read ? "YES" : "NO"} | ${bucket.still_production_write ? "YES" : "NO"} | ${bucket.already_replaced_by_r2 ? "YES" : "NO"} |`);
+    lines.push(
+      `| ${bucket.bucket} | ${bucket.reference_count} | ${bucket.still_production_read ? "YES" : "NO"} | ${bucket.still_production_write ? "YES" : "NO"} | ${bucket.already_replaced_by_r2 ? "YES" : "NO"} |`,
+    );
   }
   lines.push("");
 
@@ -376,26 +457,52 @@ function renderSecretsPlan(audit) {
   const lines = [];
   lines.push("# SHUNTU Cloudflare Secrets Migration Plan", "");
   lines.push(`Generated at: ${audit.generated_at}`);
-  lines.push("Production API keys are reported by the user as already configured in Cloudflare env/secrets. This plan does not read, print, create, update, or delete any Cloudflare Secret.", "");
+  lines.push(
+    "Production API keys are reported by the user as already configured in Cloudflare env/secrets. This plan does not read, print, create, update, or delete any Cloudflare Secret.",
+    "",
+  );
   lines.push("## Database Secret-Like Fields", "");
-  lines.push("| field | non-null | max UTF-8 bytes | current use | migration status |", "| --- | ---: | ---: | --- | --- |");
+  lines.push(
+    "| field | non-null | max UTF-8 bytes | current use | migration status |",
+    "| --- | ---: | ---: | --- | --- |",
+  );
   for (const field of audit.sensitive_fields) {
     const full = `${field.table}.${field.column}`;
-    lines.push(`| ${full} | ${field.non_null_count} | ${field.max_length} | ${describeCurrentUse(full)} | ${describeMigrationStatus(full)} |`);
+    lines.push(
+      `| ${full} | ${field.non_null_count} | ${field.max_length} | ${describeCurrentUse(full)} | ${describeMigrationStatus(full)} |`,
+    );
   }
   lines.push("", "## Recommended Order", "");
-  lines.push("1. Keep DB columns during first remote D1 import so current code paths remain readable.");
-  lines.push("2. Move provider keys to Cloudflare Secrets/env bindings in Worker/server code, with DB values used only as a temporary fallback if explicitly approved.");
-  lines.push("3. Remove admin UI write/read dependency for provider secret fields after server-side secret resolution is live.");
-  lines.push("4. Only after production traffic is verified, clear or drop DB secret fields in a separate authorized data-cleanup phase.");
+  lines.push(
+    "1. Keep DB columns during first remote D1 import so current code paths remain readable.",
+  );
+  lines.push(
+    "2. Move provider keys to Cloudflare Secrets/env bindings in Worker/server code, with DB values used only as a temporary fallback if explicitly approved.",
+  );
+  lines.push(
+    "3. Remove admin UI write/read dependency for provider secret fields after server-side secret resolution is live.",
+  );
+  lines.push(
+    "4. Only after production traffic is verified, clear or drop DB secret fields in a separate authorized data-cleanup phase.",
+  );
   lines.push("", "## Code Reference Summary", "");
-  lines.push(`- Secret/config related references found: ${audit.secrets_code_references.reference_count}`);
+  lines.push(
+    `- Secret/config related references found: ${audit.secrets_code_references.reference_count}`,
+  );
   lines.push(...renderRefs(audit.secrets_code_references.references));
   lines.push("", "## Current Classification", "");
-  lines.push("- models_config.api_key: still used by provider/admin model config paths; not safe to remove from D1 until code resolves provider credentials from Cloudflare Secrets.");
-  lines.push("- global_config.global_api_key: server code has WUYIN_API_KEY env fallback; strongest candidate for Cloudflare Secret-only operation after code path is hardened.");
-  lines.push("- admin_settings.access_password: admin access product setting, not a provider API key; can move to a secret only if password management behavior changes.");
-  lines.push("- XUNHUPAY_APPID / XUNHUPAY_APPSECRET: already env-style references; no DB source field found in frozen backup.");
+  lines.push(
+    "- models_config.api_key: still used by provider/admin model config paths; not safe to remove from D1 until code resolves provider credentials from Cloudflare Secrets.",
+  );
+  lines.push(
+    "- global_config.global_api_key: server code has WUYIN_API_KEY env fallback; strongest candidate for Cloudflare Secret-only operation after code path is hardened.",
+  );
+  lines.push(
+    "- admin_settings.access_password: admin access product setting, not a provider API key; can move to a secret only if password management behavior changes.",
+  );
+  lines.push(
+    "- XUNHUPAY_APPID / XUNHUPAY_APPSECRET: already env-style references; no DB source field found in frozen backup.",
+  );
   lines.push("", "## Not Performed", "");
   lines.push("- No DB secret field was deleted, cleared, masked, or rewritten.");
   lines.push("- No Cloudflare Secret was created, updated, or read.");
@@ -411,9 +518,12 @@ function describeCurrentUse(field) {
 }
 
 function describeMigrationStatus(field) {
-  if (field === "global_config.global_api_key") return "candidate for Cloudflare Secret after code migration";
-  if (field === "models_config.api_key") return "keep until provider secret resolver replaces DB read";
-  if (field === "admin_settings.access_password") return "keep until admin-password product decision";
+  if (field === "global_config.global_api_key")
+    return "candidate for Cloudflare Secret after code migration";
+  if (field === "models_config.api_key")
+    return "keep until provider secret resolver replaces DB read";
+  if (field === "admin_settings.access_password")
+    return "keep until admin-password product decision";
   return "review before removal";
 }
 

@@ -14,9 +14,16 @@ type WorkerExecutionContext = { waitUntil?: (promise: Promise<unknown>) => void 
 type SharpContainer = {
   running: boolean;
   images: { base: unknown };
-  start: (options: { image: unknown; instance: string; enableInternet: boolean; env: Record<string, string> }) => void;
+  start: (options: {
+    image: unknown;
+    instance: string;
+    enableInternet: boolean;
+    env: Record<string, string>;
+  }) => void;
   setInactivityTimeout: (timeoutMs: number) => Promise<void>;
-  getTcpPort: (port: number) => { fetch: (request: Request | string, init?: RequestInit) => Promise<Response> };
+  getTcpPort: (port: number) => {
+    fetch: (request: Request | string, init?: RequestInit) => Promise<Response>;
+  };
   monitor: () => Promise<unknown>;
 };
 
@@ -63,7 +70,9 @@ export class SharpImageProcessor extends DurableObject<SharpContainerEnv> {
     // A cold container may need time to pull and start the image before its port opens.
     for (let attempt = 0; attempt < 300; attempt += 1) {
       try {
-        const response = await port.fetch("http://container/healthz", { signal: AbortSignal.timeout(1000) });
+        const response = await port.fetch("http://container/healthz", {
+          signal: AbortSignal.timeout(1000),
+        });
         await response.body?.cancel();
         if (response.ok) return;
       } catch {
@@ -82,7 +91,7 @@ let serverEntryPromise: Promise<ServerEntry> | undefined;
 async function getServerEntry(): Promise<ServerEntry> {
   if (!serverEntryPromise) {
     serverEntryPromise = import("@tanstack/react-start/server-entry").then(
-      (m) => ((m as { default?: ServerEntry }).default ?? (m as unknown as ServerEntry)),
+      (m) => (m as { default?: ServerEntry }).default ?? (m as unknown as ServerEntry),
     );
   }
   return serverEntryPromise;
@@ -136,17 +145,29 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
   return brandedErrorResponse();
 }
 
-async function handleManualReplication(request: Request, env: ReplicationRuntimeEnv): Promise<Response> {
+async function handleManualReplication(
+  request: Request,
+  env: ReplicationRuntimeEnv,
+): Promise<Response> {
   if (request.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
-  const expected = (env as ReplicationRuntimeEnv & { REPLICATION_RUNNER_TOKEN?: string }).REPLICATION_RUNNER_TOKEN?.trim();
+  const expected = (
+    env as ReplicationRuntimeEnv & { REPLICATION_RUNNER_TOKEN?: string }
+  ).REPLICATION_RUNNER_TOKEN?.trim();
   const supplied = request.headers.get("x-replication-runner-token")?.trim();
-  if (!expected || !supplied || supplied !== expected) return new Response("Not Found", { status: 404 });
+  if (!expected || !supplied || supplied !== expected)
+    return new Response("Not Found", { status: 404 });
   try {
     const result = await runReplicationBatch(env, 10);
     return Response.json(result, { headers: { "cache-control": "no-store" } });
   } catch (error) {
-    console.error("[replication] batch failed", error instanceof Error ? error.message : "unknown error");
-    return Response.json({ error: "replication batch failed" }, { status: 503, headers: { "cache-control": "no-store" } });
+    console.error(
+      "[replication] batch failed",
+      error instanceof Error ? error.message : "unknown error",
+    );
+    return Response.json(
+      { error: "replication batch failed" },
+      { status: 503, headers: { "cache-control": "no-store" } },
+    );
   }
 }
 
@@ -171,7 +192,10 @@ export default {
   },
   async scheduled(_controller: unknown, env: unknown, ctx: WorkerExecutionContext) {
     const task = runReplicationBatch((env ?? {}) as ReplicationRuntimeEnv, 10).catch((error) => {
-      console.error("[replication] scheduled batch failed", error instanceof Error ? error.message : "unknown error");
+      console.error(
+        "[replication] scheduled batch failed",
+        error instanceof Error ? error.message : "unknown error",
+      );
     });
     ctx.waitUntil?.(task);
     await task;

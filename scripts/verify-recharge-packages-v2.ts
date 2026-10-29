@@ -11,7 +11,9 @@ function toCents(price: string) {
 
 assert(RECHARGE_PACKAGES_V2.length === 6, "PACKAGE_COUNT must be 6");
 assert(
-  RECHARGE_PACKAGES_V2.slice(0, 5).map((plan) => plan.id).join(",") ===
+  RECHARGE_PACKAGES_V2.slice(0, 5)
+    .map((plan) => plan.id)
+    .join(",") ===
     [
       "b5c1dce9-6742-4340-9149-93cee49a1e12",
       "52d12003-fc30-4705-8daa-ceaf18d15915",
@@ -22,19 +24,52 @@ assert(
   "existing package ids changed",
 );
 for (const plan of RECHARGE_PACKAGES_V2) {
-  assert(plan.baseCredits + plan.bonusCredits === plan.credits, `${plan.title} credits total mismatch`);
-  assert(hasTrustedPackageCreditMapping(plan.id, toCents(plan.price), plan.credits), `${plan.title} trusted mapping mismatch`);
+  assert(
+    plan.baseCredits + plan.bonusCredits === plan.credits,
+    `${plan.title} credits total mismatch`,
+  );
+  assert(
+    hasTrustedPackageCreditMapping(plan.id, toCents(plan.price), plan.credits),
+    `${plan.title} trusted mapping mismatch`,
+  );
 }
 
-assert(hasTrustedPackageCreditMapping(RECHARGE_PACKAGES_V2[0].id, 1990, 2000), "19.9 mapping mismatch");
-assert(hasTrustedPackageCreditMapping(RECHARGE_PACKAGES_V2[1].id, 6990, 8000), "69.9 mapping mismatch");
-assert(hasTrustedPackageCreditMapping(RECHARGE_PACKAGES_V2[2].id, 16900, 24000), "169 mapping mismatch");
-assert(hasTrustedPackageCreditMapping(RECHARGE_PACKAGES_V2[3].id, 22900, 40000), "229 mapping mismatch");
-assert(hasTrustedPackageCreditMapping(RECHARGE_PACKAGES_V2[4].id, 31900, 60000), "319 mapping mismatch");
-assert(hasTrustedPackageCreditMapping(RECHARGE_PACKAGES_V2[5].id, 48900, 98000), "489 mapping mismatch");
-assert(!hasTrustedPackageCreditMapping("00000000-0000-4000-8000-000000000000", 1990, 999999), "tampered package mapping must be rejected");
-assert(!hasTrustedPackageCreditMapping(RECHARGE_PACKAGES_V2[1].id, 6990, 7560), "69.9 legacy credit tamper must be rejected");
-assert(hasTrustedPackageCreditMapping(RECHARGE_PACKAGES_V2[0].id, 990, 1000), "legacy package compatibility mismatch");
+assert(
+  hasTrustedPackageCreditMapping(RECHARGE_PACKAGES_V2[0].id, 1990, 2000),
+  "19.9 mapping mismatch",
+);
+assert(
+  hasTrustedPackageCreditMapping(RECHARGE_PACKAGES_V2[1].id, 6990, 8000),
+  "69.9 mapping mismatch",
+);
+assert(
+  hasTrustedPackageCreditMapping(RECHARGE_PACKAGES_V2[2].id, 16900, 24000),
+  "169 mapping mismatch",
+);
+assert(
+  hasTrustedPackageCreditMapping(RECHARGE_PACKAGES_V2[3].id, 22900, 40000),
+  "229 mapping mismatch",
+);
+assert(
+  hasTrustedPackageCreditMapping(RECHARGE_PACKAGES_V2[4].id, 31900, 60000),
+  "319 mapping mismatch",
+);
+assert(
+  hasTrustedPackageCreditMapping(RECHARGE_PACKAGES_V2[5].id, 48900, 98000),
+  "489 mapping mismatch",
+);
+assert(
+  !hasTrustedPackageCreditMapping("00000000-0000-4000-8000-000000000000", 1990, 999999),
+  "tampered package mapping must be rejected",
+);
+assert(
+  !hasTrustedPackageCreditMapping(RECHARGE_PACKAGES_V2[1].id, 6990, 7560),
+  "69.9 legacy credit tamper must be rejected",
+);
+assert(
+  hasTrustedPackageCreditMapping(RECHARGE_PACKAGES_V2[0].id, 990, 1000),
+  "legacy package compatibility mismatch",
+);
 
 console.log("DISPLAY_PRICE_EQUALS_SERVER_PRICE=PASS");
 console.log("SERVER_PRICE_EQUALS_ORDER_PRICE=PASS");

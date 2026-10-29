@@ -30,24 +30,38 @@ async function main() {
   const tasks = readJson(path.join(backupDir, "generation_tasks.json"));
   const histories = readJson(path.join(backupDir, "generation_history.json"));
   const taskRowsById = new Map(tasks.map((row) => [row.id, row]));
-  const historiesByTaskId = groupBy(histories.filter((row) => row.generation_task_id), "generation_task_id");
+  const historiesByTaskId = groupBy(
+    histories.filter((row) => row.generation_task_id),
+    "generation_task_id",
+  );
   const previousManifest = fs.existsSync(manifestPath) ? readJson(manifestPath) : null;
   const previousManifestSummary = summarizeExistingManifest(previousManifest);
 
   const legacy = buildLegacyObjects({ tasks, histories });
-  if (legacy.taskReferences !== expectedTaskRefs || legacy.historyReferences !== expectedHistoryRefs) {
-    throw new Error(`LEGACY_REFERENCE_COUNT_CHANGED: expected tasks=${expectedTaskRefs}, history=${expectedHistoryRefs}; found tasks=${legacy.taskReferences}, history=${legacy.historyReferences}`);
+  if (
+    legacy.taskReferences !== expectedTaskRefs ||
+    legacy.historyReferences !== expectedHistoryRefs
+  ) {
+    throw new Error(
+      `LEGACY_REFERENCE_COUNT_CHANGED: expected tasks=${expectedTaskRefs}, history=${expectedHistoryRefs}; found tasks=${legacy.taskReferences}, history=${legacy.historyReferences}`,
+    );
   }
 
   const previousMismatch = previousManifestSummary
-    ? previousManifestSummary.totalReferences !== legacy.references.length || previousManifestSummary.uniqueBinaries !== legacy.objects.length
+    ? previousManifestSummary.totalReferences !== legacy.references.length ||
+      previousManifestSummary.uniqueBinaries !== legacy.objects.length
     : null;
   if (previousMismatch) {
-    console.warn(JSON.stringify({
-      warning: "EXISTING_MANIFEST_REFERENCE_COUNT_DIFFERED_FROM_FULL_DATA_URL_SCAN",
-      previous: previousManifestSummary,
-      current: { totalReferences: legacy.references.length, uniqueBinaries: legacy.objects.length },
-    }));
+    console.warn(
+      JSON.stringify({
+        warning: "EXISTING_MANIFEST_REFERENCE_COUNT_DIFFERED_FROM_FULL_DATA_URL_SCAN",
+        previous: previousManifestSummary,
+        current: {
+          totalReferences: legacy.references.length,
+          uniqueBinaries: legacy.objects.length,
+        },
+      }),
+    );
   }
 
   verifyAndWriteStaging(legacy.objects);
@@ -110,7 +124,8 @@ async function main() {
       source_file: "src/lib/r2-image-archive.ts",
       function: "getArchiveKey(taskId, extension, now)",
       pattern: "generated/<UTC year>/<UTC month>/<safe taskId>.<extension>",
-      date_source: "archive execution time; candidate audit used task/history created/completed/updated UTC months where available",
+      date_source:
+        "archive execution time; candidate audit used task/history created/completed/updated UTC months where available",
     },
     relationship_audit: relationshipAudit,
     objects,
@@ -118,18 +133,24 @@ async function main() {
 
   writeManifest(manifest);
   fs.writeFileSync(auditReportPath, renderReport(manifest));
-  console.log(JSON.stringify({
-    ok: true,
-    manifestPath,
-    auditReportPath,
-    previousManifestMismatch: previousMismatch,
-    taskReferences: legacy.taskReferences,
-    historyReferences: legacy.historyReferences,
-    totalReferences: legacy.references.length,
-    uniqueBinaries: legacy.objects.length,
-    stagingTotalBytes: legacy.objects.reduce((sum, row) => sum + row.decoded_bytes, 0),
-    r2ReuseSummary: manifest.r2_reuse_summary,
-  }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        ok: true,
+        manifestPath,
+        auditReportPath,
+        previousManifestMismatch: previousMismatch,
+        taskReferences: legacy.taskReferences,
+        historyReferences: legacy.historyReferences,
+        totalReferences: legacy.references.length,
+        uniqueBinaries: legacy.objects.length,
+        stagingTotalBytes: legacy.objects.reduce((sum, row) => sum + row.decoded_bytes, 0),
+        r2ReuseSummary: manifest.r2_reuse_summary,
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 function assertInsideRepo(targetPath, rootPath, label) {
@@ -174,22 +195,30 @@ function buildLegacyObjects({ tasks, histories }) {
     });
   }
 
-  const objects = Array.from(objectsBySha.values()).sort((a, b) => a.sha256.localeCompare(b.sha256));
-  const taskHashes = new Set(references.filter((row) => row.table === "generation_tasks").map((row) => row.sha256));
-  const historyHashes = new Set(references.filter((row) => row.table === "generation_history").map((row) => row.sha256));
+  const objects = Array.from(objectsBySha.values()).sort((a, b) =>
+    a.sha256.localeCompare(b.sha256),
+  );
+  const taskHashes = new Set(
+    references.filter((row) => row.table === "generation_tasks").map((row) => row.sha256),
+  );
+  const historyHashes = new Set(
+    references.filter((row) => row.table === "generation_history").map((row) => row.sha256),
+  );
   return {
     taskReferences,
     historyReferences,
     references,
     objects,
-    sharedTaskHistoryBinaries: Array.from(taskHashes).filter((sha) => historyHashes.has(sha)).length,
+    sharedTaskHistoryBinaries: Array.from(taskHashes).filter((sha) => historyHashes.has(sha))
+      .length,
     taskOnlyBinaries: Array.from(taskHashes).filter((sha) => !historyHashes.has(sha)).length,
     historyOnlyBinaries: Array.from(historyHashes).filter((sha) => !taskHashes.has(sha)).length,
   };
 }
 
 function parseImageData(value) {
-  const match = typeof value === "string" && value.match(/^data:(image\/[A-Za-z0-9.+-]+);base64,([\s\S]*)$/);
+  const match =
+    typeof value === "string" && value.match(/^data:(image\/[A-Za-z0-9.+-]+);base64,([\s\S]*)$/);
   if (!match) return null;
   const mimeType = match[1].toLowerCase();
   const extension = extensionForMime(mimeType);
@@ -226,7 +255,12 @@ function addReference(objectsBySha, references, parsed, reference) {
     throw new Error(`LEGACY_IMAGE_METADATA_MISMATCH_FOR_SHA: ${parsed.sha256}`);
   }
   object.references.push(reference);
-  references.push({ ...reference, sha256: parsed.sha256, encoded_bytes: parsed.encodedBytes, decoded_bytes: parsed.decodedBytes });
+  references.push({
+    ...reference,
+    sha256: parsed.sha256,
+    encoded_bytes: parsed.encodedBytes,
+    decoded_bytes: parsed.decodedBytes,
+  });
 }
 
 function verifyAndWriteStaging(objects) {
@@ -280,23 +314,44 @@ function buildCandidateUrls({ object, taskRowsById, historiesByTaskId }) {
   for (const reference of object.references) {
     if (reference.table === "generation_tasks") {
       const task = taskRowsById.get(reference.row_id);
-      addGeneratedUrlCandidate(candidates, task?.result_image_url, "task_result_image_url_relation");
+      addGeneratedUrlCandidate(
+        candidates,
+        task?.result_image_url,
+        "task_result_image_url_relation",
+      );
       for (const history of historiesByTaskId.get(reference.row_id) ?? []) {
         addGeneratedUrlCandidate(candidates, history.image_url, "history_image_url_relation");
       }
-      addDeterministicKeyCandidates(candidates, reference.row_id, object.mime_type, collectTaskDates(task), "generated_key_rule_task_id");
+      addDeterministicKeyCandidates(
+        candidates,
+        reference.row_id,
+        object.mime_type,
+        collectTaskDates(task),
+        "generated_key_rule_task_id",
+      );
     }
     if (reference.table === "generation_history" && reference.generation_task_id) {
       const task = taskRowsById.get(reference.generation_task_id);
-      addGeneratedUrlCandidate(candidates, task?.result_image_url, "task_result_image_url_relation");
-      addDeterministicKeyCandidates(candidates, reference.generation_task_id, object.mime_type, collectTaskDates(task), "generated_key_rule_generation_task_id");
+      addGeneratedUrlCandidate(
+        candidates,
+        task?.result_image_url,
+        "task_result_image_url_relation",
+      );
+      addDeterministicKeyCandidates(
+        candidates,
+        reference.generation_task_id,
+        object.mime_type,
+        collectTaskDates(task),
+        "generated_key_rule_generation_task_id",
+      );
     }
   }
   return Array.from(candidates.values()).sort((a, b) => a.url.localeCompare(b.url));
 }
 
 function addGeneratedUrlCandidate(candidates, value, source) {
-  if (typeof value !== "string" || !value.startsWith(`${r2PublicBaseUrl}/${generatedPrefix}`)) return;
+  if (typeof value !== "string" || !value.startsWith(`${r2PublicBaseUrl}/${generatedPrefix}`))
+    return;
   const url = value;
   const key = new URL(url).pathname.slice(1);
   candidates.set(url, { url, key, source });
@@ -317,7 +372,9 @@ function addDeterministicKeyCandidates(candidates, taskId, mimeType, dates, sour
 
 function collectTaskDates(task) {
   if (!task) return [];
-  return unique([task.created_at, task.started_at, task.completed_at, task.updated_at].filter(Boolean));
+  return unique(
+    [task.created_at, task.started_at, task.completed_at, task.updated_at].filter(Boolean),
+  );
 }
 
 async function verifyCandidates(object, candidates) {
@@ -326,7 +383,13 @@ async function verifyCandidates(object, candidates) {
   let mismatch = 0;
   let ambiguous = 0;
   for (const candidate of candidates) {
-    const check = { key: candidate.key, url: candidate.url, source: candidate.source, head_status: null, result: "NOT_FOUND" };
+    const check = {
+      key: candidate.key,
+      url: candidate.url,
+      source: candidate.source,
+      head_status: null,
+      result: "NOT_FOUND",
+    };
     try {
       const head = await fetch(candidate.url, { method: "HEAD", redirect: "follow" });
       check.head_status = head.status;
@@ -394,14 +457,21 @@ function summarizeExistingManifest(manifest) {
   if (!manifest?.objects) return null;
   return {
     version: manifest.version ?? null,
-    totalReferences: manifest.objects.reduce((sum, object) => sum + (object.references?.length ?? 0), 0),
+    totalReferences: manifest.objects.reduce(
+      (sum, object) => sum + (object.references?.length ?? 0),
+      0,
+    ),
     uniqueBinaries: manifest.objects.length,
   };
 }
 
 function writeManifest(manifest) {
   const text = `${JSON.stringify(manifest, null, 2)}\n`;
-  if (/data:image\//i.test(text) || /base64/i.test(text) || /api[_-]?key|secret|token|private[_-]?key/i.test(text)) {
+  if (
+    /data:image\//i.test(text) ||
+    /base64/i.test(text) ||
+    /api[_-]?key|secret|token|private[_-]?key/i.test(text)
+  ) {
     throw new Error("LEGACY_MANIFEST_FORBIDDEN_CONTENT");
   }
   fs.writeFileSync(manifestPath, text);
@@ -420,12 +490,16 @@ function renderReport(manifest) {
   lines.push(`- generation_history references: ${manifest.source_scan.history_references}`);
   lines.push(`- total references: ${manifest.source_scan.total_references}`);
   lines.push(`- unique binaries: ${manifest.source_scan.unique_binaries}`);
-  lines.push(`- shared task/history binaries: ${manifest.source_scan.shared_task_history_binaries}`);
+  lines.push(
+    `- shared task/history binaries: ${manifest.source_scan.shared_task_history_binaries}`,
+  );
   lines.push(`- task-only binaries: ${manifest.source_scan.task_only_binaries}`);
   lines.push(`- history-only binaries: ${manifest.source_scan.history_only_binaries}`);
   lines.push(`- decoded bytes after dedupe: ${manifest.source_scan.decoded_bytes_after_dedupe}`);
   if (manifest.source_scan.previous_manifest_mismatch) {
-    lines.push(`- Previous manifest mismatch explicitly reported: YES (${manifest.source_scan.previous_manifest_summary.totalReferences} refs -> ${manifest.source_scan.total_references} refs)`);
+    lines.push(
+      `- Previous manifest mismatch explicitly reported: YES (${manifest.source_scan.previous_manifest_summary.totalReferences} refs -> ${manifest.source_scan.total_references} refs)`,
+    );
   }
   lines.push("", "## Existing R2 Reuse", "");
   lines.push(`- ALREADY_IN_R2: ${manifest.r2_reuse_summary.ALREADY_IN_R2}`);
@@ -433,23 +507,39 @@ function renderReport(manifest) {
   lines.push(`- AMBIGUOUS: ${manifest.r2_reuse_summary.AMBIGUOUS}`);
   lines.push(`- MISMATCH: ${manifest.r2_reuse_summary.MISMATCH}`);
   lines.push("", "## Key Rule", "");
-  lines.push(`- ${manifest.key_generation_rule.source_file} / ${manifest.key_generation_rule.function}`);
+  lines.push(
+    `- ${manifest.key_generation_rule.source_file} / ${manifest.key_generation_rule.function}`,
+  );
   lines.push(`- ${manifest.key_generation_rule.pattern}`);
   lines.push(`- ${manifest.key_generation_rule.date_source}`);
   lines.push("", "## Object Classification", "");
-  lines.push("| sha256 | status | existing key | fallback key | refs | candidates checked |", "| --- | --- | --- | --- | ---: | ---: |");
+  lines.push(
+    "| sha256 | status | existing key | fallback key | refs | candidates checked |",
+    "| --- | --- | --- | --- | ---: | ---: |",
+  );
   for (const object of manifest.objects) {
-    lines.push(`| ${object.sha256} | ${object.status} | ${object.existing_r2_key ?? ""} | ${object.fallback_proposed_r2_key} | ${object.references.length} | ${object.r2_reuse_audit.checked_count} |`);
+    lines.push(
+      `| ${object.sha256} | ${object.status} | ${object.existing_r2_key ?? ""} | ${object.fallback_proposed_r2_key} | ${object.references.length} | ${object.r2_reuse_audit.checked_count} |`,
+    );
   }
   lines.push("", "## Relationship Audit", "");
-  lines.push("| history id | generation_task_id | task URL type | history URL type |", "| --- | --- | --- | --- |");
+  lines.push(
+    "| history id | generation_task_id | task URL type | history URL type |",
+    "| --- | --- | --- | --- |",
+  );
   for (const row of manifest.relationship_audit) {
-    lines.push(`| ${row.history_id} | ${row.generation_task_id ?? ""} | ${row.task_result_image_url_type} | ${row.history_image_url_type} |`);
+    lines.push(
+      `| ${row.history_id} | ${row.generation_task_id ?? ""} | ${row.task_result_image_url_type} | ${row.history_image_url_type} |`,
+    );
   }
   lines.push("", "## Prohibited Operations", "");
   lines.push("- No R2 PUT, DELETE, COPY, or MOVE was performed.");
-  lines.push("- Public HTTPS HEAD was used for candidates; GET was used only for candidate objects that appeared to exist.");
-  lines.push("- No remote D1, Supabase, Lovable, Auth, Storage, Provider, Canvas, or payment mutation was performed.");
+  lines.push(
+    "- Public HTTPS HEAD was used for candidates; GET was used only for candidate objects that appeared to exist.",
+  );
+  lines.push(
+    "- No remote D1, Supabase, Lovable, Auth, Storage, Provider, Canvas, or payment mutation was performed.",
+  );
   return `${lines.join("\n")}\n`;
 }
 

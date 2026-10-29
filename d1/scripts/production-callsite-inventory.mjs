@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const REPO_ROOT = path.resolve(new URL("../..", import.meta.url).pathname.replace(/^\/(.:\/)/, "$1"));
+const REPO_ROOT = path.resolve(
+  new URL("../..", import.meta.url).pathname.replace(/^\/(.:\/)/, "$1"),
+);
 const REPORT_PATH = path.join(REPO_ROOT, "d1/reports/production-callsite-inventory.md");
 const SCAN_ROOTS = ["src/lib", "src/routes", "src/hooks", "src/components"];
 
@@ -75,8 +77,15 @@ function walk(dir) {
 }
 
 function classify(file, line, target, operation) {
-  if (file.includes("supabase-request-auth") || line.includes(".auth.") || target === "user_roles") {
-    return ["AUTH", "Supabase Auth / role inventory intentionally remains on Supabase for this phase."];
+  if (
+    file.includes("supabase-request-auth") ||
+    line.includes(".auth.") ||
+    target === "user_roles"
+  ) {
+    return [
+      "AUTH",
+      "Supabase Auth / role inventory intentionally remains on Supabase for this phase.",
+    ];
   }
   if (line.includes(".storage.")) {
     return ["STORAGE", "Supabase Storage intentionally remains on Supabase for this phase."];
@@ -85,25 +94,47 @@ function classify(file, line, target, operation) {
     return ["INTENTIONAL", "Lovable adapter implementation behind BusinessDatabase."];
   }
   if (file.endsWith("replication-processor.ts")) {
-    return ["INTENTIONAL", "Warm-standby row-state replication target; writes are disabled unless explicitly injected later."];
+    return [
+      "INTENTIONAL",
+      "Warm-standby row-state replication target; writes are disabled unless explicitly injected later.",
+    ];
   }
   if (file.endsWith("d1-business-database.ts") || file.endsWith("d1-replication-outbox.ts")) {
     return ["INTENTIONAL", "D1 adapter/outbox implementation behind BusinessDatabase."];
   }
   if (file.includes("inspiration.functions.ts")) {
-    return ["LEGACY_DB_ISOLATED", "Inspiration/case social tables remain Lovable-only; write paths are blocked when DATABASE_PRIMARY=d1."];
+    return [
+      "LEGACY_DB_ISOLATED",
+      "Inspiration/case social tables remain Lovable-only; write paths are blocked when DATABASE_PRIMARY=d1.",
+    ];
   }
   if (file.includes("use-auth.tsx") || file.includes("SettingsDialog.tsx")) {
-    return ["BUG", "Client profile DB access must use server-routed BusinessDatabase before D1 cutover."];
+    return [
+      "BUG",
+      "Client profile DB access must use server-routed BusinessDatabase before D1 cutover.",
+    ];
   }
   if (file.includes("admin.functions.ts")) {
     if (/generation_history.*delete|profiles.*delete|coupons.*delete/.test(line)) {
-      return ["INTENTIONAL", "Lovable-only admin/prune/delete behavior retained; D1 delete semantics remain a later controlled phase."];
+      return [
+        "INTENTIONAL",
+        "Lovable-only admin/prune/delete behavior retained; D1 delete semantics remain a later controlled phase.",
+      ];
     }
-    if (/profiles|credit_usage_logs|coupons|models_config|recharge_packages|ads|announcements|style_templates|admin_settings|admin_credit_usage_totals/.test(target)) {
-      return ["LEGACY_DB_ISOLATED", "Admin analytics/config legacy DB path remains Lovable-only; mutation paths are blocked when DATABASE_PRIMARY=d1."];
+    if (
+      /profiles|credit_usage_logs|coupons|models_config|recharge_packages|ads|announcements|style_templates|admin_settings|admin_credit_usage_totals/.test(
+        target,
+      )
+    ) {
+      return [
+        "LEGACY_DB_ISOLATED",
+        "Admin analytics/config legacy DB path remains Lovable-only; mutation paths are blocked when DATABASE_PRIMARY=d1.",
+      ];
     }
-    return ["INTENTIONAL", "Residual direct call guarded to Lovable-only compatibility path or admin-only inventory."];
+    return [
+      "INTENTIONAL",
+      "Residual direct call guarded to Lovable-only compatibility path or admin-only inventory.",
+    ];
   }
   return ["BUG", "Unexpected direct Supabase business database call after router wiring."];
 }
@@ -119,12 +150,26 @@ for (const root of SCAN_ROOTS) {
       for (const match of fromMatches) {
         if (!BUSINESS_TARGETS.has(match[1])) continue;
         const [classification, reason] = classify(file, line, match[1], "from");
-        rows.push({ file, line: index + 1, operation: "from", target: match[1], classification, reason });
+        rows.push({
+          file,
+          line: index + 1,
+          operation: "from",
+          target: match[1],
+          classification,
+          reason,
+        });
       }
       for (const match of rpcMatches) {
         if (!BUSINESS_RPCS.has(match[1])) continue;
         const [classification, reason] = classify(file, line, match[1], "rpc");
-        rows.push({ file, line: index + 1, operation: "rpc", target: match[1], classification, reason });
+        rows.push({
+          file,
+          line: index + 1,
+          operation: "rpc",
+          target: match[1],
+          classification,
+          reason,
+        });
       }
     });
   }
@@ -152,11 +197,16 @@ const lines = [
   "",
   "| file | line | operation | target | classification | reason |",
   "|---|---:|---|---|---|---|",
-  ...rows.map((row) => `| ${row.file} | ${row.line} | ${row.operation} | ${row.target} | ${row.classification} | ${row.reason} |`),
+  ...rows.map(
+    (row) =>
+      `| ${row.file} | ${row.line} | ${row.operation} | ${row.target} | ${row.classification} | ${row.reason} |`,
+  ),
   "",
   "## Summary",
   "",
-  ...Object.entries(counts).sort(([a], [b]) => a.localeCompare(b)).map(([classification, count]) => `- ${classification}: ${count}`),
+  ...Object.entries(counts)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([classification, count]) => `- ${classification}: ${count}`),
   `- legacy write guards: ${legacyWriteGuardCount}`,
   `- critical write bypass count: ${criticalWriteBypassCount}`,
   "",
@@ -166,4 +216,17 @@ const lines = [
 
 fs.mkdirSync(path.dirname(REPORT_PATH), { recursive: true });
 fs.writeFileSync(REPORT_PATH, `${lines.join("\n")}\n`);
-console.log(JSON.stringify({ ok: criticalWriteBypassCount === 0, reportPath: REPORT_PATH, rows: rows.length, counts, legacyWriteGuardCount, criticalWriteBypassCount }, null, 2));
+console.log(
+  JSON.stringify(
+    {
+      ok: criticalWriteBypassCount === 0,
+      reportPath: REPORT_PATH,
+      rows: rows.length,
+      counts,
+      legacyWriteGuardCount,
+      criticalWriteBypassCount,
+    },
+    null,
+    2,
+  ),
+);

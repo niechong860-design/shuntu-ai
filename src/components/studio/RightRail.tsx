@@ -13,7 +13,9 @@ export function RightRail({ credits, onOpenHistory }: Props) {
         <div className="my-1 h-px w-7 bg-border" />
         <div className="relative h-9 w-9 overflow-hidden rounded-full ring-1 ring-border">
           <div className="h-full w-full bg-gradient-to-br from-primary/40 via-accent to-secondary" />
-          <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold">Y</div>
+          <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold">
+            Y
+          </div>
           <span className="absolute -bottom-0 -right-0 h-2.5 w-2.5 rounded-full border-2 border-card bg-primary" />
         </div>
       </div>
@@ -22,8 +24,12 @@ export function RightRail({ credits, onOpenHistory }: Props) {
       <div className="flex flex-col items-center gap-2.5">
         <div className="flex flex-col items-center gap-1 rounded-2xl border border-border bg-white/[0.03] px-2 py-2.5">
           <Zap className="h-3.5 w-3.5 text-primary" fill="currentColor" />
-          <span className="font-mono text-[11px] font-semibold tabular-nums leading-none">{credits}</span>
-          <span className="text-[8px] font-light uppercase tracking-wider text-muted-foreground leading-none">pts</span>
+          <span className="font-mono text-[11px] font-semibold tabular-nums leading-none">
+            {credits}
+          </span>
+          <span className="text-[8px] font-light uppercase tracking-wider text-muted-foreground leading-none">
+            pts
+          </span>
         </div>
         <button
           title="Top up"
@@ -39,9 +45,15 @@ export function RightRail({ credits, onOpenHistory }: Props) {
 
       {/* Bottom: secondary */}
       <div className="flex flex-col items-center gap-1.5">
-        <RailBtn title="Theme"><Moon className="h-4 w-4" /></RailBtn>
-        <RailBtn title="Help"><HelpCircle className="h-4 w-4" /></RailBtn>
-        <RailBtn title="Settings"><Settings className="h-4 w-4" /></RailBtn>
+        <RailBtn title="Theme">
+          <Moon className="h-4 w-4" />
+        </RailBtn>
+        <RailBtn title="Help">
+          <HelpCircle className="h-4 w-4" />
+        </RailBtn>
+        <RailBtn title="Settings">
+          <Settings className="h-4 w-4" />
+        </RailBtn>
       </div>
     </aside>
   );

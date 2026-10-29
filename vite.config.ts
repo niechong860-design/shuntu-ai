@@ -1,24 +1,66 @@
-// @lovable.dev/vite-tanstack-config already includes the following — do NOT add them manually
-// or the app will break with duplicate plugins:
-//   - tanstackStart, viteReact, tailwindcss, tsConfigPaths, cloudflare (build-only),
-//     componentTagger (dev-only), VITE_* env injection, @ path alias, React/TanStack dedupe,
-//     error logger plugins, and sandbox detection (port/host/strictPort).
-// You can pass additional config via defineConfig({ vite: { ... } }) if needed.
-import { defineConfig } from "@lovable.dev/vite-tanstack-config";
+import { defineConfig, loadEnv } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import tsconfigPaths from "vite-tsconfig-paths";
+import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+import { nitro } from "nitro/vite";
 
-// Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
-// @cloudflare/vite-plugin builds from this — wrangler.jsonc main alone is insufficient.
-// Force-enable the nitro deploy plugin so the Cloudflare Worker bundle is produced
-// (otherwise wrangler tries to deploy raw src/server.ts and fails to resolve TanStack
-// virtual entries like #tanstack-start-entry).
-export default defineConfig({
-  vite: {
+const tanstackStartOptions = {
+  importProtection: {
+    behavior: "error" as const,
+    client: {
+      files: ["**/server/**"],
+      specifiers: ["server-only"],
+    },
+  },
+};
+
+export default defineConfig(({ command, mode }) => {
+  const env = loadEnv(mode, process.cwd(), "VITE_");
+  const envDefine = Object.fromEntries(
+    Object.entries(env).map(([key, value]) => [`import.meta.env.${key}`, JSON.stringify(value)]),
+  );
+
+  const plugins = [
+    tailwindcss(),
+    tsconfigPaths({ projects: ["./tsconfig.json"] }),
+    tanstackStart({
+      ...tanstackStartOptions,
+      server: { entry: "server" },
+    }),
+    ...(command === "build"
+      ? [
+          nitro({
+            defaultPreset: "cloudflare-module",
+            plugins: ["./plugins/replication-outbox.ts"],
+            cloudflare: { exports: "./exports.cloudflare.mjs" },
+          } as never),
+        ]
+      : []),
+    react(),
+  ];
+
+  return {
+    define: envDefine,
+    css: { transformer: "lightningcss" },
+    resolve: {
+      alias: {
+        "@": `${process.cwd()}/src`,
+        ...(command === "build"
+          ? {}
+          : { "cloudflare:workers": `${process.cwd()}/src/lib/cloudflare-workers-dev.ts` }),
+      },
+      dedupe: [
+        "react",
+        "react-dom",
+        "react/jsx-runtime",
+        "react/jsx-dev-runtime",
+        "@tanstack/react-query",
+        "@tanstack/query-core",
+      ],
+    },
+    plugins,
+    server: { host: "127.0.0.1", port: 8080, strictPort: true },
     build: { rollupOptions: { external: ["cloudflare:workers"] } },
-  },
-  nitro: {
-    plugins: ["./plugins/replication-outbox.ts"],
-  } as unknown as {},
-  tanstackStart: {
-    server: { entry: "server" },
-  },
+  };
 });

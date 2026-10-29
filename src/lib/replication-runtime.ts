@@ -1,24 +1,20 @@
-import { createClient } from "@supabase/supabase-js";
-import { processReplicationOutbox, SupabaseReplicationTarget, type ReplicationProcessorResult } from "@/lib/replication-processor";
-import type { D1DatabaseBindingLike } from "@/lib/d1-business-database";
+/**
+ * The legacy D1-to-Lovable mirror is intentionally disabled. Historical
+ * outbox rows are retained for audit; D1 is the sole business authority.
+ */
+export type ReplicationRuntimeEnv = Record<string, unknown>;
 
-export type ReplicationRuntimeEnv = {
-  DB?: D1DatabaseBindingLike;
-  DATABASE_PRIMARY?: string;
-  SUPABASE_URL?: string;
-  SUPABASE_SERVICE_ROLE_KEY?: string;
+export type ReplicationProcessorResult = {
+  scanned: number;
+  synced: number;
+  failed: number;
+  deferred: number;
+  disabled: true;
 };
 
-export async function runReplicationBatch(env: ReplicationRuntimeEnv, batchSize = 10): Promise<ReplicationProcessorResult> {
-  if (env.DATABASE_PRIMARY !== "d1") throw new Error("REPLICATION_REQUIRES_DATABASE_PRIMARY_D1");
-  if (!env.DB || typeof env.DB.prepare !== "function") throw new Error("REPLICATION_D1_BINDING_MISSING");
-  const supabaseUrl = env.SUPABASE_URL?.trim();
-  const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-  if (!supabaseUrl || !serviceRoleKey) throw new Error("REPLICATION_SUPABASE_ADMIN_ENV_MISSING");
-
-  const supabase = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const target = new SupabaseReplicationTarget(supabase, { allowWrites: true });
-  return processReplicationOutbox({ db: env.DB, target, batchSize });
+export async function runReplicationBatch(
+  _env: ReplicationRuntimeEnv,
+  _batchSize = 10,
+): Promise<ReplicationProcessorResult> {
+  return { scanned: 0, synced: 0, failed: 0, deferred: 0, disabled: true };
 }

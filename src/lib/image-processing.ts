@@ -43,12 +43,7 @@ const COMMUNITY_MAX_DIM = 2560;
 const COMMUNITY_SIZE_THRESHOLD = 2 * 1024 * 1024; // 2 MB
 const COMMUNITY_QUALITY = 0.88;
 
-const SUPPORTED_COMMUNITY_TYPES = new Set([
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/webp",
-]);
+const SUPPORTED_COMMUNITY_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
 
 /** Create instant object URL preview without touching pixels. */
 export function makePreviewUrl(file: File | Blob): string {
@@ -123,14 +118,28 @@ async function encodeWithinByteLimit(
 
   // Try to keep the largest dimensions and highest JPEG quality that fit.
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    const lowestQualityBlob = await canvasEncode(bitmap, currentWidth, currentHeight, type, 0.1, flattenBg);
+    const lowestQualityBlob = await canvasEncode(
+      bitmap,
+      currentWidth,
+      currentHeight,
+      type,
+      0.1,
+      flattenBg,
+    );
     if (lowestQualityBlob.size <= maxBytes) {
       let bestBlob = lowestQualityBlob;
       let low = 0.1;
       let high = Math.min(1, initialQuality);
       for (let iteration = 0; iteration < 7; iteration += 1) {
         const quality = (low + high) / 2;
-        const candidate = await canvasEncode(bitmap, currentWidth, currentHeight, type, quality, flattenBg);
+        const candidate = await canvasEncode(
+          bitmap,
+          currentWidth,
+          currentHeight,
+          type,
+          quality,
+          flattenBg,
+        );
         if (candidate.size <= maxBytes) {
           bestBlob = candidate;
           low = quality;
@@ -154,10 +163,16 @@ async function encodeWithinByteLimit(
 /** Yield to the browser so React can repaint loading states. */
 const nextFrame = () =>
   new Promise<void>((r) =>
-    typeof requestAnimationFrame !== "undefined" ? requestAnimationFrame(() => r()) : setTimeout(r, 0),
+    typeof requestAnimationFrame !== "undefined"
+      ? requestAnimationFrame(() => r())
+      : setTimeout(r, 0),
   );
 
-export async function processImage(file: File, preset: ProcessPreset, options: ProcessImageOptions = {}): Promise<ProcessedImage> {
+export async function processImage(
+  file: File,
+  preset: ProcessPreset,
+  options: ProcessImageOptions = {},
+): Promise<ProcessedImage> {
   const previewUrl = makePreviewUrl(file);
   const originalSize = file.size;
 
@@ -186,9 +201,18 @@ export async function processImage(file: File, preset: ProcessPreset, options: P
   try {
     if (preset === "ai-model") {
       const { w, h } = fitDimensions(bitmap.width, bitmap.height, AI_MAX_DIM);
-      const blob = options.maxBytes !== undefined
-        ? await encodeWithinByteLimit(bitmap, w, h, "image/jpeg", AI_QUALITY, options.maxBytes, "#ffffff")
-        : await canvasEncode(bitmap, w, h, "image/jpeg", AI_QUALITY, "#ffffff");
+      const blob =
+        options.maxBytes !== undefined
+          ? await encodeWithinByteLimit(
+              bitmap,
+              w,
+              h,
+              "image/jpeg",
+              AI_QUALITY,
+              options.maxBytes,
+              "#ffffff",
+            )
+          : await canvasEncode(bitmap, w, h, "image/jpeg", AI_QUALITY, "#ffffff");
       return {
         blob,
         contentType: "image/jpeg",

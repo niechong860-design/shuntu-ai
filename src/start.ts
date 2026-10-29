@@ -1,9 +1,12 @@
 import { createStart, createMiddleware } from "@tanstack/react-start";
-import { attachSupabaseAuth } from "@/integrations/supabase/auth-attacher";
+import { attachD1Auth } from "@/lib/d1-auth-attacher";
 
 import { renderErrorPage } from "./lib/error-page";
 
-function sameOriginServerFnFetch(input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]): ReturnType<typeof fetch> {
+function sameOriginServerFnFetch(
+  input: Parameters<typeof fetch>[0],
+  init?: Parameters<typeof fetch>[1],
+): ReturnType<typeof fetch> {
   if (typeof window === "undefined") return fetch(input, init);
 
   try {
@@ -12,7 +15,10 @@ function sameOriginServerFnFetch(input: Parameters<typeof fetch>[0], init?: Para
 
     const parsed = new URL(url, window.location.origin);
     if (parsed.pathname.startsWith("/_serverFn/") && parsed.origin !== window.location.origin) {
-      return fetch(`${window.location.origin}${parsed.pathname}${parsed.search}${parsed.hash}`, init);
+      return fetch(
+        `${window.location.origin}${parsed.pathname}${parsed.search}${parsed.hash}`,
+        init,
+      );
     }
   } catch {
     // Fall through to the original URL if parsing ever fails.
@@ -38,7 +44,7 @@ const errorMiddleware = createMiddleware().server(async ({ next }) => {
 
 export const startInstance = createStart(() => ({
   requestMiddleware: [errorMiddleware],
-  functionMiddleware: [attachSupabaseAuth],
+  functionMiddleware: [attachD1Auth],
   serverFns: {
     fetch: sameOriginServerFnFetch,
   },

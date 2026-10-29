@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useServerFn } from "@tanstack/react-start";
 import { getContactInfo } from "@/lib/admin.functions";
@@ -16,15 +22,27 @@ export function ContactDialog({ open, onOpenChange }: Props) {
 
   useEffect(() => {
     if (!open) return;
+    let active = true;
     setLoading(true);
     fetchFn()
-      .then((r: any) => {
+      .then((r) => {
+        if (!active) return;
         setWechat(r?.wechat ?? "");
         setQq(r?.qq ?? "");
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [open]);
+      .catch(() => {
+        if (active) {
+          setWechat("");
+          setQq("");
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [open, fetchFn]);
 
   const copy = async (val: string, label: string) => {
     try {
@@ -53,12 +71,7 @@ export function ContactDialog({ open, onOpenChange }: Props) {
             loading={loading}
             onCopy={() => copy(wechat, "微信号")}
           />
-          <ContactRow
-            label="QQ"
-            value={qq}
-            loading={loading}
-            onCopy={() => copy(qq, "QQ 号")}
-          />
+          <ContactRow label="QQ" value={qq} loading={loading} onCopy={() => copy(qq, "QQ 号")} />
           {!loading && !wechat && !qq && (
             <div className="rounded-lg border border-dashed border-border bg-white/[0.02] p-4 text-center text-xs text-muted-foreground">
               管理员尚未配置联系方式
@@ -71,8 +84,16 @@ export function ContactDialog({ open, onOpenChange }: Props) {
 }
 
 function ContactRow({
-  label, value, loading, onCopy,
-}: { label: string; value: string; loading: boolean; onCopy: () => void }) {
+  label,
+  value,
+  loading,
+  onCopy,
+}: {
+  label: string;
+  value: string;
+  loading: boolean;
+  onCopy: () => void;
+}) {
   if (!value && !loading) return null;
   return (
     <div className="flex items-center gap-3 rounded-xl border border-border bg-white/[0.03] p-3">
@@ -80,14 +101,15 @@ function ContactRow({
         <MessageCircle className="h-4 w-4" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</div>
-        <div className="truncate font-mono text-sm">
-          {loading ? "加载中…" : value}
+        <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          {label}
         </div>
+        <div className="truncate font-mono text-sm">{loading ? "加载中…" : value}</div>
       </div>
       {!loading && value && (
         <Button size="sm" variant="outline" onClick={onCopy}>
-          <Copy className="mr-1.5 h-3.5 w-3.5" />复制
+          <Copy className="mr-1.5 h-3.5 w-3.5" />
+          复制
         </Button>
       )}
     </div>

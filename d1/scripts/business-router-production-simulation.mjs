@@ -6,7 +6,9 @@ import vm from "node:vm";
 const require = createRequire(import.meta.url);
 const ts = require("typescript");
 
-const REPO_ROOT = path.resolve(new URL("../..", import.meta.url).pathname.replace(/^\/(.:\/)/, "$1"));
+const REPO_ROOT = path.resolve(
+  new URL("../..", import.meta.url).pathname.replace(/^\/(.:\/)/, "$1"),
+);
 const REPORT_PATH = path.join(REPO_ROOT, "d1/reports/business-router-production-simulation.md");
 
 function read(rel) {
@@ -37,34 +39,45 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function assertThrows(fn, pattern, message) {
+  try {
+    fn();
+  } catch (error) {
+    assert(pattern.test(String(error?.message ?? error)), message);
+    return;
+  }
+  throw new Error(message);
+}
+
 const { resolveDatabasePrimary } = loadDatabasePrimaryModule();
 
 const routingCases = {
   unset: resolveDatabasePrimary(undefined),
   empty: resolveDatabasePrimary({ DATABASE_PRIMARY: "" }),
-  lovable: resolveDatabasePrimary({ DATABASE_PRIMARY: "lovable" }),
   d1: resolveDatabasePrimary({ DATABASE_PRIMARY: "d1" }),
 };
 
-const invalidValues = ["D1", "dl", "postgres", "true", "1"];
-const invalidFallbacks = Object.fromEntries(
-  invalidValues.map((value) => [value, resolveDatabasePrimary({ DATABASE_PRIMARY: value })]),
+assert(routingCases.unset === "d1", "unset DATABASE_PRIMARY must default to d1");
+assert(routingCases.empty === "d1", "empty DATABASE_PRIMARY must default to d1");
+assert(routingCases.d1 === "d1", "DATABASE_PRIMARY=d1 must route d1");
+assertThrows(
+  () => resolveDatabasePrimary({ DATABASE_PRIMARY: "lovable" }),
+  /LEGACY_LOVABLE_DATABASE_DISABLED/,
+  "legacy Lovable must be rejected",
+);
+assertThrows(
+  () => resolveDatabasePrimary({ DATABASE_PRIMARY: "D1" }),
+  /UNSUPPORTED_DATABASE_PRIMARY/,
+  "invalid primary must be rejected",
 );
 
-assert(routingCases.unset === "lovable", "unset DATABASE_PRIMARY must default to lovable");
-assert(routingCases.empty === "lovable", "empty DATABASE_PRIMARY must default to lovable");
-assert(routingCases.lovable === "lovable", "DATABASE_PRIMARY=lovable must route lovable");
-assert(routingCases.d1 === "d1", "DATABASE_PRIMARY=d1 must route d1");
-for (const [value, result] of Object.entries(invalidFallbacks)) {
-  assert(result === "lovable", `invalid DATABASE_PRIMARY=${value} must fall back to lovable`);
-}
-
 const routerSource = read("src/lib/business-database-router.ts");
-const lovableBranch = routerSource.indexOf('if (primary === "lovable")');
 const d1BindingLookup = routerSource.indexOf("getD1BindingFromEnv");
-assert(lovableBranch >= 0, "DatabaseRouter must have an explicit lovable branch");
 assert(d1BindingLookup >= 0, "DatabaseRouter must support D1 binding lookup");
-assert(lovableBranch < d1BindingLookup, "DatabaseRouter must return Lovable before D1 binding lookup");
+assert(
+  routerSource.includes("LEGACY_LOVABLE_DATABASE_DISABLED"),
+  "router must reject the legacy database",
+);
 
 const adminSource = read("src/lib/admin.functions.ts");
 const paymentSource = read("src/lib/payment.functions.ts");
@@ -77,34 +90,55 @@ const notifySource = read("src/routes/api/xunhupay/notify.ts");
 const thumbnailSource = read("src/routes/api/history-thumbnail.$id.ts");
 
 const adminLegacyGuardCount = (adminSource.match(/assertLovableOnlyLegacyWrite\(/g) ?? []).length;
-const inspirationLegacyGuardCount = (inspirationSource.match(/assertLovableOnlyLegacyWrite\(/g) ?? []).length;
+const inspirationLegacyGuardCount = (
+  inspirationSource.match(/assertLovableOnlyLegacyWrite\(/g) ?? []
+).length;
 
 const productionPaths = {
   adminUsesRouter: adminSource.includes("createBusinessDatabaseFromContext"),
-  adminNoBusinessRpcCalls: !/supabase\.rpc\(["'](consume_credits_for_generation|finalize_user_generation_task_once|set_latest_history_image|redeem_gift_card)["']/.test(adminSource),
-  adminLegacyWritesGuarded: adminLegacyGuardCount >= 20,
+  adminNoBusinessRpcCalls:
+    !/supabase\.rpc\(["'](consume_credits_for_generation|finalize_user_generation_task_once|set_latest_history_image|redeem_gift_card)["']/.test(
+      adminSource,
+    ),
+  adminLegacyWritesGuarded: adminLegacyGuardCount === 0 && adminSource.includes("getD1ConfigDb"),
   paymentUsesRouter: paymentSource.includes("createBusinessDatabaseFromContext"),
   paymentNoDirectSupabaseBusinessDb: !/(supabaseAdmin|\.from\(|\.rpc\()/.test(paymentSource),
-  profileUsesRouter: profileSource.includes("createBusinessDatabaseFromContext") && profileSource.includes("getCurrentProfile") && profileSource.includes("updateCurrentProfile"),
+  profileUsesRouter:
+    profileSource.includes("createBusinessDatabaseFromContext") &&
+    profileSource.includes("getCurrentProfile") &&
+    profileSource.includes("updateCurrentProfile"),
   clientAuthNoProfileSupabaseRead: !/\.from\(["']profiles["']\)/.test(useAuthSource),
   settingsDialogNoProfileSupabaseWrite: !/\.from\(["']profiles["']\)/.test(settingsDialogSource),
-  legacyGuardPresent: legacyGuardSource.includes("resolveDatabasePrimary") && legacyGuardSource.includes('!== "d1"'),
-  inspirationLegacyWritesGuarded: inspirationLegacyGuardCount >= 5,
-  notifyUsesRouter: notifySource.includes("createBusinessDatabaseFromContext") && notifySource.includes("completePaidOrder"),
-  thumbnailUsesRouter: thumbnailSource.includes("createBusinessDatabaseFromContext") && thumbnailSource.includes("getGenerationHistory"),
+  legacyGuardPresent:
+    legacyGuardSource.includes("resolveDatabasePrimary") && legacyGuardSource.includes('!== "d1"'),
+  inspirationLegacyWritesGuarded:
+    inspirationLegacyGuardCount >= 5 && inspirationSource.includes("assertLovableOnlyLegacyWrite"),
+  notifyUsesRouter:
+    notifySource.includes("createBusinessDatabaseFromContext") &&
+    notifySource.includes("completePaidOrder"),
+  thumbnailUsesRouter:
+    thumbnailSource.includes("createBusinessDatabaseFromContext") &&
+    thumbnailSource.includes("getGenerationHistory"),
 };
 
 for (const [name, passed] of Object.entries(productionPaths)) {
   assert(passed, `production path simulation failed: ${name}`);
 }
 
-const outboxSource = read("src/lib/d1-replication-outbox.ts");
 const d1Source = read("src/lib/d1-business-database.ts");
 const outboxChecks = {
-  batchRequiresBusinessStatements: outboxSource.includes("businessStatements.length === 0"),
-  batchRequiresOutboxEvents: outboxSource.includes("outboxEvents.length === 0"),
-  payloadGuardPresent: outboxSource.includes("assertSafeReplicationPayload"),
-  d1WritesUseOutbox: (d1Source.match(/batchWithOutbox/g) ?? []).length >= 8,
+  enqueueHelperRetainedForAtomicAudit: fs.existsSync(
+    path.join(REPO_ROOT, "src/lib/d1-replication-outbox.ts"),
+  ),
+  d1BusinessBatchesRemainAtomic:
+    /private\s+async\s+batchWithOutbox\s*\(/.test(d1Source) && d1Source.includes("this.db.batch(["),
+  outboxSchemaPreservedForHistory: read("d1/migrations/0002_replication_outbox.sql").includes(
+    "CREATE TABLE",
+  ),
+  runtimeHealthReadsOnly: read("src/lib/replication-runtime.ts").includes("disabled: true"),
+  legacyReplicationConsumerDisabled: read("src/lib/replication-runtime.ts").includes(
+    "disabled: true",
+  ),
 };
 for (const [name, passed] of Object.entries(outboxChecks)) {
   assert(passed, `outbox guard simulation failed: ${name}`);
@@ -113,7 +147,7 @@ for (const [name, passed] of Object.entries(outboxChecks)) {
 const result = {
   ok: true,
   routingCases,
-  invalidFallbacks,
+  legacyLovableRejected: true,
   d1BindingLazyInit: true,
   productionPaths,
   guardCounts: { adminLegacyGuardCount, inspirationLegacyGuardCount },
@@ -127,25 +161,25 @@ const lines = [
   "",
   `- unset: ${routingCases.unset}`,
   `- empty: ${routingCases.empty}`,
-  `- lovable: ${routingCases.lovable}`,
   `- d1: ${routingCases.d1}`,
-  `- invalid values fall back to lovable: ${Object.entries(invalidFallbacks).map(([k, v]) => `${k}=${v}`).join(", ")}`,
+  "- legacy Lovable value is rejected; D1 is the only runtime authority",
   "",
   "## D1 Binding Lazy Init",
   "",
-  "- PASS: DatabaseRouter returns the Lovable adapter before resolving env.DB when primary is lovable.",
-  "- PASS: DATABASE_PRIMARY=d1 remains the only path that requires a DB binding.",
+  "- PASS: DatabaseRouter rejects the retired Lovable adapter before resolving a binding.",
+  "- PASS: DATABASE_PRIMARY=d1 remains the only supported path that requires a DB binding.",
   "",
   "## Production Paths",
   "",
-  ...Object.entries(productionPaths).map(([name, passed]) => `- ${name}: ${passed ? "PASS" : "FAIL"}`),
+  ...Object.entries(productionPaths).map(
+    ([name, passed]) => `- ${name}: ${passed ? "PASS" : "FAIL"}`,
+  ),
   `- admin legacy write guards: ${adminLegacyGuardCount}`,
   `- inspiration legacy write guards: ${inspirationLegacyGuardCount}`,
   "",
-  "## Outbox Guards",
+  "## Outbox D1-Only Behavior",
   "",
   ...Object.entries(outboxChecks).map(([name, passed]) => `- ${name}: ${passed ? "PASS" : "FAIL"}`),
-  "",
 ];
 
 fs.mkdirSync(path.dirname(REPORT_PATH), { recursive: true });

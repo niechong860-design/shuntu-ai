@@ -1,6 +1,20 @@
+import { errorMessage } from "@/lib/error-message";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Download, Copy, Maximize2, Sparkles, ArrowUpRight, X, Clock, ImageIcon, ListOrdered, Loader2, CheckCircle2, RotateCcw } from "lucide-react";
+import {
+  Download,
+  Copy,
+  Maximize2,
+  Sparkles,
+  ArrowUpRight,
+  X,
+  Clock,
+  ImageIcon,
+  ListOrdered,
+  Loader2,
+  CheckCircle2,
+  RotateCcw,
+} from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
@@ -12,9 +26,21 @@ import type { GenProgress } from "./ControlPanel";
 const PAGE_SIZE = 20;
 const HISTORY_RESET_CACHE_MS = 60_000;
 
-function HistoryThumbnail({ imageUrl, userId, historyId, size = 480 }: { imageUrl: string; userId?: string | null; historyId: string; size?: PreviewSize }) {
+function HistoryThumbnail({
+  imageUrl,
+  userId,
+  historyId,
+  size = 480,
+}: {
+  imageUrl: string;
+  userId?: string | null;
+  historyId: string;
+  size?: PreviewSize;
+}) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(userId ? getCachedPreview(userId, historyId, size) : null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(
+    userId ? getCachedPreview(userId, historyId, size) : null,
+  );
   const [previewFailed, setPreviewFailed] = useState(false);
   const [visible, setVisible] = useState(!!(userId && getCachedPreview(userId, historyId, size)));
 
@@ -30,12 +56,15 @@ function HistoryThumbnail({ imageUrl, userId, historyId, size = 480 }: { imageUr
       return;
     }
 
-    const observer = new IntersectionObserver(([entry]) => {
-      if (entry?.isIntersecting) {
-        setVisible(true);
-        observer.disconnect();
-      }
-    }, { rootMargin: "300px" });
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "300px" },
+    );
     if (containerRef.current) observer.observe(containerRef.current);
     return () => observer.disconnect();
   }, [userId, historyId, imageUrl, size]);
@@ -43,48 +72,47 @@ function HistoryThumbnail({ imageUrl, userId, historyId, size = 480 }: { imageUr
   useEffect(() => {
     if (!visible || previewUrl || !userId) return;
     let cancelled = false;
-    void loadHistoryPreview(userId, historyId, size).then((url) => {
-      if (!cancelled) setPreviewUrl(url);
-    }).catch(() => {
-      if (!cancelled) setPreviewFailed(true);
-    });
-    return () => { cancelled = true; };
+    void loadHistoryPreview(userId, historyId, size)
+      .then((url) => {
+        if (!cancelled) setPreviewUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setPreviewFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [visible, previewUrl, userId, historyId, size]);
 
   if (!previewUrl) {
     return (
-      <div ref={containerRef} className="flex h-full w-full items-center justify-center bg-black/30 text-[10px] text-white/65">
-        {previewFailed || !userId ? "预览暂时不可用" : visible ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : null}
+      <div
+        ref={containerRef}
+        className="flex h-full w-full items-center justify-center bg-black/30 text-[10px] text-white/65"
+      >
+        {previewFailed || !userId ? (
+          "预览暂时不可用"
+        ) : visible ? (
+          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+        ) : null}
       </div>
     );
   }
 
   return (
-    <img src={previewUrl} alt="" width={size} height={size} loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
+    <img
+      src={previewUrl}
+      alt=""
+      width={size}
+      height={size}
+      loading="lazy"
+      decoding="async"
+      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+    />
   );
 }
 
-type HistoryItem = {
-  id: string;
-  userId?: string | null;
-  model: string;
-  prompt: string | null;
-  finalPrompt: string | null;
-  styleName: string | null;
-  aspectRatio: string | null;
-  createdAt: string;
-  thumbnailUrl: string | null;
-  originalImageUrl: string;
-  modelKey?: string | null;
-  generationTaskId?: string | null;
-  inputParams?: Record<string, any> | null;
-  cost: number;
-  authorName?: string | null;
-  authorEmail?: string | null;
-  // legacy
-  image_url: string;
-  created_at: string;
-};
+import type { HistoryItem } from "@/lib/history-metadata-cache";
 
 function normalizeHistoryImageKey(item: HistoryItem) {
   const raw = item.originalImageUrl || item.image_url || item.thumbnailUrl || "";
@@ -111,7 +139,6 @@ function timeAgo(iso: string) {
   return `${d} 天前`;
 }
 
-
 type Props = {
   userId?: string | null;
   generating: boolean;
@@ -125,9 +152,14 @@ type Props = {
   historyOpen: boolean;
   onHistoryOpenChange: (v: boolean) => void;
   onReuseCurrent: () => void;
-  onSelectHistory: (url: string, historyId: string, prompt: string, model: string, reuseSource?: { modelKey?: string | null; inputParams?: Record<string, any> | null }) => void;
+  onSelectHistory: (
+    url: string,
+    historyId: string,
+    prompt: string,
+    model: string,
+    reuseSource?: { modelKey?: string | null; inputParams?: Record<string, unknown> | null },
+  ) => void;
 };
-
 
 function safeDecodeFilename(value: string) {
   try {
@@ -180,7 +212,20 @@ async function copyToClipboard(text: string) {
   }
 }
 
-export function Canvas({ userId, generating, generatedUrl, generatedImageDragToken, currentHistoryId, currentPrompt, currentModel, progress, historyOpen, onHistoryOpenChange, onReuseCurrent, onSelectHistory }: Props) {
+export function Canvas({
+  userId,
+  generating,
+  generatedUrl,
+  generatedImageDragToken,
+  currentHistoryId,
+  currentPrompt,
+  currentModel,
+  progress,
+  historyOpen,
+  onHistoryOpenChange,
+  onReuseCurrent,
+  onSelectHistory,
+}: Props) {
   const [lightbox, setLightbox] = useState<HistoryItem | null>(null);
   const [heroLightbox, setHeroLightbox] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -203,10 +248,18 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
   const hasMoreRef = useRef(true);
   const userIdRef = useRef<string | null | undefined>(userId);
   const lastHistoryResetAtRef = useRef(0);
-  useEffect(() => { historyRef.current = history; }, [history]);
-  useEffect(() => { totalRef.current = total; }, [total]);
-  useEffect(() => { hasMoreRef.current = hasMore; }, [hasMore]);
-  useEffect(() => { userIdRef.current = userId; }, [userId]);
+  useEffect(() => {
+    historyRef.current = history;
+  }, [history]);
+  useEffect(() => {
+    totalRef.current = total;
+  }, [total]);
+  useEffect(() => {
+    hasMoreRef.current = hasMore;
+  }, [hasMore]);
+  useEffect(() => {
+    userIdRef.current = userId;
+  }, [userId]);
 
   useEffect(() => {
     inFlightRef.current = false;
@@ -242,86 +295,100 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
           maxDays?: number;
           isAdmin?: boolean;
         } | null;
-        const firstPage = cached ?? await fetchHistory({ data: { limit: PAGE_SIZE, offset: 0 } }) as {
-          items: HistoryItem[];
-          total?: number;
-          limit: number;
-          offset: number;
-          maxKeep?: number;
-          maxDays?: number;
-          isAdmin?: boolean;
-        };
+        const firstPage =
+          cached ??
+          ((await fetchHistory({ data: { limit: PAGE_SIZE, offset: 0 } })) as {
+            items: HistoryItem[];
+            total?: number;
+            limit: number;
+            offset: number;
+            maxKeep?: number;
+            maxDays?: number;
+            isAdmin?: boolean;
+          });
         if (cancelled) return;
         setCachedHistoryFirstPage(userId, firstPage);
       } catch {
         // History loading remains the fallback when the cache warm-up is unavailable.
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [fetchHistory, userId]);
 
-  const loadHistory = useCallback(async (mode: "reset" | "append" = "reset") => {
-    const requestUserId = userIdRef.current;
-    if (!requestUserId) return;
-    if (inFlightRef.current) return;
-    if (mode === "append") {
-      if (!hasMoreRef.current) return;
-      if (totalRef.current > 0 && rawLoadedCountRef.current >= totalRef.current) return;
-    }
-    inFlightRef.current = true;
-    if (mode === "reset") {
-      setLoadingHistory(true);
-      setHistoryError(null);
-      setHasMore(true);
-      hasMoreRef.current = true;
-      rawLoadedCountRef.current = 0;
-    } else {
-      setLoadingMore(true);
-    }
-    try {
-      const offset = mode === "append" ? rawLoadedCountRef.current : 0;
-      const cached = mode === "reset" ? getCachedHistoryFirstPage(requestUserId) : null;
-      const res = cached ?? (await fetchHistory({ data: { limit: PAGE_SIZE, offset } })) as {
-        items: HistoryItem[]; total?: number; limit: number; offset: number; maxKeep?: number; maxDays?: number; isAdmin?: boolean;
-      };
-      if (userIdRef.current !== requestUserId) return;
-      const items = res.items ?? [];
-      const returnedTotal = Number(res.total ?? 0);
-      const nextRawLoadedCount = offset + items.length;
-      const nextHasMore = returnedTotal > 0
-        ? nextRawLoadedCount < returnedTotal
-        : items.length >= PAGE_SIZE;
-      rawLoadedCountRef.current = nextRawLoadedCount;
-      setTotal(returnedTotal);
-      setHasMore(nextHasMore);
-      hasMoreRef.current = nextHasMore;
-      if (res.maxKeep) setMaxKeep(res.maxKeep);
-      if (res.maxDays) setMaxDays(res.maxDays);
-      if (typeof res.isAdmin === "boolean") setIsAdmin(res.isAdmin);
-      if (mode === "reset") setCachedHistoryFirstPage(requestUserId, res);
-      setHistory((prev) => {
-        const base = mode === "append" ? prev : [];
-        // 双保险：按图片 URL 去重，杜绝同一张图片重复展示
-        const seen = new Set(base.map(normalizeHistoryImageKey));
-        const merged = [...base];
-        for (const it of items) {
-          const key = normalizeHistoryImageKey(it);
-          if (seen.has(key)) continue;
-          seen.add(key);
-          merged.push(it);
-        }
-        return merged;
-      });
-      if (mode === "reset") lastHistoryResetAtRef.current = Date.now();
-    } catch (e: any) {
-      console.warn("[history] load failed", e);
-      if (mode === "reset") setHistoryError(e?.message ?? "加载失败，请稍后再试");
-    } finally {
-      setLoadingHistory(false);
-      setLoadingMore(false);
-      inFlightRef.current = false;
-    }
-  }, [fetchHistory]);
+  const loadHistory = useCallback(
+    async (mode: "reset" | "append" = "reset") => {
+      const requestUserId = userIdRef.current;
+      if (!requestUserId) return;
+      if (inFlightRef.current) return;
+      if (mode === "append") {
+        if (!hasMoreRef.current) return;
+        if (totalRef.current > 0 && rawLoadedCountRef.current >= totalRef.current) return;
+      }
+      inFlightRef.current = true;
+      if (mode === "reset") {
+        setLoadingHistory(true);
+        setHistoryError(null);
+        setHasMore(true);
+        hasMoreRef.current = true;
+        rawLoadedCountRef.current = 0;
+      } else {
+        setLoadingMore(true);
+      }
+      try {
+        const offset = mode === "append" ? rawLoadedCountRef.current : 0;
+        const cached = mode === "reset" ? getCachedHistoryFirstPage(requestUserId) : null;
+        const res =
+          cached ??
+          ((await fetchHistory({ data: { limit: PAGE_SIZE, offset } })) as {
+            items: HistoryItem[];
+            total?: number;
+            limit: number;
+            offset: number;
+            maxKeep?: number;
+            maxDays?: number;
+            isAdmin?: boolean;
+          });
+        if (userIdRef.current !== requestUserId) return;
+        const items = res.items ?? [];
+        const returnedTotal = Number(res.total ?? 0);
+        const nextRawLoadedCount = offset + items.length;
+        const nextHasMore =
+          returnedTotal > 0 ? nextRawLoadedCount < returnedTotal : items.length >= PAGE_SIZE;
+        rawLoadedCountRef.current = nextRawLoadedCount;
+        setTotal(returnedTotal);
+        setHasMore(nextHasMore);
+        hasMoreRef.current = nextHasMore;
+        if (res.maxKeep) setMaxKeep(res.maxKeep);
+        if (res.maxDays) setMaxDays(res.maxDays);
+        if (typeof res.isAdmin === "boolean") setIsAdmin(res.isAdmin);
+        if (mode === "reset") setCachedHistoryFirstPage(requestUserId, res);
+        setHistory((prev) => {
+          const base = mode === "append" ? prev : [];
+          // 双保险：按图片 URL 去重，杜绝同一张图片重复展示
+          const seen = new Set(base.map(normalizeHistoryImageKey));
+          const merged = [...base];
+          for (const it of items) {
+            const key = normalizeHistoryImageKey(it);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            merged.push(it);
+          }
+          return merged;
+        });
+        if (mode === "reset") lastHistoryResetAtRef.current = Date.now();
+      } catch (e: unknown) {
+        console.warn("[history] load failed", e);
+        if (mode === "reset") setHistoryError(errorMessage(e) ?? "加载失败，请稍后再试");
+      } finally {
+        setLoadingHistory(false);
+        setLoadingMore(false);
+        inFlightRef.current = false;
+      }
+    },
+    [fetchHistory],
+  );
 
   useEffect(() => {
     if (!historyOpen) return;
@@ -352,15 +419,18 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
   }, [generatedUrl]);
 
   // 无限滚动：接近滚动容器底部时加载下一页
-  const handleHistoryScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    if (loadingHistory || loadingMore || historyError) return;
-    if (!hasMore) return;
-    if (totalRef.current > 0 && rawLoadedCountRef.current >= totalRef.current) return;
-    const el = e.currentTarget;
-    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 300) {
-      loadHistory("append");
-    }
-  }, [loadingHistory, loadingMore, historyError, hasMore, loadHistory]);
+  const handleHistoryScroll = useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      if (loadingHistory || loadingMore || historyError) return;
+      if (!hasMore) return;
+      if (totalRef.current > 0 && rawLoadedCountRef.current >= totalRef.current) return;
+      const el = e.currentTarget;
+      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 300) {
+        loadHistory("append");
+      }
+    },
+    [loadingHistory, loadingMore, historyError, hasMore, loadHistory],
+  );
 
   const heroPrompt = currentPrompt ?? "";
   const heroModel = currentModel ?? "当前模型";
@@ -382,7 +452,10 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
                   return;
                 }
                 event.dataTransfer.effectAllowed = "copy";
-                event.dataTransfer.setData("application/x-shuntu-generated-image", generatedImageDragToken);
+                event.dataTransfer.setData(
+                  "application/x-shuntu-generated-image",
+                  generatedImageDragToken,
+                );
               }}
               className="absolute inset-0"
             >
@@ -406,14 +479,19 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
               <HeroAction label="一键复用" onClick={onReuseCurrent}>
                 <RotateCcw className="h-3.5 w-3.5" />
               </HeroAction>
-              <HeroAction label="下载" onClick={() => downloadImage(generatedUrl, `lovable-${Date.now()}.png`)}>
+              <HeroAction
+                label="下载"
+                onClick={() => downloadImage(generatedUrl, `shuntu-${Date.now()}.png`)}
+              >
                 <Download className="h-3.5 w-3.5" />
               </HeroAction>
             </div>
             {heroPrompt && (
               <div className="absolute inset-x-3 bottom-3 opacity-0 transition-opacity group-hover:opacity-100">
                 <div className="glass max-w-2xl rounded-xl px-3 py-2">
-                  <p className="line-clamp-2 text-[11px] leading-snug text-foreground/90">{heroPrompt}</p>
+                  <p className="line-clamp-2 text-[11px] leading-snug text-foreground/90">
+                    {heroPrompt}
+                  </p>
                 </div>
               </div>
             )}
@@ -449,19 +527,30 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
                 : `最近历史记录 · 重复图片已合并展示 · 最多显示 ${maxKeep} 张`}
             </p>
           </div>
-          <div ref={scrollContainerRef} data-history-scroll-container onScroll={handleHistoryScroll} className="scrollbar-thin h-[calc(100vh-72px)] overflow-y-auto p-4">
+          <div
+            ref={scrollContainerRef}
+            data-history-scroll-container
+            onScroll={handleHistoryScroll}
+            className="scrollbar-thin h-[calc(100vh-72px)] overflow-y-auto p-4"
+          >
             {loadingHistory ? (
-              <div className="py-20 text-center text-xs text-muted-foreground">正在加载历史记录…</div>
+              <div className="py-20 text-center text-xs text-muted-foreground">
+                正在加载历史记录…
+              </div>
             ) : historyError ? (
               <div className="py-20 text-center text-xs text-muted-foreground">
                 <div className="mb-3">{historyError}</div>
                 <button
                   onClick={() => loadHistory("reset")}
                   className="rounded-md border border-border px-3 py-1.5 text-[11px] hover:border-primary/60 hover:text-primary"
-                >重试</button>
+                >
+                  重试
+                </button>
               </div>
             ) : history.length === 0 ? (
-              <div className="py-20 text-center text-xs text-muted-foreground">还没有历史作品，去生成第一张吧</div>
+              <div className="py-20 text-center text-xs text-muted-foreground">
+                还没有历史作品，去生成第一张吧
+              </div>
             ) : (
               <>
                 <div className="grid grid-cols-2 gap-3">
@@ -473,46 +562,75 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
                       >
                         <button
                           onClick={() => {
-                            onSelectHistory(item.originalImageUrl, item.id, item.prompt ?? "", item.model, {
-                              modelKey: item.modelKey,
-                              inputParams: item.inputParams,
-                            });
+                            onSelectHistory(
+                              item.originalImageUrl,
+                              item.id,
+                              item.prompt ?? "",
+                              item.model,
+                              {
+                                modelKey: item.modelKey,
+                                inputParams: item.inputParams,
+                              },
+                            );
                             onHistoryOpenChange(false);
                           }}
                           className="absolute inset-0"
                         >
-                          <HistoryThumbnail imageUrl={item.originalImageUrl} userId={userId} historyId={item.id} />
+                          <HistoryThumbnail
+                            imageUrl={item.originalImageUrl}
+                            userId={userId}
+                            historyId={item.id}
+                          />
                         </button>
                         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/0 opacity-0 transition-opacity group-hover:opacity-100" />
                         {isAdmin && (
                           <div className="pointer-events-none absolute inset-x-0 top-0 bg-gradient-to-b from-black/70 to-transparent px-2 py-1">
-                            <span className="line-clamp-1 text-[9px] font-medium text-white/90" title={item.authorEmail ?? item.userId ?? ""}>
+                            <span
+                              className="line-clamp-1 text-[9px] font-medium text-white/90"
+                              title={item.authorEmail ?? item.userId ?? ""}
+                            >
                               {item.authorEmail || item.userId?.slice(0, 8) || "-"}
                             </span>
                           </div>
                         )}
                         <div className="absolute left-2 top-2 opacity-0 transition-opacity group-hover:opacity-100">
-                          <span className="glass rounded-full px-1.5 py-0.5 text-[8px] font-semibold uppercase text-primary">{item.model.split(" ")[0]}</span>
+                          <span className="glass rounded-full px-1.5 py-0.5 text-[8px] font-semibold uppercase text-primary">
+                            {item.model.split(" ")[0]}
+                          </span>
                         </div>
                         <div className="absolute inset-x-2 bottom-2 flex items-end justify-between gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                          <span className="font-mono text-[9px] text-foreground/70">{timeAgo(item.createdAt)}</span>
+                          <span className="font-mono text-[9px] text-foreground/70">
+                            {timeAgo(item.createdAt)}
+                          </span>
                           <div className="flex items-center gap-1">
                             <button
-                              onClick={(e) => { e.stopPropagation(); copyToClipboard(item.prompt ?? ""); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                copyToClipboard(item.prompt ?? "");
+                              }}
                               title="复制提示词"
                               className="glass flex h-6 w-6 items-center justify-center rounded-md text-foreground/90 hover:bg-primary/20 hover:text-primary"
                             >
                               <Copy className="h-2.5 w-2.5" />
                             </button>
                             <button
-                              onClick={(e) => { e.stopPropagation(); downloadImage(item.originalImageUrl, `lovable-${item.model}-${item.id}.png`); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                downloadImage(
+                                  item.originalImageUrl,
+                                  `shuntu-${item.model}-${item.id}.png`,
+                                );
+                              }}
                               title="下载原图"
                               className="glass flex h-6 w-6 items-center justify-center rounded-md text-foreground/90 hover:bg-primary/20 hover:text-primary"
                             >
                               <Download className="h-2.5 w-2.5" />
                             </button>
                             <button
-                              onClick={(e) => { e.stopPropagation(); setLightbox(item); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setLightbox(item);
+                              }}
                               title="查看大图"
                               className="glass flex h-6 w-6 items-center justify-center rounded-md text-foreground/90 hover:bg-primary/20 hover:text-primary"
                             >
@@ -526,10 +644,14 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
                 </div>
                 <div ref={historySentinelRef} aria-hidden="true" className="h-8" />
                 {loadingMore && (
-                  <div className="py-3 text-center text-[11px] text-muted-foreground">正在加载更多…</div>
+                  <div className="py-3 text-center text-[11px] text-muted-foreground">
+                    正在加载更多…
+                  </div>
                 )}
                 {!loadingMore && !hasMore && history.length > 0 && (
-                  <div className="py-3 text-center text-[10px] text-muted-foreground/70">没有更多历史记录了</div>
+                  <div className="py-3 text-center text-[10px] text-muted-foreground/70">
+                    没有更多历史记录了
+                  </div>
                 )}
               </>
             )}
@@ -545,7 +667,7 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
           userId={userId}
           prompt={lightbox.prompt ?? ""}
           model={lightbox.model}
-          filename={`lovable-${lightbox.model}-${lightbox.id}.png`}
+          filename={`shuntu-${lightbox.model}-${lightbox.id}.png`}
           onClose={() => setLightbox(null)}
         />
       )}
@@ -557,7 +679,7 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
           userId={userId}
           prompt={heroPrompt}
           model={heroModel}
-          filename={`lovable-${Date.now()}.png`}
+          filename={`shuntu-${Date.now()}.png`}
           onClose={() => setHeroLightbox(false)}
         />
       )}
@@ -565,8 +687,15 @@ export function Canvas({ userId, generating, generatedUrl, generatedImageDragTok
   );
 }
 
-
-function HeroAction({ children, label, onClick }: { children: React.ReactNode; label: string; onClick: () => void }) {
+function HeroAction({
+  children,
+  label,
+  onClick,
+}: {
+  children: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
   return (
     <button
       onClick={onClick}
@@ -587,7 +716,9 @@ function EmptyPlaceholder() {
       </div>
       <div className="text-center">
         <div className="text-sm font-medium text-foreground/80">生成的图片将在这里显示</div>
-        <div className="mt-1.5 text-xs font-light text-muted-foreground">在左侧输入提示词，点击按钮开始体验</div>
+        <div className="mt-1.5 text-xs font-light text-muted-foreground">
+          在左侧输入提示词，点击按钮开始体验
+        </div>
       </div>
     </div>
   );
@@ -696,15 +827,27 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
   const LONG_WAIT_TIP = "复杂画面生成需要一点时间，请保持页面打开";
   const [tipIdx, setTipIdx] = useState(0);
   useEffect(() => {
-    const id = setInterval(() => {
-      setTipIdx((i) => (i + 1 + Math.floor(Math.random() * (FRIENDLY_TIPS.length - 1))) % FRIENDLY_TIPS.length);
-    }, 3500 + Math.floor(Math.random() * 1500));
+    const id = setInterval(
+      () => {
+        setTipIdx(
+          (i) =>
+            (i + 1 + Math.floor(Math.random() * (FRIENDLY_TIPS.length - 1))) % FRIENDLY_TIPS.length,
+        );
+      },
+      3500 + Math.floor(Math.random() * 1500),
+    );
     return () => clearInterval(id);
   }, []);
   const currentTip = elapsed > 45 ? LONG_WAIT_TIP : FRIENDLY_TIPS[tipIdx];
 
   const stageLabel =
-    stage === "rendering" ? "生成中" : stage === "polling" ? "网络重试" : stage === "submitting" ? "提交中" : "排队中";
+    stage === "rendering"
+      ? "生成中"
+      : stage === "polling"
+        ? "网络重试"
+        : stage === "submitting"
+          ? "提交中"
+          : "排队中";
 
   const steps: Array<{ key: GenProgress["stage"]; label: string }> = [
     { key: "submitting", label: "提交" },
@@ -753,7 +896,9 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
                   <span className="text-emerald-500/60">{String(idx).padStart(4, "0")}</span>
                   <span className="mx-2 text-emerald-500/40">│</span>
                   <span>{line}</span>
-                  {isLast && <span className="ml-1 inline-block h-3 w-1.5 -mb-[2px] animate-pulse bg-emerald-300/80" />}
+                  {isLast && (
+                    <span className="ml-1 inline-block h-3 w-1.5 -mb-[2px] animate-pulse bg-emerald-300/80" />
+                  )}
                 </div>
               );
             })}
@@ -767,128 +912,206 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
       <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-emerald-400/10 to-transparent" />
       <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-5 px-6">
         <div className="glass-elevated flex w-full max-w-md flex-col items-center gap-5 rounded-2xl border border-emerald-400/20 bg-black/40 px-6 py-6 shadow-glow backdrop-blur-xl">
-        <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-aurora shadow-glow">
-          <Sparkles className="h-7 w-7 animate-pulse text-primary-foreground" />
-        </div>
-
-        {/* Stage badge */}
-        <div className="flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1">
-          <ListOrdered className="h-3.5 w-3.5 text-primary" />
-          <span className="text-[11px] font-semibold tracking-wide text-primary">{stageLabel}</span>
-          <Loader2 className="h-3 w-3 animate-spin text-primary" />
-        </div>
-
-        {/* 主信息：排队位次 / 生成百分比 */}
-        {stage === "rendering" ? (
-          <div className="text-center">
-            <div className="font-display text-3xl font-semibold tracking-tight text-foreground">{Math.round(pct)}%</div>
-            <div className="mt-1 text-xs font-light text-muted-foreground transition-opacity duration-500">{currentTip}</div>
+          <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-aurora shadow-glow">
+            <Sparkles className="h-7 w-7 animate-pulse text-primary-foreground" />
           </div>
-        ) : (
-          <div className="text-center">
-            <div className="font-display text-3xl font-semibold tracking-tight text-foreground">
-              正在排队 · 第 <span className="text-primary">{queuePos}</span> 位
-            </div>
-            <div className="mt-1 text-xs font-light text-muted-foreground transition-opacity duration-500">
-              {currentTip}
-            </div>
+
+          {/* Stage badge */}
+          <div className="flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1">
+            <ListOrdered className="h-3.5 w-3.5 text-primary" />
+            <span className="text-[11px] font-semibold tracking-wide text-primary">
+              {stageLabel}
+            </span>
+            <Loader2 className="h-3 w-3 animate-spin text-primary" />
           </div>
-        )}
 
-        {/* 进度条 */}
-        <div className="h-2 w-full max-w-md overflow-hidden rounded-full bg-white/5">
-          <div
-            className="h-full rounded-full bg-gradient-aurora shadow-glow transition-all duration-700 ease-out"
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-
-        {/* Steps tracker */}
-        <div className="flex w-full max-w-md items-center justify-between gap-2">
-          {steps.map((s, i) => {
-            const done = i < stageIndex;
-            const active = i === stageIndex;
-            return (
-              <div key={s.key} className="flex flex-1 items-center gap-2">
-                <div className={`flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-semibold transition-colors ${done ? "border-primary bg-primary text-primary-foreground" : active ? "border-primary bg-primary/20 text-primary" : "border-border bg-white/[0.03] text-muted-foreground"}`}>
-                  {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : i + 1}
-                </div>
-                <span className={`text-[11px] ${active ? "text-foreground" : done ? "text-foreground/80" : "text-muted-foreground"}`}>{s.label}</span>
-                {i < steps.length - 1 && <div className={`mx-1 h-px flex-1 ${done ? "bg-primary" : "bg-border"}`} />}
+          {/* 主信息：排队位次 / 生成百分比 */}
+          {stage === "rendering" ? (
+            <div className="text-center">
+              <div className="font-display text-3xl font-semibold tracking-tight text-foreground">
+                {Math.round(pct)}%
               </div>
-            );
-          })}
-        </div>
+              <div className="mt-1 text-xs font-light text-muted-foreground transition-opacity duration-500">
+                {currentTip}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center">
+              <div className="font-display text-3xl font-semibold tracking-tight text-foreground">
+                正在排队 · 第 <span className="text-primary">{queuePos}</span> 位
+              </div>
+              <div className="mt-1 text-xs font-light text-muted-foreground transition-opacity duration-500">
+                {currentTip}
+              </div>
+            </div>
+          )}
 
-        {/* Meta line（不显示具体耗时，仅保留任务编号供排查） */}
-        <div className="flex items-center gap-3 font-mono text-[10px] text-muted-foreground">
-          {progress?.taskId ? <span>任务 {progress.taskId.slice(0, 8)}…</span> : <span>正在与生成节点通信…</span>}
-        </div>
-        <div className="text-[10px] font-light text-emerald-200/50">您可以继续浏览历史记录，结果会在这里自动显示</div>
+          {/* 进度条 */}
+          <div className="h-2 w-full max-w-md overflow-hidden rounded-full bg-white/5">
+            <div
+              className="h-full rounded-full bg-gradient-aurora shadow-glow transition-all duration-700 ease-out"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+
+          {/* Steps tracker */}
+          <div className="flex w-full max-w-md items-center justify-between gap-2">
+            {steps.map((s, i) => {
+              const done = i < stageIndex;
+              const active = i === stageIndex;
+              return (
+                <div key={s.key} className="flex flex-1 items-center gap-2">
+                  <div
+                    className={`flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-semibold transition-colors ${done ? "border-primary bg-primary text-primary-foreground" : active ? "border-primary bg-primary/20 text-primary" : "border-border bg-white/[0.03] text-muted-foreground"}`}
+                  >
+                    {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : i + 1}
+                  </div>
+                  <span
+                    className={`text-[11px] ${active ? "text-foreground" : done ? "text-foreground/80" : "text-muted-foreground"}`}
+                  >
+                    {s.label}
+                  </span>
+                  {i < steps.length - 1 && (
+                    <div className={`mx-1 h-px flex-1 ${done ? "bg-primary" : "bg-border"}`} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Meta line（不显示具体耗时，仅保留任务编号供排查） */}
+          <div className="flex items-center gap-3 font-mono text-[10px] text-muted-foreground">
+            {progress?.taskId ? (
+              <span>任务 {progress.taskId.slice(0, 8)}…</span>
+            ) : (
+              <span>正在与生成节点通信…</span>
+            )}
+          </div>
+          <div className="text-[10px] font-light text-emerald-200/50">
+            您可以继续浏览历史记录，结果会在这里自动显示
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function GeneratedPreviewImage({ previewSrc, thumbnailSrc, thumbnailLoading = false, historyId, userId, previewSize = 480, alt, className, imageClassName }: { previewSrc?: string | null; thumbnailSrc?: string | null; thumbnailLoading?: boolean; historyId?: string | null; userId?: string | null; previewSize?: PreviewSize; alt: string; className?: string; imageClassName?: string }) {
-  const [resolvedPreviewSrc, setResolvedPreviewSrc] = useState<string | null>(thumbnailSrc ?? (historyId ? null : previewSrc ?? null));
+function GeneratedPreviewImage({
+  previewSrc,
+  thumbnailSrc,
+  thumbnailLoading = false,
+  historyId,
+  userId,
+  previewSize = 480,
+  alt,
+  className,
+  imageClassName,
+}: {
+  previewSrc?: string | null;
+  thumbnailSrc?: string | null;
+  thumbnailLoading?: boolean;
+  historyId?: string | null;
+  userId?: string | null;
+  previewSize?: PreviewSize;
+  alt: string;
+  className?: string;
+  imageClassName?: string;
+}) {
+  const [resolvedPreviewSrc, setResolvedPreviewSrc] = useState<string | null>(
+    thumbnailSrc ?? (historyId ? null : (previewSrc ?? null)),
+  );
   const [previewRequestFailed, setPreviewRequestFailed] = useState(false);
   const src = thumbnailSrc ?? resolvedPreviewSrc;
   const [loading, setLoading] = useState(!!src || thumbnailLoading);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    setResolvedPreviewSrc(thumbnailSrc ?? (historyId ? null : previewSrc ?? null));
+    setResolvedPreviewSrc(thumbnailSrc ?? (historyId ? null : (previewSrc ?? null)));
     setPreviewRequestFailed(false);
     if (!historyId || !userId) return;
 
     let cancelled = false;
     setLoading(true);
     setFailed(false);
-    void loadHistoryPreview(userId, historyId, previewSize).then((url) => {
-      if (!cancelled) {
-        setResolvedPreviewSrc(url);
-        setLoading(false);
-      }
-    }).catch(() => {
-      if (!cancelled) {
-        setPreviewRequestFailed(true);
-        setLoading(false);
-        setFailed(true);
-      }
-    });
-    return () => { cancelled = true; };
+    void loadHistoryPreview(userId, historyId, previewSize)
+      .then((url) => {
+        if (!cancelled) {
+          setResolvedPreviewSrc(url);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPreviewRequestFailed(true);
+          setLoading(false);
+          setFailed(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [historyId, userId, previewSize, previewSrc, thumbnailSrc]);
 
   useEffect(() => {
-    const requestingHistoryPreview = !!historyId && !!userId && !resolvedPreviewSrc && !previewRequestFailed;
+    const requestingHistoryPreview =
+      !!historyId && !!userId && !resolvedPreviewSrc && !previewRequestFailed;
     setLoading(requestingHistoryPreview || !!src || thumbnailLoading);
     setFailed(previewRequestFailed || (!src && !thumbnailLoading && !requestingHistoryPreview));
   }, [historyId, userId, resolvedPreviewSrc, src, thumbnailLoading, previewRequestFailed]);
 
   return (
     <div className={`relative h-full w-full overflow-hidden bg-black ${className ?? ""}`}>
-      {src && <img
-        key={src}
-        src={src}
-        alt={alt}
-        onLoad={() => setLoading(false)}
-        onError={() => { setLoading(false); setFailed(true); }}
-        className={`${imageClassName ?? "h-full w-full object-contain"} transition-opacity duration-200 ${loading || failed ? "opacity-0" : "opacity-100"}`}
-      />}
+      {src && (
+        <img
+          key={src}
+          src={src}
+          alt={alt}
+          onLoad={() => setLoading(false)}
+          onError={() => {
+            setLoading(false);
+            setFailed(true);
+          }}
+          className={`${imageClassName ?? "h-full w-full object-contain"} transition-opacity duration-200 ${loading || failed ? "opacity-0" : "opacity-100"}`}
+        />
+      )}
       {loading && !failed && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-xs text-white/75">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
           <span>图片加载中...</span>
         </div>
       )}
-      {failed && <div className="absolute inset-0 flex items-center justify-center text-xs text-white/75">图片加载失败</div>}
+      {failed && (
+        <div className="absolute inset-0 flex items-center justify-center text-xs text-white/75">
+          图片加载失败
+        </div>
+      )}
     </div>
   );
 }
 
-function Lightbox({ downloadSrc, previewUrl, thumbnailSrc, thumbnailLoading = false, prompt, model, filename, onClose, historyId, userId }: { downloadSrc: string; previewUrl?: string | null; thumbnailSrc?: string; thumbnailLoading?: boolean; prompt: string; model: string; filename: string; onClose: () => void; historyId?: string; userId?: string | null }) {
+function Lightbox({
+  downloadSrc,
+  previewUrl,
+  thumbnailSrc,
+  thumbnailLoading = false,
+  prompt,
+  model,
+  filename,
+  onClose,
+  historyId,
+  userId,
+}: {
+  downloadSrc: string;
+  previewUrl?: string | null;
+  thumbnailSrc?: string;
+  thumbnailLoading?: boolean;
+  prompt: string;
+  model: string;
+  filename: string;
+  onClose: () => void;
+  historyId?: string;
+  userId?: string | null;
+}) {
   const [previewSrc, setPreviewSrc] = useState<string | null>(thumbnailSrc ?? previewUrl ?? null);
   const [previewLoading, setPreviewLoading] = useState(!previewSrc);
 
@@ -901,18 +1124,22 @@ function Lightbox({ downloadSrc, previewUrl, thumbnailSrc, thumbnailLoading = fa
   useEffect(() => {
     if (!historyId || !userId) return;
     let cancelled = false;
-    void loadHistoryPreview(userId, historyId, 1536).then((url) => {
-      if (!cancelled) {
-        setPreviewSrc(url);
-        setPreviewLoading(false);
-      }
-    }).catch(() => {
-      if (!cancelled) {
-        setPreviewSrc(null);
-        setPreviewLoading(false);
-      }
-    });
-    return () => { cancelled = true; };
+    void loadHistoryPreview(userId, historyId, 1536)
+      .then((url) => {
+        if (!cancelled) {
+          setPreviewSrc(url);
+          setPreviewLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPreviewSrc(null);
+          setPreviewLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [historyId, userId]);
 
   useEffect(() => {
@@ -940,13 +1167,26 @@ function Lightbox({ downloadSrc, previewUrl, thumbnailSrc, thumbnailLoading = fa
       }}
       className="fixed inset-0 z-[1000] flex items-center justify-center overflow-hidden bg-background/80 p-3 backdrop-blur-xl animate-[fade-in_0.2s_ease-out] sm:p-6"
     >
-      <div onClick={(e) => e.stopPropagation()} className="glass-elevated relative flex h-[92dvh] max-h-[calc(100dvh-3rem)] w-full max-w-[94vw] min-h-0 flex-col gap-4 overflow-hidden rounded-2xl p-2 sm:flex-row">
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="glass-elevated relative flex h-[92dvh] max-h-[calc(100dvh-3rem)] w-full max-w-[94vw] min-h-0 flex-col gap-4 overflow-hidden rounded-2xl p-2 sm:flex-row"
+      >
         <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-xl bg-black">
-          <GeneratedPreviewImage previewSrc={previewSrc} thumbnailSrc={thumbnailSrc} thumbnailLoading={thumbnailLoading || previewLoading} previewSize={1536} alt={prompt} className="flex min-h-0 min-w-0 flex-1 items-center justify-center rounded-xl" imageClassName="h-auto w-auto max-h-full max-w-full object-contain object-center" />
+          <GeneratedPreviewImage
+            previewSrc={previewSrc}
+            thumbnailSrc={thumbnailSrc}
+            thumbnailLoading={thumbnailLoading || previewLoading}
+            previewSize={1536}
+            alt={prompt}
+            className="flex min-h-0 min-w-0 flex-1 items-center justify-center rounded-xl"
+            imageClassName="h-auto w-auto max-h-full max-w-full object-contain object-center"
+          />
         </div>
         <div className="flex max-h-[40%] min-h-0 w-full shrink-0 flex-col overflow-y-auto p-4 sm:max-h-none sm:w-72">
           <div className="flex items-center justify-between">
-            <span className="self-start rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-semibold tracking-wider text-primary">{model}</span>
+            <span className="self-start rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-semibold tracking-wider text-primary">
+              {model}
+            </span>
             <button
               onPointerDown={(e) => {
                 e.preventDefault();
@@ -966,8 +1206,12 @@ function Lightbox({ downloadSrc, previewUrl, thumbnailSrc, thumbnailLoading = fa
               <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="mt-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">提示词</div>
-          <p className="mt-2 max-h-60 overflow-y-auto text-sm font-light leading-relaxed">{prompt || "（无提示词）"}</p>
+          <div className="mt-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            提示词
+          </div>
+          <p className="mt-2 max-h-60 overflow-y-auto text-sm font-light leading-relaxed">
+            {prompt || "（无提示词）"}
+          </p>
           <div className="mt-auto flex flex-col gap-2 pt-4">
             <button
               onClick={() => downloadImage(downloadSrc, filename)}

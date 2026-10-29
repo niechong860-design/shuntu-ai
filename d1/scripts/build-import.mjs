@@ -19,8 +19,15 @@ const externalizedNamespace = "migration/legacy-generation-task-images/v1";
 const legacyImageStagingDir = path.join(repoRoot, "d1", "staging", "legacy-generated-images");
 const legacyImageManifestPath = path.join(reportsDir, "legacy-image-externalization-manifest.json");
 const legacyImageNamespace = "migration/legacy-generated-images/v1";
-const rechargePackagesSupplementPath = path.join(repoRoot, "d1", "staging", "source-supplements", "recharge_packages.json");
-const expectedRechargePackagesSupplementSha256 = "2d5e0363da2dc4c2ba5ab707f75e1788238a600dfadfd06d440428a90f30bd03";
+const rechargePackagesSupplementPath = path.join(
+  repoRoot,
+  "d1",
+  "staging",
+  "source-supplements",
+  "recharge_packages.json",
+);
+const expectedRechargePackagesSupplementSha256 =
+  "2d5e0363da2dc4c2ba5ab707f75e1788238a600dfadfd06d440428a90f30bd03";
 const expectedRechargePackagesRows = 5;
 const expectedLegacyBase64Rows = 14;
 const expectedLegacyBase64DecodedBytes = 95_777_338;
@@ -52,7 +59,14 @@ const importOrder = [
 
 const tableColumns = {
   profiles: ["id", "email", "display_name", "avatar_url", "credits", "created_at", "updated_at"],
-  admin_settings: ["id", "access_password", "system_prompt", "contact_wechat", "contact_qq", "updated_at"],
+  admin_settings: [
+    "id",
+    "access_password",
+    "system_prompt",
+    "contact_wechat",
+    "contact_qq",
+    "updated_at",
+  ],
   global_config: ["id", "base_url", "global_api_key", "updated_at"],
   models_config: [
     "id",
@@ -103,7 +117,17 @@ const tableColumns = {
     "created_at",
     "updated_at",
   ],
-  coupons: ["id", "code", "amount", "is_used", "used_by", "used_by_email", "used_at", "created_at", "created_by"],
+  coupons: [
+    "id",
+    "code",
+    "amount",
+    "is_used",
+    "used_by",
+    "used_by_email",
+    "used_at",
+    "created_at",
+    "created_by",
+  ],
   generation_tasks: [
     "id",
     "request_id",
@@ -126,7 +150,16 @@ const tableColumns = {
     "created_at",
     "updated_at",
   ],
-  generation_history: ["id", "user_id", "model", "cost", "prompt", "image_url", "created_at", "generation_task_id"],
+  generation_history: [
+    "id",
+    "user_id",
+    "model",
+    "cost",
+    "prompt",
+    "image_url",
+    "created_at",
+    "generation_task_id",
+  ],
   credit_usage_logs: [
     "id",
     "user_id",
@@ -217,12 +250,36 @@ const uniqueChecks = [
   { table: "generation_tasks", column: "request_id", index: "generation_tasks_request_id_uidx" },
   { table: "coupons", column: "code", index: "coupons_code_uidx" },
   { table: "user_orders", column: "out_trade_no", index: "user_orders_out_trade_no_uidx" },
-  { table: "credit_usage_logs", column: "idempotency_key", index: "credit_usage_logs_idempotency_key_uidx" },
+  {
+    table: "credit_usage_logs",
+    column: "idempotency_key",
+    index: "credit_usage_logs_idempotency_key_uidx",
+  },
   { table: "models_config", column: "model_key", index: "models_config_model_key_uidx" },
-  { table: "user_roles", column: "user_id || ':' || role", index: "user_roles_user_id_role_uidx", label: "user_id + role" },
-  { table: "generation_history", column: "generation_task_id", index: "generation_history_generation_task_id_uidx", nullable: true },
-  { table: "credit_usage_logs", column: "generation_history_id", index: "credit_usage_logs_generation_history_id_uidx", nullable: true },
-  { table: "credit_usage_logs", column: "generation_task_id", index: "credit_usage_logs_generation_task_id_uidx", nullable: true },
+  {
+    table: "user_roles",
+    column: "user_id || ':' || role",
+    index: "user_roles_user_id_role_uidx",
+    label: "user_id + role",
+  },
+  {
+    table: "generation_history",
+    column: "generation_task_id",
+    index: "generation_history_generation_task_id_uidx",
+    nullable: true,
+  },
+  {
+    table: "credit_usage_logs",
+    column: "generation_history_id",
+    index: "credit_usage_logs_generation_history_id_uidx",
+    nullable: true,
+  },
+  {
+    table: "credit_usage_logs",
+    column: "generation_task_id",
+    index: "credit_usage_logs_generation_task_id_uidx",
+    nullable: true,
+  },
 ];
 
 const args = parseArgs(process.argv.slice(2));
@@ -245,7 +302,9 @@ async function main() {
 
   const hashVerification = verifySourceHashes(backupDir);
   if (!hashVerification.allMatch) {
-    throw new Error(`SOURCE_HASH_MISMATCH: ${hashVerification.matches}/${hashVerification.total} matched. Migration stopped before D1 data generation.`);
+    throw new Error(
+      `SOURCE_HASH_MISMATCH: ${hashVerification.matches}/${hashVerification.total} matched. Migration stopped before D1 data generation.`,
+    );
   }
 
   const summary = readBackupSummary(backupDir);
@@ -254,29 +313,41 @@ async function main() {
     if (row.ok !== true) throw new Error(`SOURCE_SUMMARY_NOT_OK: ${row.table}`);
   }
 
-  const missingRechargePackages = !fs.existsSync(path.join(backupDir, "recharge_packages.json")) &&
+  const missingRechargePackages =
+    !fs.existsSync(path.join(backupDir, "recharge_packages.json")) &&
     !fs.existsSync(path.join(backupDir, "recharge_packages.csv"));
   const rechargePackagesSupplement = readRechargePackagesSupplement();
   if (rechargePackagesSupplement) {
     expectedRows.recharge_packages = rechargePackagesSupplement.rows.length;
   }
 
-  const preExternalizeLocalD1Bytes = args.beforeExternalizeBytes ?? readPreExternalizeLocalD1Bytes();
+  const preExternalizeLocalD1Bytes =
+    args.beforeExternalizeBytes ?? readPreExternalizeLocalD1Bytes();
   const r2PublicBaseUrl = resolveR2PublicBaseUrl();
   let externalization = null;
   if (args.externalizeBase64) {
     const generationTaskRows = readTableJson(backupDir, "generation_tasks");
     const generationHistoryRows = readTableJson(backupDir, "generation_history");
     if (expectedRows.generation_tasks !== generationTaskRows.length) {
-      throw new Error(`SOURCE_ROW_COUNT_MISMATCH: generation_tasks summary=${expectedRows.generation_tasks} json=${generationTaskRows.length}`);
+      throw new Error(
+        `SOURCE_ROW_COUNT_MISMATCH: generation_tasks summary=${expectedRows.generation_tasks} json=${generationTaskRows.length}`,
+      );
     }
     if (expectedRows.generation_history !== generationHistoryRows.length) {
-      throw new Error(`SOURCE_ROW_COUNT_MISMATCH: generation_history summary=${expectedRows.generation_history} json=${generationHistoryRows.length}`);
+      throw new Error(
+        `SOURCE_ROW_COUNT_MISMATCH: generation_history summary=${expectedRows.generation_history} json=${generationHistoryRows.length}`,
+      );
     }
-    externalization = prepareLegacyImageExternalization({ generationTaskRows, generationHistoryRows, r2PublicBaseUrl });
+    externalization = prepareLegacyImageExternalization({
+      generationTaskRows,
+      generationHistoryRows,
+      r2PublicBaseUrl,
+    });
   }
 
-  const dbPath = useWranglerLocal ? bootstrapWranglerLocalD1() : bootstrapDirectSqlite(explicitDbPath);
+  const dbPath = useWranglerLocal
+    ? bootstrapWranglerLocalD1()
+    : bootstrapDirectSqlite(explicitDbPath);
   assertInsideRepo(dbPath, repoRoot, "local D1 database");
 
   const db = new DatabaseSync(dbPath);
@@ -286,34 +357,60 @@ async function main() {
 
     const sourceAggregates = {};
     let base64Info = { count: 0, totalDecodedBytes: 0, totalTextBytes: 0, rows: [] };
-    let historyBase64ImageInfo = { count: 0, oversizedCount: 0, totalDecodedBytes: 0, totalTextBytes: 0, rows: [] };
+    let historyBase64ImageInfo = {
+      count: 0,
+      oversizedCount: 0,
+      totalDecodedBytes: 0,
+      totalTextBytes: 0,
+      rows: [],
+    };
     const externalizedTables = {};
     let normalExistingR2UrlUnchangedRows = 0;
 
     for (const table of importOrder) {
       const rows = readTableJson(backupDir, table);
       if (expectedRows[table] !== rows.length) {
-        throw new Error(`SOURCE_ROW_COUNT_MISMATCH: ${table} summary=${expectedRows[table]} json=${rows.length}`);
+        throw new Error(
+          `SOURCE_ROW_COUNT_MISMATCH: ${table} summary=${expectedRows[table]} json=${rows.length}`,
+        );
       }
       let importRows = rows;
       if (table === "generation_tasks") {
         base64Info = inspectGenerationTaskBase64(rows);
         validateLegacyBase64Baseline(base64Info);
         if (externalization) {
-          const result = applyLegacyImageExternalization(table, rows, externalization.referencesByTarget);
+          const result = applyLegacyImageExternalization(
+            table,
+            rows,
+            externalization.referencesByTarget,
+          );
           externalizedTables[table] = result;
           importRows = result.rows;
-          normalExistingR2UrlUnchangedRows += countUnchangedGeneratedR2Urls(rows, importRows, "result_image_url", r2PublicBaseUrl);
+          normalExistingR2UrlUnchangedRows += countUnchangedGeneratedR2Urls(
+            rows,
+            importRows,
+            "result_image_url",
+            r2PublicBaseUrl,
+          );
         }
       }
       if (table === "generation_history") {
         historyBase64ImageInfo = inspectGenerationHistoryBase64Images(rows);
         validateLegacyHistoryBase64Baseline(historyBase64ImageInfo);
         if (externalization) {
-          const result = applyLegacyImageExternalization(table, rows, externalization.referencesByTarget);
+          const result = applyLegacyImageExternalization(
+            table,
+            rows,
+            externalization.referencesByTarget,
+          );
           externalizedTables[table] = result;
           importRows = result.rows;
-          normalExistingR2UrlUnchangedRows += countUnchangedGeneratedR2Urls(rows, importRows, "image_url", r2PublicBaseUrl);
+          normalExistingR2UrlUnchangedRows += countUnchangedGeneratedR2Urls(
+            rows,
+            importRows,
+            "image_url",
+            r2PublicBaseUrl,
+          );
         }
       }
       if (isAggregatedTable(table)) {
@@ -325,9 +422,10 @@ async function main() {
     db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
 
     const remoteCompatibility = finalizeRemoteCompatibility();
-    const remoteD1Status = remoteCompatibility.hasBlockedFields || remoteCompatibility.hasBlockedRows
-      ? "REMOTE_D1_BLOCKED"
-      : "REMOTE_D1_SIZE_COMPATIBLE";
+    const remoteD1Status =
+      remoteCompatibility.hasBlockedFields || remoteCompatibility.hasBlockedRows
+        ? "REMOTE_D1_BLOCKED"
+        : "REMOTE_D1_SIZE_COMPATIBLE";
 
     const d1Counts = countD1Rows(db, Object.keys(expectedRows));
     const countResults = Object.keys(expectedRows).map((table) => ({
@@ -338,32 +436,45 @@ async function main() {
     }));
     const countPass = countResults.every((row) => row.pass);
     if (!countPass) {
-      throw new Error("D1_COUNT_RECONCILIATION_FAILED: one or more table counts differ from _backup-summary.json.");
+      throw new Error(
+        "D1_COUNT_RECONCILIATION_FAILED: one or more table counts differ from _backup-summary.json.",
+      );
     }
 
     const d1Aggregates = aggregateD1(db);
     const aggregateResults = compareAggregates(sourceAggregates, d1Aggregates);
     if (!aggregateResults.every((row) => row.pass)) {
-      throw new Error("KEY_AGGREGATE_RECONCILIATION_FAILED: source JSON and D1 aggregate checks differ.");
+      throw new Error(
+        "KEY_AGGREGATE_RECONCILIATION_FAILED: source JSON and D1 aggregate checks differ.",
+      );
     }
 
     const uniqueResults = verifyUniqueConstraints(db);
     if (!uniqueResults.every((row) => row.pass)) {
-      throw new Error("D1_UNIQUE_CONSTRAINT_VERIFICATION_FAILED: duplicate data or missing unique index found.");
+      throw new Error(
+        "D1_UNIQUE_CONSTRAINT_VERIFICATION_FAILED: duplicate data or missing unique index found.",
+      );
     }
 
     const d1Base64Rows = db
-      .prepare("SELECT id, length(result_image_url) AS textChars FROM generation_tasks WHERE substr(result_image_url, 1, 11) = 'data:image/' ORDER BY id")
+      .prepare(
+        "SELECT id, length(result_image_url) AS textChars FROM generation_tasks WHERE substr(result_image_url, 1, 11) = 'data:image/' ORDER BY id",
+      )
       .all();
     const sourceBase64ById = new Map(base64Info.rows.map((row) => [row.id, row]));
-    const base64Retained = d1Base64Rows.length === base64Info.count &&
+    const base64Retained =
+      d1Base64Rows.length === base64Info.count &&
       d1Base64Rows.every((row) => sourceBase64ById.get(row.id)?.textChars === row.textChars);
-    const externalizedD1 = externalization ? verifyLegacyExternalizedD1Rows(db, externalization) : null;
+    const externalizedD1 = externalization
+      ? verifyLegacyExternalizedD1Rows(db, externalization)
+      : null;
     if (externalization && !externalizedD1.pass) {
       throw new Error(`EXTERNALIZED_D1_VERIFICATION_FAILED: ${externalizedD1.reason}`);
     }
     if (!externalization && !base64Retained) {
-      throw new Error("BASE64_RETENTION_CHECK_FAILED: local D1 rows do not preserve base64 result_image_url text lengths exactly.");
+      throw new Error(
+        "BASE64_RETENTION_CHECK_FAILED: local D1 rows do not preserve base64 result_image_url text lengths exactly.",
+      );
     }
 
     const localD1Bytes = fs.statSync(dbPath).size;
@@ -380,10 +491,14 @@ async function main() {
       rechargePackages: {
         status: rechargePackagesSupplement
           ? "SUPPLEMENTAL READ-ONLY SNAPSHOT"
-          : missingRechargePackages ? "SOURCE DATA MISSING" : "SOURCE DATA PRESENT",
+          : missingRechargePackages
+            ? "SOURCE DATA MISSING"
+            : "SOURCE DATA PRESENT",
         snapshotPath: rechargePackagesSupplement?.path ?? null,
         snapshotSha256: rechargePackagesSupplement?.sha256 ?? null,
-        rowCount: rechargePackagesSupplement?.rows.length ?? (missingRechargePackages ? "UNKNOWN" : "UNVERIFIED"),
+        rowCount:
+          rechargePackagesSupplement?.rows.length ??
+          (missingRechargePackages ? "UNKNOWN" : "UNVERIFIED"),
         imported: Boolean(rechargePackagesSupplement),
       },
       base64: {
@@ -403,12 +518,19 @@ async function main() {
             stagingDir: legacyImageStagingDir,
             namespace: legacyImageNamespace,
             r2PublicBaseUrl,
-            r2PublicBaseUrlSource: r2PublicBaseUrl ? "wrangler.jsonc vars.R2_PUBLIC_BASE_URL" : "UNKNOWN",
-            changedRows: Object.values(externalizedTables).reduce((sum, row) => sum + row.changedRows, 0),
+            r2PublicBaseUrlSource: r2PublicBaseUrl
+              ? "wrangler.jsonc vars.R2_PUBLIC_BASE_URL"
+              : "UNKNOWN",
+            changedRows: Object.values(externalizedTables).reduce(
+              (sum, row) => sum + row.changedRows,
+              0,
+            ),
             taskChangedRows: externalizedTables.generation_tasks?.changedRows ?? 0,
             historyChangedRows: externalizedTables.generation_history?.changedRows ?? 0,
-            unchangedNonBase64ResultImageUrlRows: externalizedTables.generation_tasks?.unchangedRows ?? 0,
-            unchangedNonOversizedHistoryImageUrlRows: externalizedTables.generation_history?.unchangedRows ?? 0,
+            unchangedNonBase64ResultImageUrlRows:
+              externalizedTables.generation_tasks?.unchangedRows ?? 0,
+            unchangedNonOversizedHistoryImageUrlRows:
+              externalizedTables.generation_history?.unchangedRows ?? 0,
             normalExistingR2UrlUnchangedRows,
             totalReferences: externalization.references.length,
             taskReferences: externalization.summary.taskReferences,
@@ -424,7 +546,8 @@ async function main() {
             d1AllDataImageCount: externalizedD1?.allDataImageOccurrences.total ?? null,
             d1AllDataImageDetails: externalizedD1?.allDataImageOccurrences.details ?? [],
             d1ProposedUrlCount: externalizedD1?.referenceUrlMatches ?? null,
-            d1HistoryOversizedImageUrlCount: externalizedD1?.generationHistoryOversizedImageUrlCount ?? null,
+            d1HistoryOversizedImageUrlCount:
+              externalizedD1?.generationHistoryOversizedImageUrlCount ?? null,
             d1ExternalizedReferenceCount: externalizedD1?.referenceUrlMatches ?? null,
             r2ReuseSummary: externalization.manifest.r2_reuse_summary,
             stagingFileCount: externalization.staging.fileCount,
@@ -448,33 +571,43 @@ async function main() {
     fs.writeFileSync(verificationJsonPath, `${JSON.stringify(verification, null, 2)}\n`);
     fs.writeFileSync(reportPath, renderMarkdownReport(verification));
 
-    console.log(JSON.stringify({
-      ok: !(remoteCompatibility.hasBlockedFields || remoteCompatibility.hasBlockedRows),
-      status: remoteD1Status,
-      dbPath,
-      reportPath,
-      verificationJsonPath,
-      sourceSha256: `${hashVerification.matches}/${hashVerification.total}`,
-      base64Count: base64Info.count,
-      base64DecodedBytes: base64Info.totalDecodedBytes,
-      historyBase64ImageCount: historyBase64ImageInfo.count,
-      historyBase64DecodedBytes: historyBase64ImageInfo.totalDecodedBytes,
-      historyOversizedImageCount: historyBase64ImageInfo.oversizedCount,
-      rechargePackagesRows: rechargePackagesSupplement?.rows.length ?? null,
-      externalizedRows: externalization ? Object.values(externalizedTables).reduce((sum, row) => sum + row.changedRows, 0) : 0,
-      externalizedTaskRows: externalizedTables.generation_tasks?.changedRows ?? 0,
-      externalizedHistoryRows: externalizedTables.generation_history?.changedRows ?? 0,
-      uniqueLegacyImageObjects: externalization?.summary.uniqueBinaryImages ?? null,
-      d1Base64Count: externalizedD1?.generationTasksDataImageCount ?? d1Base64Rows.length,
-      d1HistoryBase64Count: externalizedD1?.generationHistoryDataImageCount ?? null,
-      d1AllDataImageCount: externalizedD1?.allDataImageOccurrences.total ?? null,
-      d1HistoryOversizedImageUrlCount: externalizedD1?.generationHistoryOversizedImageUrlCount ?? null,
-      d1ExternalizedReferenceCount: externalizedD1?.referenceUrlMatches ?? null,
-      remoteD1Blocked: remoteCompatibility.hasBlockedFields || remoteCompatibility.hasBlockedRows,
-      countPass,
-      aggregatePass: true,
-      uniquePass: true,
-    }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          ok: !(remoteCompatibility.hasBlockedFields || remoteCompatibility.hasBlockedRows),
+          status: remoteD1Status,
+          dbPath,
+          reportPath,
+          verificationJsonPath,
+          sourceSha256: `${hashVerification.matches}/${hashVerification.total}`,
+          base64Count: base64Info.count,
+          base64DecodedBytes: base64Info.totalDecodedBytes,
+          historyBase64ImageCount: historyBase64ImageInfo.count,
+          historyBase64DecodedBytes: historyBase64ImageInfo.totalDecodedBytes,
+          historyOversizedImageCount: historyBase64ImageInfo.oversizedCount,
+          rechargePackagesRows: rechargePackagesSupplement?.rows.length ?? null,
+          externalizedRows: externalization
+            ? Object.values(externalizedTables).reduce((sum, row) => sum + row.changedRows, 0)
+            : 0,
+          externalizedTaskRows: externalizedTables.generation_tasks?.changedRows ?? 0,
+          externalizedHistoryRows: externalizedTables.generation_history?.changedRows ?? 0,
+          uniqueLegacyImageObjects: externalization?.summary.uniqueBinaryImages ?? null,
+          d1Base64Count: externalizedD1?.generationTasksDataImageCount ?? d1Base64Rows.length,
+          d1HistoryBase64Count: externalizedD1?.generationHistoryDataImageCount ?? null,
+          d1AllDataImageCount: externalizedD1?.allDataImageOccurrences.total ?? null,
+          d1HistoryOversizedImageUrlCount:
+            externalizedD1?.generationHistoryOversizedImageUrlCount ?? null,
+          d1ExternalizedReferenceCount: externalizedD1?.referenceUrlMatches ?? null,
+          remoteD1Blocked:
+            remoteCompatibility.hasBlockedFields || remoteCompatibility.hasBlockedRows,
+          countPass,
+          aggregatePass: true,
+          uniquePass: true,
+        },
+        null,
+        2,
+      ),
+    );
     if (remoteCompatibility.hasBlockedFields || remoteCompatibility.hasBlockedRows) {
       process.exitCode = 2;
     }
@@ -484,7 +617,13 @@ async function main() {
 }
 
 function parseArgs(argv) {
-  const parsed = { direct: false, dbPath: null, backupDir: null, externalizeBase64: false, beforeExternalizeBytes: null };
+  const parsed = {
+    direct: false,
+    dbPath: null,
+    backupDir: null,
+    externalizeBase64: false,
+    beforeExternalizeBytes: null,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--direct") {
@@ -502,7 +641,10 @@ function parseArgs(argv) {
     } else if (arg === "--before-externalize-bytes") {
       parsed.beforeExternalizeBytes = parseByteCount(argv[++i], arg);
     } else if (arg.startsWith("--before-externalize-bytes=")) {
-      parsed.beforeExternalizeBytes = parseByteCount(arg.slice("--before-externalize-bytes=".length), "--before-externalize-bytes");
+      parsed.beforeExternalizeBytes = parseByteCount(
+        arg.slice("--before-externalize-bytes=".length),
+        "--before-externalize-bytes",
+      );
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -519,7 +661,9 @@ function parseByteCount(value, label) {
 }
 
 function toSetMap(input) {
-  return Object.fromEntries(Object.entries(input).map(([table, columns]) => [table, new Set(columns)]));
+  return Object.fromEntries(
+    Object.entries(input).map(([table, columns]) => [table, new Set(columns)]),
+  );
 }
 
 function assertInsideRepo(targetPath, rootPath, label) {
@@ -541,7 +685,11 @@ function verifySourceHashes(sourceDir) {
   const results = [];
   for (const [filePath, expectedHash] of dataRows) {
     if (path.basename(filePath) === "SHA256SUMS.csv") continue;
-    const actualHash = crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex").toUpperCase();
+    const actualHash = crypto
+      .createHash("sha256")
+      .update(fs.readFileSync(filePath))
+      .digest("hex")
+      .toUpperCase();
     const expected = expectedHash.toUpperCase();
     results.push({ path: filePath, expected, actual: actualHash, match: actualHash === expected });
   }
@@ -593,7 +741,8 @@ function parseCsv(text) {
 
 function readBackupSummary(sourceDir) {
   const summary = JSON.parse(fs.readFileSync(path.join(sourceDir, "_backup-summary.json"), "utf8"));
-  if (!Array.isArray(summary.tables)) throw new Error("Invalid _backup-summary.json: tables array missing");
+  if (!Array.isArray(summary.tables))
+    throw new Error("Invalid _backup-summary.json: tables array missing");
   return summary;
 }
 
@@ -606,7 +755,9 @@ function bootstrapWranglerLocalD1() {
   } catch (error) {
     const stdout = error.stdout ? String(error.stdout) : "";
     const stderr = error.stderr ? String(error.stderr) : "";
-    throw new Error(`LOCAL_D1_BOOTSTRAP_FAILED: wrangler d1 execute --local failed.\n${stdout}\n${stderr}`);
+    throw new Error(
+      `LOCAL_D1_BOOTSTRAP_FAILED: wrangler d1 execute --local failed.\n${stdout}\n${stderr}`,
+    );
   }
 
   const sqliteFiles = findSqliteFiles(wranglerD1StateDir);
@@ -658,7 +809,8 @@ function bootstrapDirectSqlite(dbPath) {
 
 function readMigrationSqlFiles() {
   if (!fs.existsSync(migrationsDir)) throw new Error(`MIGRATIONS_DIR_MISSING: ${migrationsDir}`);
-  return fs.readdirSync(migrationsDir)
+  return fs
+    .readdirSync(migrationsDir)
     .filter((name) => /^\d+_.*\.sql$/i.test(name))
     .sort((a, b) => a.localeCompare(b))
     .map((name) => path.join(migrationsDir, name));
@@ -693,11 +845,15 @@ function readRechargePackagesSupplement() {
   const payload = fs.readFileSync(rechargePackagesSupplementPath);
   const sha256 = crypto.createHash("sha256").update(payload).digest("hex");
   if (sha256 !== expectedRechargePackagesSupplementSha256) {
-    throw new Error(`RECHARGE_PACKAGES_SUPPLEMENT_SHA256_MISMATCH: expected ${expectedRechargePackagesSupplementSha256}, found ${sha256}`);
+    throw new Error(
+      `RECHARGE_PACKAGES_SUPPLEMENT_SHA256_MISMATCH: expected ${expectedRechargePackagesSupplementSha256}, found ${sha256}`,
+    );
   }
   const rows = JSON.parse(payload.toString("utf8"));
   if (!Array.isArray(rows) || rows.length !== expectedRechargePackagesRows) {
-    throw new Error(`RECHARGE_PACKAGES_SUPPLEMENT_ROW_COUNT_MISMATCH: expected ${expectedRechargePackagesRows}, found ${Array.isArray(rows) ? rows.length : "non-array"}`);
+    throw new Error(
+      `RECHARGE_PACKAGES_SUPPLEMENT_ROW_COUNT_MISMATCH: expected ${expectedRechargePackagesRows}, found ${Array.isArray(rows) ? rows.length : "non-array"}`,
+    );
   }
   return { path: rechargePackagesSupplementPath, sha256, rows };
 }
@@ -709,7 +865,9 @@ function insertTableRows(db, table, rows) {
 
   const columnSql = columns.map((column) => quoteIdent(column)).join(", ");
   const placeholders = columns.map(() => "?").join(", ");
-  const statement = db.prepare(`INSERT INTO ${quoteIdent(table)} (${columnSql}) VALUES (${placeholders})`);
+  const statement = db.prepare(
+    `INSERT INTO ${quoteIdent(table)} (${columnSql}) VALUES (${placeholders})`,
+  );
   db.exec("BEGIN IMMEDIATE");
   try {
     for (let index = 0; index < rows.length; index += 1) {
@@ -723,7 +881,9 @@ function insertTableRows(db, table, rows) {
     db.exec("ROLLBACK");
     const message = String(error?.message || error);
     if (table === "generation_tasks" && /too big|too large|SQLITE_TOOBIG|length/i.test(message)) {
-      throw new Error(`BASE64_EXTERNALIZATION_REQUIRED: local D1/SQLite rejected generation_tasks.result_image_url size. ${message}`);
+      throw new Error(
+        `BASE64_EXTERNALIZATION_REQUIRED: local D1/SQLite rejected generation_tasks.result_image_url size. ${message}`,
+      );
     }
     throw new Error(`IMPORT_FAILED: table=${table}; ${message}`);
   }
@@ -775,11 +935,13 @@ function decimalToScaledInteger(value, scale, label) {
   const fraction = match[3] ?? "";
   const extraFraction = fraction.slice(scale);
   if (/[^0]/.test(extraFraction)) {
-    throw new Error(`NON_INTEGER_SCALE_RESULT: ${label}=${String(value)} cannot scale by 10^${scale} without fractional remainder`);
+    throw new Error(
+      `NON_INTEGER_SCALE_RESULT: ${label}=${String(value)} cannot scale by 10^${scale} without fractional remainder`,
+    );
   }
   const paddedFraction = fraction.slice(0, scale).padEnd(scale, "0");
   const factor = 10n ** BigInt(scale);
-  const scaled = sign * ((integerPart * factor) + BigInt(paddedFraction || "0"));
+  const scaled = sign * (integerPart * factor + BigInt(paddedFraction || "0"));
   if (scaled > BigInt(Number.MAX_SAFE_INTEGER) || scaled < BigInt(Number.MIN_SAFE_INTEGER)) {
     throw new Error(`SCALED_INTEGER_OUT_OF_SAFE_RANGE: ${label}=${String(value)}`);
   }
@@ -797,7 +959,8 @@ function normalizeDecimalString(input, label) {
   const digits = `${whole}${fraction}`;
   const decimalIndex = whole.length + exponent;
   if (decimalIndex <= 0) return `${sign}0.${"0".repeat(Math.abs(decimalIndex))}${digits}`;
-  if (decimalIndex >= digits.length) return `${sign}${digits}${"0".repeat(decimalIndex - digits.length)}`;
+  if (decimalIndex >= digits.length)
+    return `${sign}${digits}${"0".repeat(decimalIndex - digits.length)}`;
   return `${sign}${digits.slice(0, decimalIndex)}.${digits.slice(decimalIndex)}`;
 }
 
@@ -857,10 +1020,14 @@ function extensionForMime(mimeType) {
 
 function validateLegacyBase64Baseline(base64Info) {
   if (base64Info.count !== expectedLegacyBase64Rows) {
-    throw new Error(`LEGACY_BASE64_COUNT_MISMATCH: expected ${expectedLegacyBase64Rows}, found ${base64Info.count}`);
+    throw new Error(
+      `LEGACY_BASE64_COUNT_MISMATCH: expected ${expectedLegacyBase64Rows}, found ${base64Info.count}`,
+    );
   }
   if (base64Info.totalDecodedBytes !== expectedLegacyBase64DecodedBytes) {
-    throw new Error(`LEGACY_BASE64_DECODED_BYTES_MISMATCH: expected ${expectedLegacyBase64DecodedBytes}, found ${base64Info.totalDecodedBytes}`);
+    throw new Error(
+      `LEGACY_BASE64_DECODED_BYTES_MISMATCH: expected ${expectedLegacyBase64DecodedBytes}, found ${base64Info.totalDecodedBytes}`,
+    );
   }
 }
 
@@ -909,14 +1076,22 @@ function classifyImageUrl(value) {
 
 function validateLegacyHistoryBase64Baseline(historyInfo) {
   if (historyInfo.count !== expectedLegacyHistoryBase64Rows) {
-    throw new Error(`LEGACY_HISTORY_BASE64_COUNT_MISMATCH: expected ${expectedLegacyHistoryBase64Rows}, found ${historyInfo.count}`);
+    throw new Error(
+      `LEGACY_HISTORY_BASE64_COUNT_MISMATCH: expected ${expectedLegacyHistoryBase64Rows}, found ${historyInfo.count}`,
+    );
   }
   if (historyInfo.nonDataUrlCount !== 0) {
-    throw new Error(`LEGACY_HISTORY_NON_DATA_URL_FOUND: ${historyInfo.nonDataUrlCount} rows require manual analysis before conversion`);
+    throw new Error(
+      `LEGACY_HISTORY_NON_DATA_URL_FOUND: ${historyInfo.nonDataUrlCount} rows require manual analysis before conversion`,
+    );
   }
 }
 
-function prepareLegacyImageExternalization({ generationTaskRows, generationHistoryRows, r2PublicBaseUrl }) {
+function prepareLegacyImageExternalization({
+  generationTaskRows,
+  generationHistoryRows,
+  r2PublicBaseUrl,
+}) {
   const base64Info = inspectGenerationTaskBase64(generationTaskRows);
   validateLegacyBase64Baseline(base64Info);
   const historyInfo = inspectGenerationHistoryBase64Images(generationHistoryRows);
@@ -959,10 +1134,13 @@ function prepareLegacyImageExternalization({ generationTaskRows, generationHisto
     });
   }
 
-  const objects = Array.from(objectsBySha.values())
-    .sort((a, b) => a.sha256.localeCompare(b.sha256));
+  const objects = Array.from(objectsBySha.values()).sort((a, b) =>
+    a.sha256.localeCompare(b.sha256),
+  );
   const previousManifest = readLegacyImageManifestIfPresent();
-  const previousObjectsBySha = new Map((previousManifest?.objects ?? []).map((object) => [object.sha256, object]));
+  const previousObjectsBySha = new Map(
+    (previousManifest?.objects ?? []).map((object) => [object.sha256, object]),
+  );
   for (const object of objects) {
     applyLegacyR2Status(object, previousObjectsBySha.get(object.sha256));
     const stagingPath = path.join(legacyImageStagingDir, object.staging_filename);
@@ -976,11 +1154,21 @@ function prepareLegacyImageExternalization({ generationTaskRows, generationHisto
     throw new Error(`LEGACY_IMAGE_STAGING_VERIFICATION_FAILED: ${stagingVerification.reason}`);
   }
 
-  const taskHashes = new Set(references.filter((row) => row.table === "generation_tasks").map((row) => row.sha256));
-  const historyHashes = new Set(references.filter((row) => row.table === "generation_history").map((row) => row.sha256));
-  const sharedUniqueImages = Array.from(taskHashes).filter((sha256) => historyHashes.has(sha256)).length;
-  const taskOnlyUniqueImages = Array.from(taskHashes).filter((sha256) => !historyHashes.has(sha256)).length;
-  const historyOnlyUniqueImages = Array.from(historyHashes).filter((sha256) => !taskHashes.has(sha256)).length;
+  const taskHashes = new Set(
+    references.filter((row) => row.table === "generation_tasks").map((row) => row.sha256),
+  );
+  const historyHashes = new Set(
+    references.filter((row) => row.table === "generation_history").map((row) => row.sha256),
+  );
+  const sharedUniqueImages = Array.from(taskHashes).filter((sha256) =>
+    historyHashes.has(sha256),
+  ).length;
+  const taskOnlyUniqueImages = Array.from(taskHashes).filter(
+    (sha256) => !historyHashes.has(sha256),
+  ).length;
+  const historyOnlyUniqueImages = Array.from(historyHashes).filter(
+    (sha256) => !taskHashes.has(sha256),
+  ).length;
   const dedupeMappings = historyInfo.rows.map((row) => ({
     history_id: row.id,
     generation_task_id: row.generationTaskId,
@@ -990,21 +1178,28 @@ function prepareLegacyImageExternalization({ generationTaskRows, generationHisto
     decoded_bytes: row.decodedBytes,
     sha256: row.sha256,
     maps_to_generation_task: row.generationTaskId != null && taskRowsById.has(row.generationTaskId),
-    same_sha256: row.generationTaskId != null && taskShaById.get(row.generationTaskId) === row.sha256,
+    same_sha256:
+      row.generationTaskId != null && taskShaById.get(row.generationTaskId) === row.sha256,
   }));
 
-  const referencesWithUrls = objects.flatMap((object) => object.references.map((reference) => ({
-    ...reference,
-    sha256: object.sha256,
-    status: object.status,
-    final_public_url: object.final_public_url,
-  })));
+  const referencesWithUrls = objects.flatMap((object) =>
+    object.references.map((reference) => ({
+      ...reference,
+      sha256: object.sha256,
+      status: object.status,
+      final_public_url: object.final_public_url,
+    })),
+  );
 
   const statusCounts = groupCounts(objects, "status");
   const unresolvedObjects = objects.filter((object) => !object.final_public_url);
   if (unresolvedObjects.length > 0) {
-    const statuses = unresolvedObjects.map((object) => `${object.sha256}:${object.status}`).join(", ");
-    throw new Error(`REMOTE_D1_BLOCKED: legacy image objects are not safe to externalize: ${statuses}`);
+    const statuses = unresolvedObjects
+      .map((object) => `${object.sha256}:${object.status}`)
+      .join(", ");
+    throw new Error(
+      `REMOTE_D1_BLOCKED: legacy image objects are not safe to externalize: ${statuses}`,
+    );
   }
 
   const manifest = {
@@ -1036,7 +1231,12 @@ function prepareLegacyImageExternalization({ generationTaskRows, generationHisto
   };
   writeLegacyImageManifest(manifest);
 
-  const referencesByTarget = new Map(referencesWithUrls.map((reference) => [makeReferenceKey(reference.table, reference.row_id, reference.column), reference]));
+  const referencesByTarget = new Map(
+    referencesWithUrls.map((reference) => [
+      makeReferenceKey(reference.table, reference.row_id, reference.column),
+      reference,
+    ]),
+  );
   return {
     manifest,
     base64Info,
@@ -1061,18 +1261,31 @@ function prepareLegacyImageExternalization({ generationTaskRows, generationHisto
   };
 }
 
-function addLegacyImageReference({ objectsBySha, references, table, row, column, generationTaskId, requestId, r2PublicBaseUrl }) {
+function addLegacyImageReference({
+  objectsBySha,
+  references,
+  table,
+  row,
+  column,
+  generationTaskId,
+  requestId,
+  r2PublicBaseUrl,
+}) {
   if (!row) throw new Error(`LEGACY_IMAGE_SOURCE_ROW_MISSING: ${table}.${column}`);
   const parsed = parseImageDataUrl(row[column]);
   if (!parsed) {
-    throw new Error(`LEGACY_IMAGE_TARGET_NOT_DATA_URL: ${table}.${column} row ${getRowIdentifier(row)}`);
+    throw new Error(
+      `LEGACY_IMAGE_TARGET_NOT_DATA_URL: ${table}.${column} row ${getRowIdentifier(row)}`,
+    );
   }
   const decoded = Buffer.from(parsed.base64, "base64");
   const sha256 = crypto.createHash("sha256").update(decoded).digest("hex");
   const extension = extensionForMime(parsed.mimeType);
   const stagingFilename = `${sha256}.${extension}`;
   const fallbackProposedR2Key = `${legacyImageNamespace}/${stagingFilename}`;
-  const fallbackProposedPublicUrl = r2PublicBaseUrl ? `${r2PublicBaseUrl}/${fallbackProposedR2Key}` : "UNKNOWN";
+  const fallbackProposedPublicUrl = r2PublicBaseUrl
+    ? `${r2PublicBaseUrl}/${fallbackProposedR2Key}`
+    : "UNKNOWN";
   let object = objectsBySha.get(sha256);
   if (!object) {
     object = {
@@ -1116,7 +1329,9 @@ function readLegacyImageManifestIfPresent() {
   if (!fs.existsSync(legacyImageManifestPath)) return null;
   const text = fs.readFileSync(legacyImageManifestPath, "utf8");
   if (/data:image\//i.test(text)) {
-    throw new Error("LEGACY_IMAGE_MANIFEST_FORBIDDEN_CONTENT: existing manifest contains a data URL marker");
+    throw new Error(
+      "LEGACY_IMAGE_MANIFEST_FORBIDDEN_CONTENT: existing manifest contains a data URL marker",
+    );
   }
   return JSON.parse(text);
 }
@@ -1131,8 +1346,10 @@ function applyLegacyR2Status(object, previousObject) {
   object.status = status;
   object.existing_r2_key = previousObject?.existing_r2_key ?? null;
   object.existing_r2_url = previousObject?.existing_r2_url ?? null;
-  object.fallback_proposed_r2_key = previousObject?.fallback_proposed_r2_key ?? object.fallback_proposed_r2_key;
-  object.fallback_proposed_public_url = previousObject?.fallback_proposed_public_url ?? object.fallback_proposed_public_url;
+  object.fallback_proposed_r2_key =
+    previousObject?.fallback_proposed_r2_key ?? object.fallback_proposed_r2_key;
+  object.fallback_proposed_public_url =
+    previousObject?.fallback_proposed_public_url ?? object.fallback_proposed_public_url;
   if (previousObject?.r2_reuse_audit) object.r2_reuse_audit = previousObject.r2_reuse_audit;
 
   if (status === "ALREADY_IN_R2") {
@@ -1146,7 +1363,9 @@ function applyLegacyR2Status(object, previousObject) {
 
   if (status === "NEEDS_UPLOAD") {
     if (!object.fallback_proposed_public_url || object.fallback_proposed_public_url === "UNKNOWN") {
-      throw new Error(`R2_PUBLIC_HOST_UNKNOWN: cannot externalize legacy image ${object.sha256} without a fallback public URL`);
+      throw new Error(
+        `R2_PUBLIC_HOST_UNKNOWN: cannot externalize legacy image ${object.sha256} without a fallback public URL`,
+      );
     }
     object.final_r2_key = object.fallback_proposed_r2_key;
     object.final_public_url = object.fallback_proposed_public_url;
@@ -1159,8 +1378,14 @@ function applyLegacyR2Status(object, previousObject) {
 
 function writeLegacyImageManifest(manifest) {
   const text = `${JSON.stringify(manifest, null, 2)}\n`;
-  if (/data:image\//i.test(text) || /base64/i.test(text) || /api[_-]?key|secret|token|private[_-]?key/i.test(text)) {
-    throw new Error("LEGACY_IMAGE_MANIFEST_FORBIDDEN_CONTENT: manifest would contain a data URL, base64 marker, or secret-like key");
+  if (
+    /data:image\//i.test(text) ||
+    /base64/i.test(text) ||
+    /api[_-]?key|secret|token|private[_-]?key/i.test(text)
+  ) {
+    throw new Error(
+      "LEGACY_IMAGE_MANIFEST_FORBIDDEN_CONTENT: manifest would contain a data URL, base64 marker, or secret-like key",
+    );
   }
   fs.writeFileSync(legacyImageManifestPath, text);
 }
@@ -1178,16 +1403,26 @@ function verifyLegacyStagingFiles(objects) {
       return { pass: false, reason: `sha256 mismatch ${object.staging_filename}` };
     }
     if (!object.staging_filename.startsWith(`${object.sha256}.`)) {
-      return { pass: false, reason: `filename does not start with sha256 ${object.staging_filename}` };
+      return {
+        pass: false,
+        reason: `filename does not start with sha256 ${object.staging_filename}`,
+      };
     }
     if (bytes !== object.decoded_bytes) {
       return { pass: false, reason: `decoded byte mismatch ${object.staging_filename}` };
     }
     totalBytes += bytes;
   }
-  const fileCount = fs.readdirSync(legacyImageStagingDir).filter((name) => !name.startsWith(".")).length;
+  const fileCount = fs
+    .readdirSync(legacyImageStagingDir)
+    .filter((name) => !name.startsWith(".")).length;
   if (fileCount !== objects.length) {
-    return { pass: false, reason: `expected ${objects.length} staging files, found ${fileCount}`, fileCount, totalBytes };
+    return {
+      pass: false,
+      reason: `expected ${objects.length} staging files, found ${fileCount}`,
+      fileCount,
+      totalBytes,
+    };
   }
   return { pass: true, fileCount, totalBytes };
 }
@@ -1204,7 +1439,9 @@ function countUnchangedGeneratedR2Urls(sourceRows, importRows, column, r2PublicB
     const sourceValue = sourceRows[index]?.[column];
     if (typeof sourceValue !== "string" || !sourceValue.startsWith(prefix)) continue;
     if (importRows[index]?.[column] !== sourceValue) {
-      throw new Error(`NORMAL_R2_URL_MUTATED: ${column} row ${getRowIdentifier(sourceRows[index])}`);
+      throw new Error(
+        `NORMAL_R2_URL_MUTATED: ${column} row ${getRowIdentifier(sourceRows[index])}`,
+      );
     }
     count += 1;
   }
@@ -1214,19 +1451,30 @@ function countUnchangedGeneratedR2Urls(sourceRows, importRows, column, r2PublicB
 function applyLegacyImageExternalization(table, rows, referencesByTarget) {
   let changedRows = 0;
   let unchangedRows = 0;
-  const columns = table === "generation_tasks" ? ["result_image_url"] : table === "generation_history" ? ["image_url"] : [];
+  const columns =
+    table === "generation_tasks"
+      ? ["result_image_url"]
+      : table === "generation_history"
+        ? ["image_url"]
+        : [];
   const transformed = rows.map((row) => {
     let nextRow = row;
     let changed = false;
     for (const column of columns) {
-      const reference = referencesByTarget.get(makeReferenceKey(table, getRowIdentifier(row), column));
+      const reference = referencesByTarget.get(
+        makeReferenceKey(table, getRowIdentifier(row), column),
+      );
       if (!reference) continue;
       if (!reference.final_public_url || reference.final_public_url === "UNKNOWN") {
-        throw new Error(`REMOTE_D1_BLOCKED: cannot externalize ${table}.${column} row ${getRowIdentifier(row)} without a final public URL`);
+        throw new Error(
+          `REMOTE_D1_BLOCKED: cannot externalize ${table}.${column} row ${getRowIdentifier(row)} without a final public URL`,
+        );
       }
       const original = row[column];
       if (!parseImageDataUrl(original)) {
-        throw new Error(`LEGACY_IMAGE_EXTERNALIZATION_TARGET_NOT_DATA_URL: ${table}.${column} row ${getRowIdentifier(row)}`);
+        throw new Error(
+          `LEGACY_IMAGE_EXTERNALIZATION_TARGET_NOT_DATA_URL: ${table}.${column} row ${getRowIdentifier(row)}`,
+        );
       }
       nextRow = { ...nextRow, [column]: reference.final_public_url };
       changed = true;
@@ -1236,29 +1484,40 @@ function applyLegacyImageExternalization(table, rows, referencesByTarget) {
     return nextRow;
   });
 
-  const expectedChangedRows = table === "generation_tasks" ? expectedLegacyBase64Rows : expectedLegacyHistoryBase64Rows;
+  const expectedChangedRows =
+    table === "generation_tasks" ? expectedLegacyBase64Rows : expectedLegacyHistoryBase64Rows;
   if (changedRows !== expectedChangedRows) {
-    throw new Error(`LEGACY_IMAGE_EXTERNALIZATION_CHANGED_ROWS_MISMATCH: ${table} expected ${expectedChangedRows}, changed ${changedRows}`);
+    throw new Error(
+      `LEGACY_IMAGE_EXTERNALIZATION_CHANGED_ROWS_MISMATCH: ${table} expected ${expectedChangedRows}, changed ${changedRows}`,
+    );
   }
   return { rows: transformed, changedRows, unchangedRows };
 }
 
 function verifyLegacyExternalizedD1Rows(db, externalization) {
   const generationTasksDataImageCount = db
-    .prepare("SELECT COUNT(*) AS count FROM generation_tasks WHERE substr(result_image_url, 1, 11) = 'data:image/'")
+    .prepare(
+      "SELECT COUNT(*) AS count FROM generation_tasks WHERE substr(result_image_url, 1, 11) = 'data:image/'",
+    )
     .get().count;
   const generationHistoryDataImageCount = db
-    .prepare("SELECT COUNT(*) AS count FROM generation_history WHERE substr(image_url, 1, 11) = 'data:image/'")
+    .prepare(
+      "SELECT COUNT(*) AS count FROM generation_history WHERE substr(image_url, 1, 11) = 'data:image/'",
+    )
     .get().count;
   const generationHistoryOversizedImageUrlCount = db
-    .prepare("SELECT COUNT(*) AS count FROM generation_history WHERE image_url IS NOT NULL AND length(CAST(image_url AS BLOB)) >= ?")
+    .prepare(
+      "SELECT COUNT(*) AS count FROM generation_history WHERE image_url IS NOT NULL AND length(CAST(image_url AS BLOB)) >= ?",
+    )
     .get(remoteD1MaxFieldBytes).count;
   const allDataImageOccurrences = countD1DataImageOccurrences(db);
 
   let referenceUrlMatches = 0;
   for (const reference of externalization.references) {
     const row = db
-      .prepare(`SELECT ${quoteIdent(reference.column)} AS value FROM ${quoteIdent(reference.table)} WHERE id = ?`)
+      .prepare(
+        `SELECT ${quoteIdent(reference.column)} AS value FROM ${quoteIdent(reference.table)} WHERE id = ?`,
+      )
       .get(reference.row_id);
     if (!row) {
       return {
@@ -1286,7 +1545,8 @@ function verifyLegacyExternalizedD1Rows(db, externalization) {
   }
 
   return {
-    pass: generationTasksDataImageCount === 0 &&
+    pass:
+      generationTasksDataImageCount === 0 &&
       generationHistoryDataImageCount === 0 &&
       generationHistoryOversizedImageUrlCount === 0 &&
       allDataImageOccurrences.total === 0 &&
@@ -1305,7 +1565,9 @@ function countD1DataImageOccurrences(db) {
   for (const [table, columns] of Object.entries(tableColumns)) {
     for (const column of columns) {
       const count = db
-        .prepare(`SELECT COUNT(*) AS count FROM ${quoteIdent(table)} WHERE substr(CAST(${quoteIdent(column)} AS TEXT), 1, 11) = 'data:image/'`)
+        .prepare(
+          `SELECT COUNT(*) AS count FROM ${quoteIdent(table)} WHERE substr(CAST(${quoteIdent(column)} AS TEXT), 1, 11) = 'data:image/'`,
+        )
         .get().count;
       if (count > 0) details.push({ table, column, count });
       total += count;
@@ -1381,7 +1643,10 @@ function assertSafeTaskId(taskId) {
 
 function writeStagingFile(stagingPath, decoded, expectedHash) {
   if (fs.existsSync(stagingPath)) {
-    const currentHash = crypto.createHash("sha256").update(fs.readFileSync(stagingPath)).digest("hex");
+    const currentHash = crypto
+      .createHash("sha256")
+      .update(fs.readFileSync(stagingPath))
+      .digest("hex");
     if (currentHash !== expectedHash) {
       throw new Error(`STAGING_FILE_COLLISION: ${stagingPath} exists with different content`);
     }
@@ -1409,10 +1674,20 @@ function verifyStagingFiles(records) {
   }
   const fileCount = fs.readdirSync(stagingImageDir).filter((name) => !name.startsWith(".")).length;
   if (fileCount !== expectedLegacyBase64Rows) {
-    return { pass: false, reason: `expected ${expectedLegacyBase64Rows} staging files, found ${fileCount}`, fileCount, totalBytes };
+    return {
+      pass: false,
+      reason: `expected ${expectedLegacyBase64Rows} staging files, found ${fileCount}`,
+      fileCount,
+      totalBytes,
+    };
   }
   if (totalBytes !== expectedLegacyBase64DecodedBytes) {
-    return { pass: false, reason: `expected ${expectedLegacyBase64DecodedBytes} staging bytes, found ${totalBytes}`, fileCount, totalBytes };
+    return {
+      pass: false,
+      reason: `expected ${expectedLegacyBase64DecodedBytes} staging bytes, found ${totalBytes}`,
+      fileCount,
+      totalBytes,
+    };
   }
   return { pass: true, fileCount, totalBytes };
 }
@@ -1427,7 +1702,9 @@ function applyBase64Externalization(rows, recordsByTaskId) {
       return row;
     }
     if (record.proposed_public_url === "UNKNOWN") {
-      throw new Error(`R2_PUBLIC_HOST_UNKNOWN: cannot externalize task ${row.id} without a proposed public URL`);
+      throw new Error(
+        `R2_PUBLIC_HOST_UNKNOWN: cannot externalize task ${row.id} without a proposed public URL`,
+      );
     }
     const original = row.result_image_url;
     if (!parseImageDataUrl(original)) {
@@ -1437,23 +1714,46 @@ function applyBase64Externalization(rows, recordsByTaskId) {
     return { ...row, result_image_url: record.proposed_public_url };
   });
   if (changedRows !== expectedLegacyBase64Rows) {
-    throw new Error(`BASE64_EXTERNALIZATION_CHANGED_ROWS_MISMATCH: expected ${expectedLegacyBase64Rows}, changed ${changedRows}`);
+    throw new Error(
+      `BASE64_EXTERNALIZATION_CHANGED_ROWS_MISMATCH: expected ${expectedLegacyBase64Rows}, changed ${changedRows}`,
+    );
   }
   return { rows: transformed, changedRows, unchangedNonBase64ResultImageUrlRows };
 }
 
 function verifyExternalizedD1Rows(db, records) {
-  const base64Count = db.prepare("SELECT COUNT(*) AS count FROM generation_tasks WHERE result_image_url LIKE 'data:image/%;base64,%'").get().count;
+  const base64Count = db
+    .prepare(
+      "SELECT COUNT(*) AS count FROM generation_tasks WHERE result_image_url LIKE 'data:image/%;base64,%'",
+    )
+    .get().count;
   let proposedUrlCount = 0;
   for (const record of records) {
-    const row = db.prepare("SELECT result_image_url FROM generation_tasks WHERE id = ?").get(record.task_id);
-    if (!row) return { pass: false, reason: `missing task ${record.task_id}`, base64Count, proposedUrlCount };
+    const row = db
+      .prepare("SELECT result_image_url FROM generation_tasks WHERE id = ?")
+      .get(record.task_id);
+    if (!row)
+      return {
+        pass: false,
+        reason: `missing task ${record.task_id}`,
+        base64Count,
+        proposedUrlCount,
+      };
     if (row.result_image_url !== record.proposed_public_url) {
-      return { pass: false, reason: `URL mismatch task ${record.task_id}`, base64Count, proposedUrlCount };
+      return {
+        pass: false,
+        reason: `URL mismatch task ${record.task_id}`,
+        base64Count,
+        proposedUrlCount,
+      };
     }
     proposedUrlCount += 1;
   }
-  return { pass: base64Count === 0 && proposedUrlCount === expectedLegacyBase64Rows, base64Count, proposedUrlCount };
+  return {
+    pass: base64Count === 0 && proposedUrlCount === expectedLegacyBase64Rows,
+    base64Count,
+    proposedUrlCount,
+  };
 }
 
 function resolveR2PublicBaseUrl() {
@@ -1481,7 +1781,8 @@ function readPreExternalizeLocalD1Bytes() {
     if (typeof previous.dbPath !== "string") return null;
     const previousDbPath = path.resolve(previous.dbPath);
     const relative = path.relative(repoRoot, previousDbPath);
-    if (relative.startsWith("..") || path.isAbsolute(relative) || !fs.existsSync(previousDbPath)) return null;
+    if (relative.startsWith("..") || path.isAbsolute(relative) || !fs.existsSync(previousDbPath))
+      return null;
     return fs.statSync(previousDbPath).size;
   } catch {
     return null;
@@ -1522,7 +1823,11 @@ function aggregateSourceTable(table, rows) {
         statusCounts: groupCounts(rows, "status"),
         deductionStatusCounts: groupCounts(rows, "deduction_status"),
         distinctRequestId: distinctCount(rows, "request_id"),
-        base64ResultImageUrlCount: rows.filter((row) => typeof row.result_image_url === "string" && row.result_image_url.startsWith("data:image/")).length,
+        base64ResultImageUrlCount: rows.filter(
+          (row) =>
+            typeof row.result_image_url === "string" &&
+            row.result_image_url.startsWith("data:image/"),
+        ).length,
       };
     case "generation_history":
       return {
@@ -1531,7 +1836,9 @@ function aggregateSourceTable(table, rows) {
         sumCost: sumScaled(rows, "cost", 2),
         imageUrlNull: rows.filter((row) => row.image_url === null).length,
         imageUrlNonNull: rows.filter((row) => row.image_url !== null).length,
-        base64ImageUrlCount: rows.filter((row) => typeof row.image_url === "string" && row.image_url.startsWith("data:image/")).length,
+        base64ImageUrlCount: rows.filter(
+          (row) => typeof row.image_url === "string" && row.image_url.startsWith("data:image/"),
+        ).length,
       };
     case "coupons":
       return {
@@ -1560,15 +1867,24 @@ function aggregateSourceTable(table, rows) {
 }
 
 function sumScaled(rows, column, scale) {
-  return rows.reduce((sum, row) => sum + decimalToScaledInteger(row[column], scale, `${column}`), 0);
+  return rows.reduce(
+    (sum, row) => sum + decimalToScaledInteger(row[column], scale, `${column}`),
+    0,
+  );
 }
 
 function minScaled(rows, column, scale) {
-  return rows.reduce((min, row) => Math.min(min, decimalToScaledInteger(row[column], scale, `${column}`)), Number.POSITIVE_INFINITY);
+  return rows.reduce(
+    (min, row) => Math.min(min, decimalToScaledInteger(row[column], scale, `${column}`)),
+    Number.POSITIVE_INFINITY,
+  );
 }
 
 function maxScaled(rows, column, scale) {
-  return rows.reduce((max, row) => Math.max(max, decimalToScaledInteger(row[column], scale, `${column}`)), Number.NEGATIVE_INFINITY);
+  return rows.reduce(
+    (max, row) => Math.max(max, decimalToScaledInteger(row[column], scale, `${column}`)),
+    Number.NEGATIVE_INFINITY,
+  );
 }
 
 function distinctCount(rows, column) {
@@ -1582,41 +1898,80 @@ function groupCounts(rows, column) {
 }
 
 function countD1Rows(db, tables) {
-  return Object.fromEntries(tables.map((table) => [table, db.prepare(`SELECT COUNT(*) AS count FROM ${quoteIdent(table)}`).get().count]));
+  return Object.fromEntries(
+    tables.map((table) => [
+      table,
+      db.prepare(`SELECT COUNT(*) AS count FROM ${quoteIdent(table)}`).get().count,
+    ]),
+  );
 }
 
 function aggregateD1(db) {
   return {
-    profiles: db.prepare("SELECT COUNT(*) AS count, SUM(credits) AS sumCredits, MIN(credits) AS minCredits, MAX(credits) AS maxCredits FROM profiles").get(),
-    credit_usage_logs: db.prepare("SELECT COUNT(*) AS count, SUM(amount) AS sumAmount, COUNT(DISTINCT user_id) AS distinctUserId, COUNT(DISTINCT idempotency_key) AS distinctIdempotencyKey FROM credit_usage_logs").get(),
+    profiles: db
+      .prepare(
+        "SELECT COUNT(*) AS count, SUM(credits) AS sumCredits, MIN(credits) AS minCredits, MAX(credits) AS maxCredits FROM profiles",
+      )
+      .get(),
+    credit_usage_logs: db
+      .prepare(
+        "SELECT COUNT(*) AS count, SUM(amount) AS sumAmount, COUNT(DISTINCT user_id) AS distinctUserId, COUNT(DISTINCT idempotency_key) AS distinctIdempotencyKey FROM credit_usage_logs",
+      )
+      .get(),
     generation_tasks: {
       count: db.prepare("SELECT COUNT(*) AS count FROM generation_tasks").get().count,
       statusCounts: groupedQuery(db, "generation_tasks", "status"),
       deductionStatusCounts: groupedQuery(db, "generation_tasks", "deduction_status"),
-      distinctRequestId: db.prepare("SELECT COUNT(DISTINCT request_id) AS count FROM generation_tasks").get().count,
-      base64ResultImageUrlCount: db.prepare("SELECT COUNT(*) AS count FROM generation_tasks WHERE substr(result_image_url, 1, 11) = 'data:image/'").get().count,
+      distinctRequestId: db
+        .prepare("SELECT COUNT(DISTINCT request_id) AS count FROM generation_tasks")
+        .get().count,
+      base64ResultImageUrlCount: db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM generation_tasks WHERE substr(result_image_url, 1, 11) = 'data:image/'",
+        )
+        .get().count,
     },
     generation_history: {
       count: db.prepare("SELECT COUNT(*) AS count FROM generation_history").get().count,
       modelCounts: groupedQuery(db, "generation_history", "model"),
       sumCost: db.prepare("SELECT SUM(cost) AS sumCost FROM generation_history").get().sumCost,
-      imageUrlNull: db.prepare("SELECT COUNT(*) AS count FROM generation_history WHERE image_url IS NULL").get().count,
-      imageUrlNonNull: db.prepare("SELECT COUNT(*) AS count FROM generation_history WHERE image_url IS NOT NULL").get().count,
-      base64ImageUrlCount: db.prepare("SELECT COUNT(*) AS count FROM generation_history WHERE substr(image_url, 1, 11) = 'data:image/'").get().count,
+      imageUrlNull: db
+        .prepare("SELECT COUNT(*) AS count FROM generation_history WHERE image_url IS NULL")
+        .get().count,
+      imageUrlNonNull: db
+        .prepare("SELECT COUNT(*) AS count FROM generation_history WHERE image_url IS NOT NULL")
+        .get().count,
+      base64ImageUrlCount: db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM generation_history WHERE substr(image_url, 1, 11) = 'data:image/'",
+        )
+        .get().count,
     },
-    coupons: db.prepare("SELECT COUNT(*) AS count, SUM(CASE WHEN is_used = 1 THEN 1 ELSE 0 END) AS used, SUM(CASE WHEN is_used = 0 THEN 1 ELSE 0 END) AS unused, SUM(amount) AS sumAmount FROM coupons").get(),
+    coupons: db
+      .prepare(
+        "SELECT COUNT(*) AS count, SUM(CASE WHEN is_used = 1 THEN 1 ELSE 0 END) AS used, SUM(CASE WHEN is_used = 0 THEN 1 ELSE 0 END) AS unused, SUM(amount) AS sumAmount FROM coupons",
+      )
+      .get(),
     user_orders: {
       count: db.prepare("SELECT COUNT(*) AS count FROM user_orders").get().count,
       statusCounts: groupedQuery(db, "user_orders", "status"),
       sumAmount: db.prepare("SELECT SUM(amount) AS sumAmount FROM user_orders").get().sumAmount,
       sumCredits: db.prepare("SELECT SUM(credits) AS sumCredits FROM user_orders").get().sumCredits,
     },
-    redeem_logs: db.prepare("SELECT COUNT(*) AS count, SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS success, SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS failed, SUM(amount) AS sumAmount FROM redeem_logs").get(),
+    redeem_logs: db
+      .prepare(
+        "SELECT COUNT(*) AS count, SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS success, SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS failed, SUM(amount) AS sumAmount FROM redeem_logs",
+      )
+      .get(),
   };
 }
 
 function groupedQuery(db, table, column) {
-  const rows = db.prepare(`SELECT ${quoteIdent(column)} AS value, COUNT(*) AS count FROM ${quoteIdent(table)} GROUP BY ${quoteIdent(column)} ORDER BY ${quoteIdent(column)}`).all();
+  const rows = db
+    .prepare(
+      `SELECT ${quoteIdent(column)} AS value, COUNT(*) AS count FROM ${quoteIdent(table)} GROUP BY ${quoteIdent(column)} ORDER BY ${quoteIdent(column)}`,
+    )
+    .all();
   return Object.fromEntries(rows.map((row) => [row.value, row.count]));
 }
 
@@ -1635,7 +1990,11 @@ function compareAggregates(sourceAggregates, d1Aggregates) {
 
 function normalizeAggregate(value) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return value;
-  return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, normalizeAggregate(item)]));
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, item]) => [key, normalizeAggregate(item)]),
+  );
 }
 
 function verifyUniqueConstraints(db) {
@@ -1748,7 +2107,8 @@ function renderMarkdownReport(verification) {
 
   lines.push("## recharge_packages", "");
   lines.push(`- Status: ${verification.rechargePackages.status}`);
-  if (verification.rechargePackages.snapshotSha256) lines.push(`- Snapshot SHA256: ${verification.rechargePackages.snapshotSha256}`);
+  if (verification.rechargePackages.snapshotSha256)
+    lines.push(`- Snapshot SHA256: ${verification.rechargePackages.snapshotSha256}`);
   lines.push(`- Source rows: ${verification.rechargePackages.rowCount}`);
   lines.push(`- Imported: ${verification.rechargePackages.imported ? "YES" : "NO"}`);
   lines.push("- No default package rows were fabricated.", "");
@@ -1761,24 +2121,46 @@ function renderMarkdownReport(verification) {
   if (verification.externalization) {
     lines.push(`- Externalized for remote-compatible import: YES`);
     lines.push(`- Derived changed rows: ${verification.externalization.changedRows}`);
-    lines.push(`- D1 remaining data:image base64 rows: ${verification.externalization.d1Base64Count}`);
+    lines.push(
+      `- D1 remaining data:image base64 rows: ${verification.externalization.d1Base64Count}`,
+    );
     lines.push(`- D1 proposed public URL rows: ${verification.externalization.d1ProposedUrlCount}`);
   }
-  lines.push("", "| task id | request id | mime type | encoded bytes | decoded bytes | decoded sha256 | text bytes |", "| --- | --- | --- | ---: | ---: | --- | ---: |");
+  lines.push(
+    "",
+    "| task id | request id | mime type | encoded bytes | decoded bytes | decoded sha256 | text bytes |",
+    "| --- | --- | --- | ---: | ---: | --- | ---: |",
+  );
   for (const row of verification.base64.rows) {
-    lines.push(`| ${row.id} | ${row.requestId} | ${row.mimeType} | ${row.encodedBytes} | ${row.decodedBytes} | ${row.sha256} | ${row.textBytes} |`);
+    lines.push(
+      `| ${row.id} | ${row.requestId} | ${row.mimeType} | ${row.encodedBytes} | ${row.decodedBytes} | ${row.sha256} | ${row.textBytes} |`,
+    );
   }
   lines.push("");
 
   if (verification.generationHistoryOversizedImages) {
     lines.push("## generation_history oversized image_url", "");
-    lines.push(`- Rows >= 2MB before externalization: ${verification.generationHistoryOversizedImages.count}`);
-    lines.push(`- Non data-url rows in this set: ${verification.generationHistoryOversizedImages.nonDataUrlCount}`);
-    lines.push(`- Total decoded bytes: ${verification.generationHistoryOversizedImages.totalDecodedBytes}`);
-    lines.push(`- Total text bytes: ${verification.generationHistoryOversizedImages.totalTextBytes}`);
-    lines.push("", "| history id | generation_task_id | user_id | type | mime type | encoded bytes | decoded bytes | decoded sha256 | text bytes |", "| --- | --- | --- | --- | --- | ---: | ---: | --- | ---: |");
+    lines.push(
+      `- Rows >= 2MB before externalization: ${verification.generationHistoryOversizedImages.count}`,
+    );
+    lines.push(
+      `- Non data-url rows in this set: ${verification.generationHistoryOversizedImages.nonDataUrlCount}`,
+    );
+    lines.push(
+      `- Total decoded bytes: ${verification.generationHistoryOversizedImages.totalDecodedBytes}`,
+    );
+    lines.push(
+      `- Total text bytes: ${verification.generationHistoryOversizedImages.totalTextBytes}`,
+    );
+    lines.push(
+      "",
+      "| history id | generation_task_id | user_id | type | mime type | encoded bytes | decoded bytes | decoded sha256 | text bytes |",
+      "| --- | --- | --- | --- | --- | ---: | ---: | --- | ---: |",
+    );
     for (const row of verification.generationHistoryOversizedImages.rows) {
-      lines.push(`| ${row.id} | ${row.generationTaskId ?? ""} | ${row.userId} | ${row.imageUrlType} | ${row.mimeType ?? ""} | ${row.encodedBytes ?? ""} | ${row.decodedBytes ?? ""} | ${row.sha256 ?? ""} | ${row.textBytes} |`);
+      lines.push(
+        `| ${row.id} | ${row.generationTaskId ?? ""} | ${row.userId} | ${row.imageUrlType} | ${row.mimeType ?? ""} | ${row.encodedBytes ?? ""} | ${row.decodedBytes ?? ""} | ${row.sha256 ?? ""} | ${row.textBytes} |`,
+      );
     }
     lines.push("");
   }
@@ -1789,30 +2171,64 @@ function renderMarkdownReport(verification) {
     lines.push(`- Staging directory: ${verification.externalization.stagingDir}`);
     lines.push(`- Staging files: ${verification.externalization.stagingFileCount}`);
     lines.push(`- Staging total bytes: ${verification.externalization.stagingTotalBytes}`);
-    lines.push(`- Staging verification: ${verification.externalization.stagingVerificationPass ? "PASS" : "FAIL"}`);
+    lines.push(
+      `- Staging verification: ${verification.externalization.stagingVerificationPass ? "PASS" : "FAIL"}`,
+    );
     lines.push(`- Proposed R2 namespace: ${verification.externalization.namespace}`);
     lines.push(`- R2 public host: ${verification.externalization.r2PublicBaseUrl ?? "UNKNOWN"}`);
     lines.push(`- R2 host source: ${verification.externalization.r2PublicBaseUrlSource}`);
-    lines.push(`- R2 reuse ALREADY_IN_R2: ${verification.externalization.r2ReuseSummary?.ALREADY_IN_R2 ?? 0}`);
-    lines.push(`- R2 reuse NEEDS_UPLOAD: ${verification.externalization.r2ReuseSummary?.NEEDS_UPLOAD ?? 0}`);
-    lines.push(`- R2 reuse AMBIGUOUS: ${verification.externalization.r2ReuseSummary?.AMBIGUOUS ?? 0}`);
-    lines.push(`- R2 reuse MISMATCH: ${verification.externalization.r2ReuseSummary?.MISMATCH ?? 0}`);
-    lines.push(`- References: ${verification.externalization.totalReferences} (${verification.externalization.taskReferences} generation_tasks, ${verification.externalization.historyReferences} generation_history)`);
+    lines.push(
+      `- R2 reuse ALREADY_IN_R2: ${verification.externalization.r2ReuseSummary?.ALREADY_IN_R2 ?? 0}`,
+    );
+    lines.push(
+      `- R2 reuse NEEDS_UPLOAD: ${verification.externalization.r2ReuseSummary?.NEEDS_UPLOAD ?? 0}`,
+    );
+    lines.push(
+      `- R2 reuse AMBIGUOUS: ${verification.externalization.r2ReuseSummary?.AMBIGUOUS ?? 0}`,
+    );
+    lines.push(
+      `- R2 reuse MISMATCH: ${verification.externalization.r2ReuseSummary?.MISMATCH ?? 0}`,
+    );
+    lines.push(
+      `- References: ${verification.externalization.totalReferences} (${verification.externalization.taskReferences} generation_tasks, ${verification.externalization.historyReferences} generation_history)`,
+    );
     lines.push(`- Unique binaries: ${verification.externalization.uniqueBinaryImages}`);
-    lines.push(`- Shared task/history binaries: ${verification.externalization.sharedUniqueImages}`);
+    lines.push(
+      `- Shared task/history binaries: ${verification.externalization.sharedUniqueImages}`,
+    );
     lines.push(`- Task-only binaries: ${verification.externalization.taskOnlyUniqueImages}`);
     lines.push(`- History-only binaries: ${verification.externalization.historyOnlyUniqueImages}`);
-    lines.push(`- Decoded bytes after dedupe: ${verification.externalization.totalDecodedBytesAfterDedupe}`);
+    lines.push(
+      `- Decoded bytes after dedupe: ${verification.externalization.totalDecodedBytesAfterDedupe}`,
+    );
     lines.push(`- generation_tasks changed rows: ${verification.externalization.taskChangedRows}`);
-    lines.push(`- generation_history changed rows: ${verification.externalization.historyChangedRows}`);
-    lines.push(`- Existing generated R2 URL rows preserved: ${verification.externalization.normalExistingR2UrlUnchangedRows}`);
-    lines.push(`- D1 generation_tasks data:image rows: ${verification.externalization.d1Base64Count}`);
-    lines.push(`- D1 generation_history data:image rows: ${verification.externalization.d1HistoryBase64Count}`);
-    lines.push(`- D1 all-table data:image rows: ${verification.externalization.d1AllDataImageCount}`);
-    lines.push(`- D1 generation_history image_url >= 2MB rows: ${verification.externalization.d1HistoryOversizedImageUrlCount}`);
-    lines.push("", "| history id | generation_task_id | same decoded sha256 |", "| --- | --- | --- |");
+    lines.push(
+      `- generation_history changed rows: ${verification.externalization.historyChangedRows}`,
+    );
+    lines.push(
+      `- Existing generated R2 URL rows preserved: ${verification.externalization.normalExistingR2UrlUnchangedRows}`,
+    );
+    lines.push(
+      `- D1 generation_tasks data:image rows: ${verification.externalization.d1Base64Count}`,
+    );
+    lines.push(
+      `- D1 generation_history data:image rows: ${verification.externalization.d1HistoryBase64Count}`,
+    );
+    lines.push(
+      `- D1 all-table data:image rows: ${verification.externalization.d1AllDataImageCount}`,
+    );
+    lines.push(
+      `- D1 generation_history image_url >= 2MB rows: ${verification.externalization.d1HistoryOversizedImageUrlCount}`,
+    );
+    lines.push(
+      "",
+      "| history id | generation_task_id | same decoded sha256 |",
+      "| --- | --- | --- |",
+    );
     for (const row of verification.externalization.dedupeMappings) {
-      lines.push(`| ${row.history_id} | ${row.generation_task_id ?? ""} | ${row.same_sha256 ? "YES" : "NO"} |`);
+      lines.push(
+        `| ${row.history_id} | ${row.generation_task_id ?? ""} | ${row.same_sha256 ? "YES" : "NO"} |`,
+      );
     }
     lines.push("");
   }
@@ -1821,7 +2237,9 @@ function renderMarkdownReport(verification) {
   lines.push("| table | source rows | D1 rows | result |");
   lines.push("| --- | ---: | ---: | --- |");
   for (const row of verification.counts) {
-    lines.push(`| ${row.table} | ${row.sourceRows} | ${row.d1Rows} | ${row.pass ? "PASS" : "FAIL"} |`);
+    lines.push(
+      `| ${row.table} | ${row.sourceRows} | ${row.d1Rows} | ${row.pass ? "PASS" : "FAIL"} |`,
+    );
   }
   lines.push("");
 
@@ -1829,7 +2247,9 @@ function renderMarkdownReport(verification) {
   lines.push("| table | result | source JSON aggregate | local D1 aggregate |");
   lines.push("| --- | --- | --- | --- |");
   for (const row of verification.aggregates) {
-    lines.push(`| ${row.table} | ${row.pass ? "PASS" : "FAIL"} | \`${JSON.stringify(row.source)}\` | \`${JSON.stringify(row.d1)}\` |`);
+    lines.push(
+      `| ${row.table} | ${row.pass ? "PASS" : "FAIL"} | \`${JSON.stringify(row.source)}\` | \`${JSON.stringify(row.d1)}\` |`,
+    );
   }
   lines.push("");
 
@@ -1837,7 +2257,9 @@ function renderMarkdownReport(verification) {
   lines.push("| table | field | index | duplicates | result |");
   lines.push("| --- | --- | --- | ---: | --- |");
   for (const row of verification.uniqueConstraints) {
-    lines.push(`| ${row.table} | ${row.column} | ${row.index}${row.indexExists ? "" : " (missing)"} | ${row.duplicateGroups} | ${row.pass ? "PASS" : "FAIL"} |`);
+    lines.push(
+      `| ${row.table} | ${row.column} | ${row.index}${row.indexExists ? "" : " (missing)"} | ${row.duplicateGroups} | ${row.pass ? "PASS" : "FAIL"} |`,
+    );
   }
   lines.push("");
 
@@ -1851,14 +2273,32 @@ function renderMarkdownReport(verification) {
 
   lines.push("## D1 2MB compatibility", "");
   lines.push(`- Status: ${verification.remoteD1Status}`);
-  lines.push(`- Field limit checked: < ${verification.remoteCompatibility.fieldLimitBytes} UTF-8 bytes`);
-  lines.push(`- Warning threshold: >= ${verification.remoteCompatibility.warningBytes} UTF-8 bytes`);
-  lines.push(`- Field exists >= limit: ${verification.remoteCompatibility.hasBlockedFields ? "YES" : "NO"}`);
-  lines.push(`- Estimated row exists >= limit: ${verification.remoteCompatibility.hasBlockedRows ? "YES" : "NO"}`);
-  lines.push(`- Max field: ${verification.remoteCompatibility.maxField.table}.${verification.remoteCompatibility.maxField.column} / ${verification.remoteCompatibility.maxField.bytes} bytes / row ${verification.remoteCompatibility.maxField.rowId}`);
-  lines.push(`- Max conservative row estimate: ${verification.remoteCompatibility.maxRow.table} / ${verification.remoteCompatibility.maxRow.bytes} bytes / row ${verification.remoteCompatibility.maxRow.rowId}`);
+  lines.push(
+    `- Field limit checked: < ${verification.remoteCompatibility.fieldLimitBytes} UTF-8 bytes`,
+  );
+  lines.push(
+    `- Warning threshold: >= ${verification.remoteCompatibility.warningBytes} UTF-8 bytes`,
+  );
+  lines.push(
+    `- Field exists >= limit: ${verification.remoteCompatibility.hasBlockedFields ? "YES" : "NO"}`,
+  );
+  lines.push(
+    `- Estimated row exists >= limit: ${verification.remoteCompatibility.hasBlockedRows ? "YES" : "NO"}`,
+  );
+  lines.push(
+    `- Max field: ${verification.remoteCompatibility.maxField.table}.${verification.remoteCompatibility.maxField.column} / ${verification.remoteCompatibility.maxField.bytes} bytes / row ${verification.remoteCompatibility.maxField.rowId}`,
+  );
+  lines.push(
+    `- Max conservative row estimate: ${verification.remoteCompatibility.maxRow.table} / ${verification.remoteCompatibility.maxRow.bytes} bytes / row ${verification.remoteCompatibility.maxRow.rowId}`,
+  );
   if (verification.remoteCompatibility.blockedFields.length > 0) {
-    lines.push("", "### Blocked fields", "", "| table | column | bytes | row id |", "| --- | --- | ---: | --- |");
+    lines.push(
+      "",
+      "### Blocked fields",
+      "",
+      "| table | column | bytes | row id |",
+      "| --- | --- | ---: | --- |",
+    );
     for (const row of verification.remoteCompatibility.blockedFields) {
       lines.push(`| ${row.table} | ${row.column} | ${row.bytes} | ${row.rowId} |`);
     }
@@ -1870,7 +2310,13 @@ function renderMarkdownReport(verification) {
     }
   }
   if (verification.remoteCompatibility.warningFields.length > 0) {
-    lines.push("", "### Warning fields", "", "| table | column | bytes | row id |", "| --- | --- | ---: | --- |");
+    lines.push(
+      "",
+      "### Warning fields",
+      "",
+      "| table | column | bytes | row id |",
+      "| --- | --- | ---: | --- |",
+    );
     for (const row of verification.remoteCompatibility.warningFields) {
       lines.push(`| ${row.table} | ${row.column} | ${row.bytes} | ${row.rowId} |`);
     }
@@ -1883,17 +2329,30 @@ function renderMarkdownReport(verification) {
   }
   lines.push("");
 
-  if (verification.localD1Sizes.beforeExternalizeBytes != null || verification.localD1Sizes.afterExternalizeBytes != null) {
+  if (
+    verification.localD1Sizes.beforeExternalizeBytes != null ||
+    verification.localD1Sizes.afterExternalizeBytes != null
+  ) {
     lines.push("## Local D1 sizes", "");
-    lines.push(`- Before externalize SQLite bytes: ${verification.localD1Sizes.beforeExternalizeBytes ?? "UNKNOWN"}`);
-    lines.push(`- After externalize SQLite bytes: ${verification.localD1Sizes.afterExternalizeBytes ?? "UNKNOWN"}`);
+    lines.push(
+      `- Before externalize SQLite bytes: ${verification.localD1Sizes.beforeExternalizeBytes ?? "UNKNOWN"}`,
+    );
+    lines.push(
+      `- After externalize SQLite bytes: ${verification.localD1Sizes.afterExternalizeBytes ?? "UNKNOWN"}`,
+    );
     lines.push("");
   }
 
   lines.push("## RPC / Auth notes", "");
-  lines.push("- Auth was not migrated. Supabase auth UUIDs and user_id values were preserved as TEXT without regeneration.");
-  lines.push("- RPCs were not implemented in this phase: consume_credits_for_generation, consume_credits_for_generation_v2, set_latest_history_image, finalize_user_generation_task_once, complete_paid_order, redeem_coupon.");
-  lines.push("- Future Worker design should replace RPC behavior with D1 transactions / idempotent service functions after this local data baseline is accepted.");
+  lines.push(
+    "- Auth was not migrated. Supabase auth UUIDs and user_id values were preserved as TEXT without regeneration.",
+  );
+  lines.push(
+    "- RPCs were not implemented in this phase: consume_credits_for_generation, consume_credits_for_generation_v2, set_latest_history_image, finalize_user_generation_task_once, complete_paid_order, redeem_coupon.",
+  );
+  lines.push(
+    "- Future Worker design should replace RPC behavior with D1 transactions / idempotent service functions after this local data baseline is accepted.",
+  );
   lines.push("");
 
   lines.push("## Prohibited operations confirmation", "");

@@ -2,7 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { listAnnouncements } from "@/lib/admin.functions";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Megaphone, Sparkles, AlertTriangle, CheckCircle2, Pin, ArrowUpRight, Bell } from "lucide-react";
+import {
+  Megaphone,
+  Sparkles,
+  AlertTriangle,
+  CheckCircle2,
+  Pin,
+  ArrowUpRight,
+  Bell,
+} from "lucide-react";
 import { thumbUrl } from "@/lib/image-url";
 
 export type Announcement = {
@@ -41,7 +49,15 @@ function markSeen(id: string) {
 
 const TYPE_STYLES: Record<
   Announcement["type"],
-  { ring: string; icon: typeof Megaphone; label: string; chipBg: string; chipText: string; glow: string; gradient: string }
+  {
+    ring: string;
+    icon: typeof Megaphone;
+    label: string;
+    chipBg: string;
+    chipText: string;
+    glow: string;
+    gradient: string;
+  }
 > = {
   info: {
     ring: "ring-primary/30",
@@ -156,7 +172,9 @@ export function AnnouncementCenter({ open, onOpenChange, autoOpenLatest = false 
             </div>
             <div className="max-h-[26dvh] space-y-0.5 overflow-auto px-2 pb-3 md:max-h-[60vh]">
               {items.length === 0 && (
-                <div className="px-3 py-8 text-center text-[11px] text-muted-foreground">暂无通知</div>
+                <div className="px-3 py-8 text-center text-[11px] text-muted-foreground">
+                  暂无通知
+                </div>
               )}
               {items.map((a) => {
                 const s = TYPE_STYLES[a.type];
@@ -177,10 +195,14 @@ export function AnnouncementCenter({ open, onOpenChange, autoOpenLatest = false 
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1">
-                        {a.is_pinned && <Pin className="h-2.5 w-2.5 text-primary" fill="currentColor" />}
+                        {a.is_pinned && (
+                          <Pin className="h-2.5 w-2.5 text-primary" fill="currentColor" />
+                        )}
                         <p
                           className={`truncate text-[11px] font-medium ${
-                            isActive ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
+                            isActive
+                              ? "text-foreground"
+                              : "text-muted-foreground group-hover:text-foreground"
                           }`}
                         >
                           {a.title}
@@ -228,10 +250,14 @@ export function AnnouncementCenter({ open, onOpenChange, autoOpenLatest = false 
                     </span>
                   </div>
 
-                  <h2 className="text-2xl font-semibold leading-tight tracking-tight md:text-3xl">{active.title}</h2>
+                  <h2 className="text-2xl font-semibold leading-tight tracking-tight md:text-3xl">
+                    {active.title}
+                  </h2>
 
                   {active.image_url && (
-                    <div className={`overflow-hidden rounded-2xl border border-border/60 ring-1 ${style.ring}`}>
+                    <div
+                      className={`overflow-hidden rounded-2xl border border-border/60 ring-1 ${style.ring}`}
+                    >
                       <img
                         src={thumbUrl(active.image_url, { quality: 75 })}
                         alt={active.title}

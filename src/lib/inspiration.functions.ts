@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireD1Auth } from "@/lib/d1-auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { assertLovableOnlyLegacyWrite } from "@/lib/legacy-lovable-guard";
 
@@ -27,7 +27,7 @@ export type CaseRow = {
 
 // List with filters
 export const listCases = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) =>
     z
       .object({
@@ -73,9 +73,9 @@ export const listCases = createServerFn({ method: "POST" })
         .select("id, display_name")
         .in("id", Array.from(new Set(list.map((r) => r.user_id)))),
     ]);
-    const likeSet = new Set((likes ?? []).map((r: any) => r.case_id));
-    const favSet = new Set((favs ?? []).map((r: any) => r.case_id));
-    const nameMap = new Map((authors ?? []).map((r: any) => [r.id, r.display_name]));
+    const likeSet = new Set((likes ?? []).map((r) => r.case_id));
+    const favSet = new Set((favs ?? []).map((r) => r.case_id));
+    const nameMap = new Map((authors ?? []).map((r) => [r.id, r.display_name]));
     return list.map((r) => ({
       ...r,
       liked: likeSet.has(r.id),
@@ -86,7 +86,7 @@ export const listCases = createServerFn({ method: "POST" })
 
 // Get tags & models for filter chips
 export const listCaseFacets = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .handler(async () => {
     const { data, error } = await supabaseAdmin
       .from("inspiration_cases")
@@ -96,7 +96,7 @@ export const listCaseFacets = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     const tagCount = new Map<string, number>();
     const modelMap = new Map<string, string>();
-    for (const r of (data ?? []) as any[]) {
+    for (const r of data ?? []) {
       for (const t of (r.tags ?? []) as string[]) tagCount.set(t, (tagCount.get(t) ?? 0) + 1);
       if (r.model_key) modelMap.set(r.model_key, r.model_name ?? r.model_key);
     }
@@ -110,7 +110,7 @@ export const listCaseFacets = createServerFn({ method: "POST" })
 
 // Case detail + comments
 export const getCaseDetail = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) => z.object({ caseId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const uid = context.userId;
@@ -139,21 +139,19 @@ export const getCaseDetail = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     if (!row) throw new Error("案例不存在");
 
-    const userIds = Array.from(
-      new Set([(row as any).user_id, ...((comments ?? []).map((c: any) => c.user_id))]),
-    );
+    const userIds = Array.from(new Set([row.user_id, ...(comments ?? []).map((c) => c.user_id)]));
     const { data: profs } = await supabaseAdmin
       .from("profiles")
       .select("id, display_name")
       .in("id", userIds);
-    const nameMap = new Map((profs ?? []).map((p: any) => [p.id, p.display_name]));
+    const nameMap = new Map((profs ?? []).map((p) => [p.id, p.display_name]));
 
     return {
-      ...(row as any),
-      author_name: nameMap.get((row as any).user_id) ?? null,
+      ...row,
+      author_name: nameMap.get(row.user_id) ?? null,
       liked: !!like,
       favorited: !!fav,
-      comments: (comments ?? []).map((c: any) => ({
+      comments: (comments ?? []).map((c) => ({
         ...c,
         author_name: nameMap.get(c.user_id) ?? null,
       })),
@@ -161,7 +159,7 @@ export const getCaseDetail = createServerFn({ method: "POST" })
   });
 
 export const incrementCaseView = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) => z.object({ caseId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     assertLovableOnlyLegacyWrite(context, "incrementCaseView");
@@ -170,7 +168,7 @@ export const incrementCaseView = createServerFn({ method: "POST" })
   });
 
 export const toggleCaseLike = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) => z.object({ caseId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const uid = context.userId;
@@ -198,7 +196,7 @@ export const toggleCaseLike = createServerFn({ method: "POST" })
   });
 
 export const toggleCaseFavorite = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) => z.object({ caseId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const uid = context.userId;
@@ -226,7 +224,7 @@ export const toggleCaseFavorite = createServerFn({ method: "POST" })
   });
 
 export const addCaseComment = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) =>
     z.object({ caseId: z.string().uuid(), content: z.string().min(1).max(500) }).parse(d),
   )
@@ -240,7 +238,7 @@ export const addCaseComment = createServerFn({ method: "POST" })
   });
 
 export const publishCase = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) =>
     z
       .object({
@@ -275,5 +273,5 @@ export const publishCase = createServerFn({ method: "POST" })
       .select("id")
       .single();
     if (error) throw new Error(error.message);
-    return { id: (row as any).id };
+    return { id: row.id };
   });

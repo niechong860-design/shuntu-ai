@@ -2,16 +2,32 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useNavigate } from "@tanstack/react-router";
 import {
-  Heart, Bookmark, Eye, Search, Sparkles, X, Copy, Wand2,
-  MessageSquare, Send, Plus, Upload, Image as ImageIcon, Loader2,
+  Heart,
+  Bookmark,
+  Eye,
+  Search,
+  Sparkles,
+  X,
+  Copy,
+  Wand2,
+  MessageSquare,
+  Send,
+  Plus,
+  Upload,
+  Image as ImageIcon,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
-  Dialog, DialogContent, DialogTitle, DialogDescription,
-} from "@/components/ui/dialog";
-import {
-  listCases, listCaseFacets, getCaseDetail, incrementCaseView,
-  toggleCaseLike, toggleCaseFavorite, addCaseComment, publishCase,
+  listCases,
+  listCaseFacets,
+  getCaseDetail,
+  incrementCaseView,
+  toggleCaseLike,
+  toggleCaseFavorite,
+  addCaseComment,
+  publishCase,
   type CaseRow,
 } from "@/lib/inspiration.functions";
 import { listModelsConfig } from "@/lib/admin.functions";
@@ -19,7 +35,7 @@ import { STYLE_TEMPLATES } from "@/lib/style-templates";
 import { setStudioPrefill } from "@/lib/studio-prefill";
 import { useAuth } from "@/hooks/use-auth";
 import { thumbUrl, preloadImages } from "@/lib/image-url";
-import { supabase } from "@/integrations/supabase/client";
+import { uploadImageToR2 } from "@/lib/r2-upload-client";
 import { processImage, validateImageFile } from "@/lib/image-processing";
 
 type StyleTpl = { id: string; name: string; image_url: string | null };
@@ -44,18 +60,25 @@ export function InspirationPage() {
     STYLE_TEMPLATES.map((s) => ({ id: s.id, name: s.name, image_url: s.previewImage })),
   );
   const [allModels, setAllModels] = useState<{ key: string; name: string }[]>([]);
-  const [facets, setFacets] = useState<{ hotTags: { name: string; count: number }[]; models: { key: string; name: string }[] }>({ hotTags: [], models: [] });
+  const [facets, setFacets] = useState<{
+    hotTags: { name: string; count: number }[];
+    models: { key: string; name: string }[];
+  }>({ hotTags: [], models: [] });
   const [openId, setOpenId] = useState<string | null>(null);
   const [publishOpen, setPublishOpen] = useState(false);
 
   useEffect(() => {
     if (!session) return;
-    fetchFacets({}).then((d) => setFacets(d as any)).catch(() => {});
-    fetchModels({}).then((d) => {
-      const list = (d ?? []) as { model_key: string; name: string }[];
-      setAllModels(list.map((m) => ({ key: m.model_key, name: m.name })));
-    }).catch(() => {});
-  }, [session]);
+    fetchFacets({})
+      .then((d) => setFacets(d))
+      .catch(() => {});
+    fetchModels({})
+      .then((d) => {
+        const list = (d ?? []) as { model_key: string; name: string }[];
+        setAllModels(list.map((m) => ({ key: m.model_key, name: m.name })));
+      })
+      .catch(() => {});
+  }, [session, fetchFacets, fetchModels]);
 
   useEffect(() => {
     if (!session) return;
@@ -76,9 +99,9 @@ export function InspirationPage() {
         // Idle-preload below-the-fold cards so the first scroll has no jank.
         preloadImages(list.slice(8, 24).map((c) => thumbUrl(c.image_url, { quality: 65 })));
       })
-      .catch((e) => toast.error(e?.message ?? "加载失败"))
+      .catch((e) => toast.error(e instanceof Error ? e.message : "加载失败"))
       .finally(() => setLoading(false));
-  }, [session, search, styleId, tag, modelKey, sort]);
+  }, [session, search, styleId, tag, modelKey, sort, fetchList]);
 
   const updateItem = (id: string, patch: Partial<CaseItem>) =>
     setItems((arr) => arr.map((c) => (c.id === id ? { ...c, ...patch } : c)));
@@ -102,23 +125,29 @@ export function InspirationPage() {
               <input
                 value={searchDraft}
                 onChange={(e) => setSearchDraft(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") setSearch(searchDraft.trim()); }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") setSearch(searchDraft.trim());
+                }}
                 placeholder="搜索 prompt、标题…"
                 className="w-full rounded-xl border border-border bg-input/40 py-2 pl-9 pr-3 text-sm focus:border-primary/50 focus:outline-none focus:shadow-glow"
               />
             </div>
 
             <div className="flex items-center gap-1 rounded-xl border border-border bg-white/[0.03] p-1">
-              {([
-                ["latest", "最新"],
-                ["hot", "最热"],
-                ["views", "最多浏览"],
-              ] as const).map(([k, label]) => (
+              {(
+                [
+                  ["latest", "最新"],
+                  ["hot", "最热"],
+                  ["views", "最多浏览"],
+                ] as const
+              ).map(([k, label]) => (
                 <button
                   key={k}
                   onClick={() => setSort(k)}
                   className={`rounded-lg px-3 py-1.5 text-[11px] font-medium transition-colors ${
-                    sort === k ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"
+                    sort === k
+                      ? "bg-primary/15 text-primary"
+                      : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   {label}
@@ -145,7 +174,13 @@ export function InspirationPage() {
           {(allModels.length > 0 || facets.models.length > 0) && (
             <ChipRow
               label="模型"
-              items={[{ id: "", name: "全部" }, ...(allModels.length > 0 ? allModels : facets.models).map((m) => ({ id: m.key, name: m.name }))]}
+              items={[
+                { id: "", name: "全部" },
+                ...(allModels.length > 0 ? allModels : facets.models).map((m) => ({
+                  id: m.key,
+                  name: m.name,
+                })),
+              ]}
               value={modelKey}
               onChange={setModelKey}
             />
@@ -154,7 +189,10 @@ export function InspirationPage() {
           {facets.hotTags.length > 0 && (
             <ChipRow
               label="热门标签"
-              items={[{ id: "", name: "全部" }, ...facets.hotTags.map((t) => ({ id: t.name, name: `#${t.name}` }))]}
+              items={[
+                { id: "", name: "全部" },
+                ...facets.hotTags.map((t) => ({ id: t.name, name: `#${t.name}` })),
+              ]}
               value={tag}
               onChange={setTag}
             />
@@ -179,11 +217,7 @@ export function InspirationPage() {
         )}
       </div>
 
-      <CaseDetailDialog
-        caseId={openId}
-        onClose={() => setOpenId(null)}
-        onMutate={updateItem}
-      />
+      <CaseDetailDialog caseId={openId} onClose={() => setOpenId(null)} onMutate={updateItem} />
       <PublishDialog
         open={publishOpen}
         onOpenChange={setPublishOpen}
@@ -192,7 +226,9 @@ export function InspirationPage() {
         onPublished={() => {
           // refresh
           setSearch((v) => v);
-          fetchList({ data: { sort, limit: 40 } }).then((d) => setItems((d ?? []) as CaseItem[])).catch(() => {});
+          fetchList({ data: { sort, limit: 40 } })
+            .then((d) => setItems((d ?? []) as CaseItem[]))
+            .catch(() => {});
         }}
       />
     </div>
@@ -200,7 +236,10 @@ export function InspirationPage() {
 }
 
 function ChipRow({
-  label, items, value, onChange,
+  label,
+  items,
+  value,
+  onChange,
 }: {
   label: string;
   items: { id: string; name: string }[];
@@ -232,7 +271,15 @@ function ChipRow({
   );
 }
 
-function CaseCard({ item, onOpen, priority = false }: { item: CaseItem; onOpen: () => void; priority?: boolean }) {
+function CaseCard({
+  item,
+  onOpen,
+  priority = false,
+}: {
+  item: CaseItem;
+  onOpen: () => void;
+  priority?: boolean;
+}) {
   return (
     <button
       onClick={onOpen}
@@ -250,12 +297,12 @@ function CaseCard({ item, onOpen, priority = false }: { item: CaseItem; onOpen: 
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
       </div>
       <div className="space-y-2 p-3">
-        {item.title && (
-          <div className="line-clamp-1 text-sm font-medium">{item.title}</div>
-        )}
+        {item.title && <div className="line-clamp-1 text-sm font-medium">{item.title}</div>}
         <div className="flex flex-wrap gap-1">
           {item.style_id && (
-            <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">{item.style_id}</span>
+            <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
+              {item.style_id}
+            </span>
           )}
           {item.model_name && (
             <span className="rounded bg-white/[0.05] px-1.5 py-0.5 text-[10px] text-muted-foreground">
@@ -263,15 +310,27 @@ function CaseCard({ item, onOpen, priority = false }: { item: CaseItem; onOpen: 
             </span>
           )}
           {(item.tags ?? []).slice(0, 2).map((t) => (
-            <span key={t} className="rounded bg-white/[0.04] px-1.5 py-0.5 text-[10px] text-muted-foreground">
+            <span
+              key={t}
+              className="rounded bg-white/[0.04] px-1.5 py-0.5 text-[10px] text-muted-foreground"
+            >
               #{t}
             </span>
           ))}
         </div>
         <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-          <span className="flex items-center gap-1"><Heart className={`h-3 w-3 ${item.liked ? "fill-primary text-primary" : ""}`} />{item.likes_count}</span>
-          <span className="flex items-center gap-1"><Bookmark className={`h-3 w-3 ${item.favorited ? "fill-primary text-primary" : ""}`} />{item.favorites_count}</span>
-          <span className="flex items-center gap-1"><Eye className="h-3 w-3" />{item.views}</span>
+          <span className="flex items-center gap-1">
+            <Heart className={`h-3 w-3 ${item.liked ? "fill-primary text-primary" : ""}`} />
+            {item.likes_count}
+          </span>
+          <span className="flex items-center gap-1">
+            <Bookmark className={`h-3 w-3 ${item.favorited ? "fill-primary text-primary" : ""}`} />
+            {item.favorites_count}
+          </span>
+          <span className="flex items-center gap-1">
+            <Eye className="h-3 w-3" />
+            {item.views}
+          </span>
         </div>
       </div>
     </button>
@@ -279,7 +338,9 @@ function CaseCard({ item, onOpen, priority = false }: { item: CaseItem; onOpen: 
 }
 
 function CaseDetailDialog({
-  caseId, onClose, onMutate,
+  caseId,
+  onClose,
+  onMutate,
 }: {
   caseId: string | null;
   onClose: () => void;
@@ -291,38 +352,63 @@ function CaseDetailDialog({
   const toggleLike = useServerFn(toggleCaseLike);
   const toggleFav = useServerFn(toggleCaseFavorite);
   const addComment = useServerFn(addCaseComment);
-  const [detail, setDetail] = useState<any | null>(null);
+  const [detail, setDetail] = useState<
+    | (CaseItem & {
+        comments: {
+          id: string;
+          user_id: string;
+          content: string;
+          created_at: string;
+          author_name: string | null;
+        }[];
+      })
+    | null
+  >(null);
   const [commentDraft, setCommentDraft] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!caseId) { setDetail(null); return; }
+    if (!caseId) {
+      setDetail(null);
+      return;
+    }
     getDetail({ data: { caseId } })
       .then((d) => setDetail(d))
-      .catch((e) => toast.error(e?.message ?? "加载失败"));
+      .catch((e) => toast.error(e instanceof Error ? e.message : "加载失败"));
     incView({ data: { caseId } }).catch(() => {});
-  }, [caseId]);
+  }, [caseId, getDetail, incView]);
 
   const handleLike = async () => {
     if (!caseId || !detail) return;
     const optimistic = !detail.liked;
-    setDetail({ ...detail, liked: optimistic, likes_count: detail.likes_count + (optimistic ? 1 : -1) });
+    setDetail({
+      ...detail,
+      liked: optimistic,
+      likes_count: detail.likes_count + (optimistic ? 1 : -1),
+    });
     try {
       const r = await toggleLike({ data: { caseId } });
       onMutate(caseId, { liked: r.liked, likes_count: detail.likes_count + (r.liked ? 1 : -1) });
-    } catch (e: any) {
-      toast.error(e?.message ?? "操作失败");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "操作失败");
     }
   };
   const handleFav = async () => {
     if (!caseId || !detail) return;
     const optimistic = !detail.favorited;
-    setDetail({ ...detail, favorited: optimistic, favorites_count: detail.favorites_count + (optimistic ? 1 : -1) });
+    setDetail({
+      ...detail,
+      favorited: optimistic,
+      favorites_count: detail.favorites_count + (optimistic ? 1 : -1),
+    });
     try {
       const r = await toggleFav({ data: { caseId } });
-      onMutate(caseId, { favorited: r.favorited, favorites_count: detail.favorites_count + (r.favorited ? 1 : -1) });
-    } catch (e: any) {
-      toast.error(e?.message ?? "操作失败");
+      onMutate(caseId, {
+        favorited: r.favorited,
+        favorites_count: detail.favorites_count + (r.favorited ? 1 : -1),
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "操作失败");
     }
   };
 
@@ -333,7 +419,10 @@ function CaseDetailDialog({
       prompt: detail.prompt || "",
       modelKey: detail.model_key || undefined,
       aspectRatio: detail.aspect_ratio || undefined,
-      size: (detail.size as any) || undefined,
+      size:
+        detail.size === "1K" || detail.size === "2K" || detail.size === "4K"
+          ? detail.size
+          : undefined,
       fromInspiration: true,
     });
     toast.success("已复用案例参数");
@@ -354,20 +443,27 @@ function CaseDetailDialog({
       const d = await getDetail({ data: { caseId } });
       setDetail(d);
       setCommentDraft("");
-    } catch (e: any) {
-      toast.error(e?.message ?? "评论失败");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "评论失败");
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <Dialog open={!!caseId} onOpenChange={(o) => { if (!o) onClose(); }}>
+    <Dialog
+      open={!!caseId}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+    >
       <DialogContent className="max-w-5xl border-border bg-card/95 p-0 backdrop-blur-2xl">
         <DialogTitle className="sr-only">案例详情</DialogTitle>
         <DialogDescription className="sr-only">查看案例详情、生成参数并一键复用</DialogDescription>
         {!detail ? (
-          <div className="grid h-[60vh] place-items-center text-sm text-muted-foreground">加载中…</div>
+          <div className="grid h-[60vh] place-items-center text-sm text-muted-foreground">
+            加载中…
+          </div>
         ) : (
           <div className="grid max-h-[88vh] grid-cols-1 overflow-hidden md:grid-cols-[1.2fr_1fr]">
             <div className="relative max-h-[88vh] overflow-auto bg-black/40">
@@ -378,13 +474,26 @@ function CaseDetailDialog({
                 <div>
                   <div className="text-base font-semibold">{detail.title || "未命名案例"}</div>
                   <div className="mt-1 text-[11px] text-muted-foreground">
-                    {detail.author_name ?? "匿名作者"} · {new Date(detail.created_at).toLocaleString()}
+                    {detail.author_name ?? "匿名作者"} ·{" "}
+                    {new Date(detail.created_at).toLocaleString()}
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <ActionBtn onClick={handleLike} active={detail.liked} icon={<Heart className="h-3.5 w-3.5" />}>{detail.likes_count}</ActionBtn>
-                  <ActionBtn onClick={handleFav} active={detail.favorited} icon={<Bookmark className="h-3.5 w-3.5" />}>{detail.favorites_count}</ActionBtn>
+                  <ActionBtn
+                    onClick={handleLike}
+                    active={detail.liked}
+                    icon={<Heart className="h-3.5 w-3.5" />}
+                  >
+                    {detail.likes_count}
+                  </ActionBtn>
+                  <ActionBtn
+                    onClick={handleFav}
+                    active={detail.favorited}
+                    icon={<Bookmark className="h-3.5 w-3.5" />}
+                  >
+                    {detail.favorites_count}
+                  </ActionBtn>
                   <span className="flex items-center gap-1 rounded-full border border-border px-3 py-1 text-[11px] text-muted-foreground">
                     <Eye className="h-3.5 w-3.5" /> {detail.views}
                   </span>
@@ -399,7 +508,10 @@ function CaseDetailDialog({
                 <section>
                   <div className="mb-1.5 flex items-center justify-between text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
                     Prompt
-                    <button onClick={handleCopyPrompt} className="flex items-center gap-1 rounded px-1.5 py-0.5 text-muted-foreground hover:bg-white/5 hover:text-foreground">
+                    <button
+                      onClick={handleCopyPrompt}
+                      className="flex items-center gap-1 rounded px-1.5 py-0.5 text-muted-foreground hover:bg-white/5 hover:text-foreground"
+                    >
                       <Copy className="h-3 w-3" /> 复制
                     </button>
                   </div>
@@ -418,7 +530,12 @@ function CaseDetailDialog({
                 {(detail.tags ?? []).length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {detail.tags.map((t: string) => (
-                      <span key={t} className="rounded-full bg-white/[0.04] px-2 py-0.5 text-[10px] text-muted-foreground">#{t}</span>
+                      <span
+                        key={t}
+                        className="rounded-full bg-white/[0.04] px-2 py-0.5 text-[10px] text-muted-foreground"
+                      >
+                        #{t}
+                      </span>
                     ))}
                   </div>
                 )}
@@ -428,8 +545,11 @@ function CaseDetailDialog({
                     <MessageSquare className="h-3 w-3" /> 评论 ({detail.comments?.length ?? 0})
                   </div>
                   <div className="space-y-2">
-                    {(detail.comments ?? []).map((c: any) => (
-                      <div key={c.id} className="rounded-lg border border-border/60 bg-white/[0.02] p-2">
+                    {(detail.comments ?? []).map((c) => (
+                      <div
+                        key={c.id}
+                        className="rounded-lg border border-border/60 bg-white/[0.02] p-2"
+                      >
                         <div className="text-[10px] text-muted-foreground">
                           {c.author_name ?? "匿名"} · {new Date(c.created_at).toLocaleString()}
                         </div>
@@ -437,7 +557,9 @@ function CaseDetailDialog({
                       </div>
                     ))}
                     {(detail.comments ?? []).length === 0 && (
-                      <div className="text-[11px] text-muted-foreground">还没有评论，来抢沙发 ~</div>
+                      <div className="text-[11px] text-muted-foreground">
+                        还没有评论，来抢沙发 ~
+                      </div>
                     )}
                   </div>
                 </section>
@@ -447,7 +569,9 @@ function CaseDetailDialog({
                   <input
                     value={commentDraft}
                     onChange={(e) => setCommentDraft(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") handleSubmitComment(); }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSubmitComment();
+                    }}
                     placeholder="写下你的看法…"
                     className="flex-1 rounded-lg border border-border bg-input/40 px-3 py-2 text-xs focus:border-primary/50 focus:outline-none"
                   />
@@ -468,15 +592,28 @@ function CaseDetailDialog({
   );
 }
 
-function ActionBtn({ children, icon, onClick, active }: { children: React.ReactNode; icon: React.ReactNode; onClick: () => void; active?: boolean }) {
+function ActionBtn({
+  children,
+  icon,
+  onClick,
+  active,
+}: {
+  children: React.ReactNode;
+  icon: React.ReactNode;
+  onClick: () => void;
+  active?: boolean;
+}) {
   return (
     <button
       onClick={onClick}
       className={`flex items-center gap-1 rounded-full border px-3 py-1 text-[11px] transition-colors ${
-        active ? "border-primary/60 bg-primary/15 text-primary" : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+        active
+          ? "border-primary/60 bg-primary/15 text-primary"
+          : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
       }`}
     >
-      {icon}{children}
+      {icon}
+      {children}
     </button>
   );
 }
@@ -491,7 +628,11 @@ function Param({ k, v }: { k: string; v: string }) {
 }
 
 function PublishDialog({
-  open, onOpenChange, styles, models, onPublished,
+  open,
+  onOpenChange,
+  styles,
+  models,
+  onPublished,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -514,16 +655,27 @@ function PublishDialog({
   const [uploading, setUploading] = useState(false);
 
   const tags = useMemo(
-    () => tagsRaw.split(/[,，\s]+/).map((t) => t.trim()).filter(Boolean).slice(0, 8),
-    [tagsRaw]
+    () =>
+      tagsRaw
+        .split(/[,，\s]+/)
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .slice(0, 8),
+    [tagsRaw],
   );
 
   const handleFile = async (f: File | null | undefined) => {
     if (!f) return;
     const uid = session?.user?.id;
-    if (!uid) { toast.error("请先登录"); return; }
+    if (!uid) {
+      toast.error("请先登录");
+      return;
+    }
     const invalid = validateImageFile(f, { preset: "community", maxMB: 15 });
-    if (invalid) { toast.error(invalid); return; }
+    if (invalid) {
+      toast.error(invalid);
+      return;
+    }
 
     // Instant local preview while compression + upload run in the background.
     const previewUrl = URL.createObjectURL(f);
@@ -534,24 +686,18 @@ function PublishDialog({
     setUploading(true);
     try {
       const processed = await processImage(f, "community");
-      const path = `${uid}/cases/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${processed.ext}`;
-      const { error: upErr } = await supabase.storage
-        .from("case-images")
-        .upload(path, processed.blob, {
-          cacheControl: "3600",
-          contentType: processed.contentType,
-          upsert: false,
-        });
-      if (upErr) throw upErr;
-      const { data: pub } = supabase.storage.from("case-images").getPublicUrl(path);
-      setImageUrl(pub.publicUrl);
+      const upload = await uploadImageToR2(
+        new File([processed.blob], `case.${processed.ext}`, { type: processed.contentType }),
+        "reference-image",
+      );
+      setImageUrl(upload.url);
       console.log(
         `[case upload] ${(processed.originalSize / 1024).toFixed(0)}KB → ${(processed.processedSize / 1024).toFixed(0)}KB`,
       );
       toast.success("图片已上传");
-    } catch (e: any) {
+    } catch (e) {
       setImageUrl("");
-      toast.error(e?.message ?? "上传失败");
+      toast.error(e instanceof Error ? e.message : "上传失败");
     } finally {
       URL.revokeObjectURL(previewUrl);
       setUploading(false);
@@ -585,11 +731,17 @@ function PublishDialog({
       });
       toast.success("发布成功");
       onOpenChange(false);
-      setTitle(""); setImageUrl(""); setPrompt(""); setModelKey("");
-      setAspectRatio(""); setSize(""); setStyleId(""); setTagsRaw("");
+      setTitle("");
+      setImageUrl("");
+      setPrompt("");
+      setModelKey("");
+      setAspectRatio("");
+      setSize("");
+      setStyleId("");
+      setTagsRaw("");
       onPublished();
-    } catch (e: any) {
-      toast.error(e?.message ?? "发布失败");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "发布失败");
     } finally {
       setSubmitting(false);
     }
@@ -609,7 +761,10 @@ function PublishDialog({
               type="file"
               accept="image/*"
               className="hidden"
-              onChange={(e) => { handleFile(e.target.files?.[0]); e.currentTarget.value = ""; }}
+              onChange={(e) => {
+                handleFile(e.target.files?.[0]);
+                e.currentTarget.value = "";
+              }}
             />
             {imageUrl ? (
               <div className="relative overflow-hidden rounded-xl border border-border bg-black/30">
@@ -676,13 +831,19 @@ function PublishDialog({
             label="模型"
             value={modelKey}
             onChange={setModelKey}
-            options={[{ id: "", name: "不指定" }, ...models.map((m) => ({ id: m.key, name: m.name }))]}
+            options={[
+              { id: "", name: "不指定" },
+              ...models.map((m) => ({ id: m.key, name: m.name })),
+            ]}
           />
           <PillGroup
             label="风格"
             value={styleId}
             onChange={setStyleId}
-            options={[{ id: "", name: "不指定" }, ...styles.map((s) => ({ id: s.id, name: s.name }))]}
+            options={[
+              { id: "", name: "不指定" },
+              ...styles.map((s) => ({ id: s.id, name: s.name })),
+            ]}
           />
           <PillGroup
             label="比例"
@@ -690,7 +851,9 @@ function PublishDialog({
             onChange={setAspectRatio}
             options={[
               { id: "", name: "不指定" },
-              ...["1:1","16:9","9:16","4:3","3:4","21:9","3:2","2:3","5:4","4:5"].map((r) => ({ id: r, name: r })),
+              ...["1:1", "16:9", "9:16", "4:3", "3:4", "21:9", "3:2", "2:3", "5:4", "4:5"].map(
+                (r) => ({ id: r, name: r }),
+              ),
             ]}
           />
           <PillGroup
@@ -699,7 +862,7 @@ function PublishDialog({
             onChange={setSize}
             options={[
               { id: "", name: "不指定" },
-              ...["1K","2K","4K"].map((r) => ({ id: r, name: r })),
+              ...["1K", "2K", "4K"].map((r) => ({ id: r, name: r })),
             ]}
           />
 
@@ -713,7 +876,12 @@ function PublishDialog({
             {tags.length > 0 && (
               <div className="mt-1.5 flex flex-wrap gap-1">
                 {tags.map((t) => (
-                  <span key={t} className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary">#{t}</span>
+                  <span
+                    key={t}
+                    className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary"
+                  >
+                    #{t}
+                  </span>
                 ))}
               </div>
             )}
@@ -724,7 +892,8 @@ function PublishDialog({
               onClick={() => onOpenChange(false)}
               className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
             >
-              <X className="mr-1 inline h-3 w-3" />取消
+              <X className="mr-1 inline h-3 w-3" />
+              取消
             </button>
             <button
               onClick={submit}
@@ -741,7 +910,10 @@ function PublishDialog({
 }
 
 function PillGroup({
-  label, value, onChange, options,
+  label,
+  value,
+  onChange,
+  options,
 }: {
   label: string;
   value: string;
@@ -750,7 +922,9 @@ function PillGroup({
 }) {
   return (
     <div>
-      <div className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">{label}</div>
+      <div className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+        {label}
+      </div>
       <div className="flex flex-wrap gap-1.5">
         {options.map((o) => {
           const active = value === o.id;
@@ -777,7 +951,9 @@ function PillGroup({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">{label}</div>
+      <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+        {label}
+      </div>
       {children}
     </label>
   );

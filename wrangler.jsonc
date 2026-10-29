@@ -3,18 +3,15 @@
   "name": "ai-shuntu",
   "compatibility_date": "2025-09-24",
   "compatibility_flags": ["nodejs_compat"],
-  "triggers": {
-    "crons": ["*/1 * * * *"]
-  },
   "main": ".output/server/index.mjs",
   "assets": {
     "directory": ".output/public"
   },
   "vars": {
     "DATABASE_PRIMARY": "d1",
-    "SUPABASE_URL": "https://nkkrjqzcofzqcyxdkmjy.supabase.co",
-    "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_h758ulTO0AGw5k8OmgwlIg_ud9te9pK",
-    "R2_PUBLIC_BASE_URL": "https://img.shuntu.cc"
+    "R2_PUBLIC_BASE_URL": "https://img.shuntu.cc",
+    "REAL_GENERATION_ENABLED": "production",
+    "REAL_PAYMENT_ENABLED": "production"
   },
   "r2_buckets": [
     {

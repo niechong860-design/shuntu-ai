@@ -31,7 +31,13 @@ type Plan = {
 
 const PLANS: Plan[] = RECHARGE_PACKAGES_V2.map((plan) => ({
   ...plan,
-  icon: plan.doubleCredits ? <Crown className="h-4 w-4" /> : plan.highlighted ? <Zap className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />,
+  icon: plan.doubleCredits ? (
+    <Crown className="h-4 w-4" />
+  ) : plan.highlighted ? (
+    <Zap className="h-4 w-4" />
+  ) : (
+    <Sparkles className="h-4 w-4" />
+  ),
 }));
 
 type RechargePackageRow = {
@@ -65,11 +71,23 @@ function toPlan(row: RechargePackageRow): Plan {
     purchaseUrl: row.purchaseUrl ?? "",
     doubleCredits: Boolean(row.doubleCredits),
     note: row.note,
-    icon: row.doubleCredits ? <Crown className="h-4 w-4" /> : row.highlighted ? <Zap className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />,
+    icon: row.doubleCredits ? (
+      <Crown className="h-4 w-4" />
+    ) : row.highlighted ? (
+      <Zap className="h-4 w-4" />
+    ) : (
+      <Sparkles className="h-4 w-4" />
+    ),
   };
 }
 
-export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+export function RedeemDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
@@ -105,7 +123,9 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           toast.info("套餐配置读取失败，已使用默认套餐");
         }
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [open, listPackages]);
 
   // 5s cooldown countdown to throttle repeated clicks
@@ -117,7 +137,9 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
   const handlePurchase = async (planId: string) => {
     if (creatingPlanId) return;
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(planId)) {
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(planId)
+    ) {
       toast.error("套餐配置暂不可用，请刷新后重试");
       return;
     }
@@ -135,7 +157,6 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
       setCreatingPlanId(null);
     }
   };
-
 
   const submit = async () => {
     if (!code.trim() || loading || cooldown > 0) return;
@@ -201,7 +222,9 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
               onChange={(e) => setCode(e.target.value.toUpperCase())}
               placeholder="请输入您在发卡网购买的卡密..."
               className="h-11 min-w-0 flex-1 border-emerald-500/20 bg-black/40 font-mono tracking-wider text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-emerald-500/40"
-              onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submit();
+              }}
               disabled={loading || cooldown > 0}
             />
             <Button
@@ -233,7 +256,6 @@ export function RedeemDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             </a>
           </p>
         </div>
-
       </DialogContent>
     </Dialog>
   );
@@ -277,8 +299,7 @@ function PlanCard({
           <div
             className="pointer-events-none absolute inset-0 rounded-xl p-[2px] bg-gradient-to-br from-emerald-400 to-cyan-500"
             style={{
-              WebkitMask:
-                "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
+              WebkitMask: "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
               WebkitMaskComposite: "xor",
               maskComposite: "exclude",
             }}
@@ -288,23 +309,32 @@ function PlanCard({
 
       {/* 角标：右上角 */}
       {(plan.isPopular || plan.badgeText) && (
-        <div className={cn(
-          "absolute -top-2.5 right-2 z-10 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wider shadow-[0_4px_14px_rgba(16,185,129,0.35)] md:-right-2",
-          enterprise ? "bg-amber-400 text-zinc-950 shadow-[0_4px_14px_rgba(251,191,36,0.25)]" : "bg-gradient-to-r from-emerald-400 to-cyan-500 text-white",
-        )}>
+        <div
+          className={cn(
+            "absolute -top-2.5 right-2 z-10 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wider shadow-[0_4px_14px_rgba(16,185,129,0.35)] md:-right-2",
+            enterprise
+              ? "bg-amber-400 text-zinc-950 shadow-[0_4px_14px_rgba(251,191,36,0.25)]"
+              : "bg-gradient-to-r from-emerald-400 to-cyan-500 text-white",
+          )}
+        >
           {plan.badgeText || "最受欢迎"}
         </div>
       )}
 
       {enterprise && (
         <div className="relative mt-2 inline-flex w-fit items-center gap-1 rounded-md border border-amber-400/30 bg-amber-400/10 px-2 py-1 text-[10px] font-semibold text-amber-200">
-          <Crown className="h-3 w-3" />积分加倍
+          <Crown className="h-3 w-3" />
+          积分加倍
         </div>
       )}
 
       <div className="relative flex items-center gap-2">
-        {plan.icon && <span className={highlight ? "text-emerald-400" : "text-zinc-400"}>{plan.icon}</span>}
-        <h3 className={cn("text-base font-semibold", highlight ? "text-white" : "text-zinc-100")}>{plan.title}</h3>
+        {plan.icon && (
+          <span className={highlight ? "text-emerald-400" : "text-zinc-400"}>{plan.icon}</span>
+        )}
+        <h3 className={cn("text-base font-semibold", highlight ? "text-white" : "text-zinc-100")}>
+          {plan.title}
+        </h3>
       </div>
       <p className="relative mt-1 text-xs text-zinc-400">{plan.subtitle}</p>
 
@@ -313,7 +343,11 @@ function PlanCard({
         <span
           className={cn(
             "text-3xl font-bold tabular-nums leading-none",
-            highlight ? "text-white drop-shadow-[0_2px_8px_rgba(16,185,129,0.35)] md:text-4xl" : enterprise ? "text-amber-100" : "text-zinc-100",
+            highlight
+              ? "text-white drop-shadow-[0_2px_8px_rgba(16,185,129,0.35)] md:text-4xl"
+              : enterprise
+                ? "text-amber-100"
+                : "text-zinc-100",
           )}
         >
           {plan.price}
@@ -329,7 +363,9 @@ function PlanCard({
         ))}
       </ul>
 
-      {plan.note && <p className="relative mt-3 text-[11px] leading-4 text-emerald-300">{plan.note}</p>}
+      {plan.note && (
+        <p className="relative mt-3 text-[11px] leading-4 text-emerald-300">{plan.note}</p>
+      )}
 
       <Button
         onClick={() => onBuy(plan.id)}

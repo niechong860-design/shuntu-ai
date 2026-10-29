@@ -10,9 +10,8 @@ import {
 import { useEffect } from "react";
 
 import appCss from "../styles.css?url";
-import { AuthProvider } from "@/hooks/use-auth";
+import { AuthProvider } from "@/hooks/auth-provider";
 import { Toaster } from "@/components/ui/sonner";
-
 
 function NotFoundComponent() {
   return (
@@ -77,23 +76,44 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "ShunTu AI — 专业电商AI商品图生成平台丨在线测试NanoBanana_pro丨GPT-Image-2" },
-      { name: "description", content: "专为电商卖家打造的 AI 商品图工作台，快速生成高质量主图、场景图与商业级视觉内容。" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "ShunTu AI — 专业电商AI商品图生成平台丨在线测试NanoBanana_pro丨GPT-Image-2" },
-      { property: "og:description", content: "专为电商卖家打造的 AI 商品图工作台，快速生成高质量主图、场景图与商业级视觉内容。" },
+      {
+        name: "description",
+        content: "专为电商卖家打造的 AI 商品图工作台，快速生成高质量主图、场景图与商业级视觉内容。",
+      },
+      { name: "author", content: "ShunTu" },
+      {
+        property: "og:title",
+        content: "ShunTu AI — 专业电商AI商品图生成平台丨在线测试NanoBanana_pro丨GPT-Image-2",
+      },
+      {
+        property: "og:description",
+        content: "专为电商卖家打造的 AI 商品图工作台，快速生成高质量主图、场景图与商业级视觉内容。",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
-      { name: "twitter:title", content: "ShunTu AI — 专业电商AI商品图生成平台丨在线测试NanoBanana_pro丨GPT-Image-2" },
-      { name: "twitter:description", content: "专为电商卖家打造的 AI 商品图工作台，快速生成高质量主图、场景图与商业级视觉内容。" },
-      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/9c2e264d-99c8-4f07-b5e8-541849077b8f" },
-      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/9c2e264d-99c8-4f07-b5e8-541849077b8f" },
+      { name: "twitter:site", content: "@ShunTu" },
+      {
+        name: "twitter:title",
+        content: "ShunTu AI — 专业电商AI商品图生成平台丨在线测试NanoBanana_pro丨GPT-Image-2",
+      },
+      {
+        name: "twitter:description",
+        content: "专为电商卖家打造的 AI 商品图工作台，快速生成高质量主图、场景图与商业级视觉内容。",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/9c2e264d-99c8-4f07-b5e8-541849077b8f",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/9c2e264d-99c8-4f07-b5e8-541849077b8f",
+      },
     ],
     links: [
       // Preconnect early to the image CDN — saves DNS + TLS handshake (~200-500ms on slow networks)
-      // before the first thumbnail is even requested.
-      { rel: "preconnect", href: "https://nkkrjqzcofzqcyxdkmjy.supabase.co", crossOrigin: "anonymous" },
-      { rel: "dns-prefetch", href: "https://nkkrjqzcofzqcyxdkmjy.supabase.co" },
+      // before the first thumbnail is even requested.`r`n
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {

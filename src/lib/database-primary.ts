@@ -5,12 +5,14 @@ type EnvLike = Record<string, unknown> | null | undefined;
 
 export function resolveDatabasePrimary(env?: EnvLike): DatabasePrimary {
   const configured = readEnvValue(env, "DATABASE_PRIMARY");
-  if (configured == null || configured.trim() === "") return "lovable";
+  // D1 is the only supported production authority. An unset value must not
+  // silently route business traffic back to the retired Lovable database.
+  if (configured == null || configured.trim() === "") return "d1";
 
   const normalized = configured.trim();
-  if (normalized === "lovable" || normalized === "d1") return normalized;
-  console.warn("Unsupported DATABASE_PRIMARY value; falling back to lovable.");
-  return "lovable";
+  if (normalized === "d1") return "d1";
+  if (normalized === "lovable") throw new Error("LEGACY_LOVABLE_DATABASE_DISABLED");
+  throw new Error("UNSUPPORTED_DATABASE_PRIMARY");
 }
 
 export function isD1Authoritative(env?: EnvLike): boolean {
@@ -22,9 +24,10 @@ export function shouldAllowWarmStandbyReadFallback(input: {
   className: ReadFallbackClass;
   d1Error: unknown;
 }): boolean {
-  if (input.primary !== "d1") return false;
-  if (input.className !== "non_critical_config") return false;
-  return input.d1Error != null;
+  // The warm standby has been retired. Keep the helper for callers and tests,
+  // but never route a request to the legacy database after a D1 error.
+  void input;
+  return false;
 }
 
 function readEnvValue(env: EnvLike, name: string): string | null {

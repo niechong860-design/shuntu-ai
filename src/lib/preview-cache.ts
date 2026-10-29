@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { getD1AccessToken } from "@/lib/d1-auth-client";
 
 const MAX_ENTRIES = 50;
 const PREVIEW_VERSION = "v3";
@@ -40,7 +40,11 @@ function evictIfNeeded() {
   }
 }
 
-export function getCachedPreview(userId: string, historyId: string, size: PreviewSize = 480): string | null {
+export function getCachedPreview(
+  userId: string,
+  historyId: string,
+  size: PreviewSize = 480,
+): string | null {
   const key = getKey(userId, historyId, size);
   const entry = entries.get(key);
   if (!entry) return null;
@@ -66,7 +70,11 @@ export function subscribePreview(
   };
 }
 
-export async function loadHistoryPreview(userId: string, historyId: string, size: PreviewSize = 480): Promise<string> {
+export async function loadHistoryPreview(
+  userId: string,
+  historyId: string,
+  size: PreviewSize = 480,
+): Promise<string> {
   const cached = getCachedPreview(userId, historyId, size);
   if (cached) return cached;
 
@@ -77,13 +85,15 @@ export async function loadHistoryPreview(userId: string, historyId: string, size
   const generation = userGenerations.get(userId) ?? 0;
   const epoch = cacheEpoch;
   const request = (async () => {
-    const { data } = await supabase.auth.getSession();
-    const token = data.session?.access_token;
+    const token = await getD1AccessToken();
     if (!token) throw new Error("Missing session");
 
-    const response = await fetch(`/api/history-thumbnail/${encodeURIComponent(historyId)}?size=${size}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const response = await fetch(
+      `/api/history-thumbnail/${encodeURIComponent(historyId)}?size=${size}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
     if (!response.ok) throw new Error(`Preview request failed: ${response.status}`);
     const blob = await response.blob();
     if (!blob.size || blob.type !== "image/jpeg") throw new Error("Preview response was not JPEG");
@@ -100,11 +110,14 @@ export async function loadHistoryPreview(userId: string, historyId: string, size
     return blobUrl;
   })();
   inFlight.set(key, request);
-  void request.then(() => {
-    if (inFlight.get(key) === request) inFlight.delete(key);
-  }, () => {
-    if (inFlight.get(key) === request) inFlight.delete(key);
-  });
+  void request.then(
+    () => {
+      if (inFlight.get(key) === request) inFlight.delete(key);
+    },
+    () => {
+      if (inFlight.get(key) === request) inFlight.delete(key);
+    },
+  );
   return request;
 }
 

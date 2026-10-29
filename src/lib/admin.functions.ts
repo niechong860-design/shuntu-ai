@@ -1,10 +1,27 @@
+import type { D1Database } from "@/lib/auth-password";
+import {
+  rolesFor,
+  requireRole,
+  readAuthUser,
+  readAuthUsers,
+  setUserDisabled,
+  replacePassword,
+  listAdminIdentities,
+  addAdminIdentity,
+  removeAdminIdentity,
+} from "@/lib/d1-bearer-auth";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireD1Auth } from "@/lib/d1-auth-middleware";
 import { getConfiguredRechargePackage } from "@/lib/recharge-packages";
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { getModelSecretStatus, resolveModelSecret } from "@/lib/model-secrets";
+
 import { checkPromptSafety, SAFETY_SERVER_BLOCK_MESSAGE } from "@/lib/promptSafety";
-import { pollFoxApiTask, submitFoxApiImageEdit, submitFoxApiImageGenerationTask } from "@/lib/foxapi-backup";
+import {
+  pollFoxApiTask,
+  submitFoxApiImageEdit,
+  submitFoxApiImageGenerationTask,
+} from "@/lib/foxapi-backup";
 import {
   buildGptImageProProviderPayload,
   GPT_IMAGE_PRO_MODEL_KEY,
@@ -12,34 +29,40 @@ import {
   GPT_IMAGE_PRO_VBL_GENERATIONS_URL,
   validateGptImageProProviderPayload,
 } from "@/lib/gpt-image-pro-provider-contract";
-import { archiveGeneratedImageToR2, deleteGeneratedImageFromR2Url } from "@/lib/r2-image-archive";
-import type { AdminConfigDatabase, BusinessDatabase, GenerationTask, ImagePreviewMode, ModelConfig } from "@/lib/business-database";
+import { archiveGeneratedImageToR2 } from "@/lib/r2-image-archive";
+import type {
+  AdminConfigDatabase,
+  BusinessDatabase,
+  GenerationTask,
+  ImagePreviewMode,
+  ModelConfig,
+  JsonValue,
+  RechargePackage,
+} from "@/lib/business-database";
 import { creditsToCentiCredit } from "@/lib/business-database";
-import { createBusinessDatabaseFromContext } from "@/lib/business-database-router";
-import { assertLovableOnlyLegacyWrite } from "@/lib/legacy-lovable-guard";
+import {
+  createBusinessDatabaseFromContext,
+  getCloudflareEnvFromContext,
+} from "@/lib/business-database-router";
 
 const FOXAPI_BACKUP_MODEL_KEY = "gpt-image-2-backup";
 const GPT_IMAGE_2_BACKUP_MODEL_KEY = "gpt_image_2_backup";
 const GPT_IMAGE_2_BACKUP_EDIT_URL = "https://image1.vibelearning.top/v1/images/edits";
 
-function sanitizeUpstreamExtraParams(extraParams: unknown): Record<string, any> {
+function sanitizeUpstreamExtraParams(extraParams: unknown): Record<string, JsonValue> {
   if (!extraParams || typeof extraParams !== "object" || Array.isArray(extraParams)) return {};
-  const sanitized: Record<string, any> = {};
-  for (const [key, value] of Object.entries(extraParams as Record<string, any>)) {
+  const sanitized: Record<string, JsonValue> = {};
+  for (const [key, value] of Object.entries(extraParams as Record<string, JsonValue>)) {
     if (key.startsWith("ui_")) continue;
     sanitized[key] = value;
   }
   return sanitized;
 }
 
-type HistoryPruneRow = {
-  id: string;
-  image_url: string | null;
-  generation_task_id: string | null;
-};
-
 function getBusinessDb(context: unknown): BusinessDatabase {
-  return createBusinessDatabaseFromContext(context as Parameters<typeof createBusinessDatabaseFromContext>[0]);
+  return createBusinessDatabaseFromContext(
+    context as Parameters<typeof createBusinessDatabaseFromContext>[0],
+  );
 }
 
 function getD1ConfigDb(context: unknown): BusinessDatabase & AdminConfigDatabase {
@@ -54,13 +77,27 @@ async function stableTextHash(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function asRecord(value: unknown): Record<string, any> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : {};
+function asRecord(value: unknown): Record<string, JsonValue> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, JsonValue>)
+    : {};
 }
 
-async function getBusinessModel(db: BusinessDatabase, modelKey: string, includeSecrets = false): Promise<ModelConfig | null> {
-  const models = await db.listModelsConfig({ includeSecrets, enabledOnly: false });
+async function getBusinessModel(
+  db: BusinessDatabase,
+  modelKey: string,
+  includeSecrets = false,
+): Promise<ModelConfig | null> {
+  const models = await db.listModelsConfig({
+    includeSecrets,
+    enabledOnly: false,
+  });
   return models.find((model) => model.model_key === modelKey) ?? null;
+}
+
+function getConfiguredModelApiKey(model: ModelConfig): string {
+  if (model.model_key === FOXAPI_BACKUP_MODEL_KEY) return "";
+  return resolveModelSecret(model.secret_ref);
 }
 
 async function attachImageToConsumedHistory(input: {
@@ -87,24 +124,11 @@ async function attachImageToConsumedHistory(input: {
 }
 
 async function assertAdmin(userId: string) {
-  const { data, error } = await supabaseAdmin
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId)
-    .in("role", ["admin", "founder"]);
-  if (error) throw new Error(error.message);
-  if (!data || data.length === 0) throw new Error("无管理员权限");
+  await requireRole(userId, ["admin", "founder"]);
 }
 
 async function assertFounder(userId: string) {
-  const { data, error } = await supabaseAdmin
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId)
-    .eq("role", "founder")
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("仅创始人可执行该操作");
+  await requireRole(userId, ["founder"]);
 }
 
 function getBeijingDayRange(now = new Date()) {
@@ -124,26 +148,32 @@ function getBeijingDayRange(now = new Date()) {
 
 // --- Users ---
 export const adminListUsers = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
     const db = getBusinessDb(context);
-    if (db.primary !== "d1" || !db.listAdminUserBusinessRows) throw new Error("admin user listing requires D1 primary");
+    if (db.primary !== "d1" || !db.listAdminUserBusinessRows)
+      throw new Error("admin user listing requires D1 primary");
     const profiles = await db.listAdminUserBusinessRows();
     const banMap = new Map<string, boolean>();
     try {
       let page = 1;
       while (page < 20) {
-        const { data: au, error: aerr } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 1000 });
+        const { data: au, error: aerr } = await readAuthUsers({
+          page,
+          perPage: 1000,
+        });
         if (aerr) break;
         for (const u of au?.users ?? []) {
-          const until = (u as any).banned_until as string | null | undefined;
+          const until = u.banned_until as string | null | undefined;
           banMap.set(u.id, !!until && new Date(until).getTime() > Date.now());
         }
         if (!au || au.users.length < 1000) break;
         page++;
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     return profiles.map((profile) => ({
       ...profile,
@@ -152,21 +182,28 @@ export const adminListUsers = createServerFn({ method: "POST" })
   });
 
 export const adminGetUserCreditUsageLogs = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) =>
-    z.object({
-      userId: z.string().uuid(),
-      limit: z.number().int().min(1).max(100).optional(),
-      offset: z.number().int().min(0).optional(),
-    }).parse(d),
+    z
+      .object({
+        userId: z.string().uuid(),
+        limit: z.number().int().min(1).max(100).optional(),
+        offset: z.number().int().min(0).optional(),
+      })
+      .parse(d),
   )
   .handler(async ({ context, data }) => {
     await assertAdmin(context.userId);
     const limit = Math.min(100, Math.max(1, Number(data.limit ?? 50)));
     const offset = Math.max(0, Number(data.offset ?? 0));
     const db = getBusinessDb(context);
-    if (db.primary !== "d1" || !db.listAdminCreditUsageLogs) throw new Error("admin usage logs require D1 primary");
-    const { rows, total } = await db.listAdminCreditUsageLogs({ userId: data.userId, limit, offset });
+    if (db.primary !== "d1" || !db.listAdminCreditUsageLogs)
+      throw new Error("admin usage logs require D1 primary");
+    const { rows, total } = await db.listAdminCreditUsageLogs({
+      userId: data.userId,
+      limit,
+      offset,
+    });
 
     return {
       items: rows,
@@ -177,62 +214,55 @@ export const adminGetUserCreditUsageLogs = createServerFn({ method: "POST" })
   });
 
 export const adminBanUser = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z.object({ userId: z.string().uuid(), banned: z.boolean() }).parse(d),
-  )
+  .middleware([requireD1Auth])
+  .inputValidator((d) => z.object({ userId: z.string().uuid(), banned: z.boolean() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    const { data: roles } = await supabaseAdmin
-      .from("user_roles").select("role").eq("user_id", data.userId);
-    if ((roles ?? []).some((r: any) => r.role === "founder")) {
+    const roles = (await rolesFor(data.userId)).map((role) => ({ role }));
+    if ((roles ?? []).some((r) => r.role === "founder")) {
       throw new Error("不能封禁创始人账号");
     }
-    const { error } = await supabaseAdmin.auth.admin.updateUserById(data.userId, {
-      ban_duration: data.banned ? "876000h" : "none",
-    } as any);
-    if (error) throw new Error(error.message);
+    await setUserDisabled(data.userId, data.banned);
     return { ok: true, banned: data.banned };
   });
 
 export const adminDeleteUser = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) => z.object({ userId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    if (data.userId === context.userId) throw new Error("不能删除自己");
-    const { data: roles } = await supabaseAdmin
-      .from("user_roles").select("role").eq("user_id", data.userId);
-    if ((roles ?? []).some((r: any) => r.role === "founder")) {
-      throw new Error("不能删除创始人账号");
-    }
-    assertLovableOnlyLegacyWrite(context, "adminDeleteUser");
-    await supabaseAdmin.from("user_roles").delete().eq("user_id", data.userId);
-    await supabaseAdmin.from("generation_history").delete().eq("user_id", data.userId);
-    await supabaseAdmin.from("profiles").delete().eq("id", data.userId);
-    const { error } = await supabaseAdmin.auth.admin.deleteUser(data.userId);
-    if (error) throw new Error(error.message);
-    return { ok: true };
+    if (data.userId === context.userId) throw new Error("不能停用自己");
+    if ((await rolesFor(data.userId)).includes("founder")) throw new Error("不能停用创始人账号");
+    await setUserDisabled(data.userId, true);
+    return { ok: true, disabled: true, businessDataPreserved: true };
   });
 
 export const adminResetPassword = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) =>
-    z.object({ userId: z.string().uuid(), newPassword: z.string().min(6).max(72) }).parse(d),
+    z
+      .object({
+        userId: z.string().uuid(),
+        newPassword: z.string().min(10).max(256),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    const { error } = await supabaseAdmin.auth.admin.updateUserById(data.userId, {
-      password: data.newPassword,
-    });
-    if (error) throw new Error(error.message);
+    await replacePassword(data.userId, data.newPassword);
     return { ok: true };
   });
 
 export const adminAdjustCredits = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) =>
-    z.object({ userId: z.string().uuid(), delta: z.number().int().min(-1000000).max(1000000) }).parse(d),
+    z
+      .object({
+        requestId: z.string().uuid(),
+        userId: z.string().uuid(),
+        delta: z.number().int().min(-1000000).max(1000000),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
@@ -240,6 +270,7 @@ export const adminAdjustCredits = createServerFn({ method: "POST" })
     if (db.primary !== "d1") throw new Error("admin credit adjustment requires D1 primary");
     return await db.adjustCreditsByAdmin({
       adminUserId: context.userId,
+      requestId: data.requestId,
       userId: data.userId,
       delta: data.delta,
     });
@@ -247,55 +278,74 @@ export const adminAdjustCredits = createServerFn({ method: "POST" })
 
 // --- Coupons ---
 export const adminListCoupons = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
     const db = getBusinessDb(context);
-    if (db.primary !== "d1" || !db.listAdminCoupons) throw new Error("admin coupon listing requires D1 primary");
+    if (db.primary !== "d1" || !db.listAdminCoupons)
+      throw new Error("admin coupon listing requires D1 primary");
     const rows = await db.listAdminCoupons();
     const presentEmail = (value: unknown) =>
       typeof value === "string" && value.trim().length > 0 ? value : null;
-    const missingEmailUserIds = Array.from(new Set(
-      rows
-        .filter((coupon: any) => coupon.is_used && coupon.used_by && !presentEmail(coupon.used_by_email))
-        .map((coupon: any) => coupon.used_by as string),
-    ));
+    const missingEmailUserIds = Array.from(
+      new Set(
+        rows
+          .filter(
+            (coupon) => coupon.is_used && coupon.used_by && !presentEmail(coupon.used_by_email),
+          )
+          .map((coupon) => coupon.used_by as string),
+      ),
+    );
 
     if (missingEmailUserIds.length === 0) return rows;
 
     const emailByUserId = new Map<string, string | null>();
-    await Promise.all(missingEmailUserIds.map(async (userId) => {
-      const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId);
-      emailByUserId.set(userId, authUser.user?.email ?? null);
-    }));
+    await Promise.all(
+      missingEmailUserIds.map(async (userId) => {
+        const { data: authUser } = await readAuthUser(userId);
+        emailByUserId.set(userId, authUser.user?.email ?? null);
+      }),
+    );
 
-    return rows.map((coupon: any) => ({
+    return rows.map((coupon) => ({
       ...coupon,
-      used_by_email: presentEmail(coupon.used_by_email) ?? emailByUserId.get(coupon.used_by) ?? null,
+      used_by_email:
+        presentEmail(coupon.used_by_email) ?? emailByUserId.get(coupon.used_by!) ?? null,
     }));
   });
 
 export const adminDeleteCoupon = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) => z.object({ couponId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
     const db = getBusinessDb(context);
-    if (db.primary !== "d1" || !db.deleteAdminCoupon) throw new Error("admin coupon deletion requires D1 primary");
+    if (db.primary !== "d1" || !db.deleteAdminCoupon)
+      throw new Error("admin coupon deletion requires D1 primary");
     await db.deleteAdminCoupon(data.couponId);
     return { ok: true };
   });
 
 export const adminGenerateCoupons = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) =>
-    z.object({ count: z.number().int().min(1).max(500), amount: z.number().int().min(1).max(1000000) }).parse(d),
+    z
+      .object({
+        count: z.number().int().min(1).max(500),
+        amount: z.number().int().min(1).max(1000000),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
     const db = getBusinessDb(context);
-    if (db.primary !== "d1" || !db.generateAdminCoupons) throw new Error("admin coupon generation requires D1 primary");
-    return await db.generateAdminCoupons({ count: data.count, amount: data.amount, createdBy: context.userId });
+    if (db.primary !== "d1" || !db.generateAdminCoupons)
+      throw new Error("admin coupon generation requires D1 primary");
+    return await db.generateAdminCoupons({
+      count: data.count,
+      amount: data.amount,
+      createdBy: context.userId,
+    });
   });
 
 // --- Redeem (user) ---
@@ -303,8 +353,18 @@ export const adminGenerateCoupons = createServerFn({ method: "POST" })
 // transaction with FOR UPDATE row locking and writes an audit row to
 // `redeem_logs`. No direct table writes happen from the client.
 export const redeemCoupon = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ code: z.string().min(3).max(64).regex(/^[A-Za-z0-9_-]+$/) }).parse(d))
+  .middleware([requireD1Auth])
+  .inputValidator((d) =>
+    z
+      .object({
+        code: z
+          .string()
+          .min(3)
+          .max(64)
+          .regex(/^[A-Za-z0-9_-]+$/),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
     const db = getBusinessDb(context);
     const res = await db.redeemCoupon({
@@ -317,79 +377,110 @@ export const redeemCoupon = createServerFn({ method: "POST" })
 
 // --- Models config (PUBLIC: safe columns only, no api_key) ---
 export const listModelsConfig = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .handler(async ({ context }) => {
     const db = getBusinessDb(context);
-    return await db.listModelsConfig({ enabledOnly: true, includeSecrets: false });
+    const models = await db.listModelsConfig({
+      enabledOnly: true,
+      includeSecrets: false,
+    });
+    return models.map(({ secret_ref: _secretRef, ...model }) => ({
+      ...model,
+      secret_ref: _secretRef ?? null,
+    }));
   });
 
-// Admin variant: includes api_url & api_key + dynamic adapter fields
+// Admin variant: adapter metadata and configured state; no provider key values
 export const adminListModelsConfig = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
-    const { data, error } = await supabaseAdmin
-      .from("models_config")
-      .select("id, model_key, name, description, cost, api_url, api_key, request_format, prompt_key, fetch_url, extra_params, is_enabled, sort_order, updated_at")
-      .order("sort_order", { ascending: true });
-    if (error) throw new Error(error.message);
-    return data ?? [];
+    const models = await getBusinessDb(context).listModelsConfig({
+      enabledOnly: false,
+      includeSecrets: true,
+    });
+    // Provider keys remain server-side; editing metadata must not round-trip a key.
+    return models.map(({ api_key: _legacyKey, secret_ref: _secretRef, ...model }) => ({
+      ...model,
+      secret_ref: _secretRef ?? null,
+      secret_configured: getModelSecretStatus(_secretRef),
+      secret_source: _secretRef ? "worker_secret" : "missing",
+    }));
   });
 
 export const adminUpdateModelPrice = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) =>
     z.object({ id: z.string().uuid(), cost: z.number().min(0).max(100000) }).parse(d),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    await getD1ConfigDb(context).updateModel({ id: data.id, patch: { cost: creditsToCentiCredit(data.cost) } });
+    await getD1ConfigDb(context).updateModel({
+      id: data.id,
+      patch: { cost: creditsToCentiCredit(data.cost) },
+    });
     return { ok: true };
   });
 
 export const adminUpdateModel = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) =>
-    z.object({
-      id: z.string().uuid(),
-      name: z.string().min(1).max(64).optional(),
-      model_key: z.string().min(1).max(64).regex(/^[a-zA-Z0-9_\-.]+$/).optional(),
-      description: z.string().max(200).nullable().optional(),
-      cost: z.number().min(0).max(100000).optional(),
-      api_url: z.string().min(1).max(500).nullable().optional(),
-      api_key: z.string().max(500).nullable().optional(),
-      request_format: z.enum(["async_id", "sync_url"]).optional(),
-      prompt_key: z.string().min(1).max(64).optional(),
-      fetch_url: z.string().min(1).max(500).nullable().optional(),
-      extra_params: z.record(z.string(), z.any()).optional(),
-      is_enabled: z.boolean().optional(),
-      sort_order: z.number().int().min(0).max(10000).optional(),
-    }).parse(d),
+    z
+      .object({
+        id: z.string().uuid(),
+        name: z.string().min(1).max(64).optional(),
+        model_key: z
+          .string()
+          .min(1)
+          .max(64)
+          .regex(/^[a-zA-Z0-9_\-.]+$/)
+          .optional(),
+        description: z.string().max(200).nullable().optional(),
+        cost: z.number().min(0).max(100000).optional(),
+        api_url: z.string().min(1).max(500).nullable().optional(),
+        secret_ref: z.string().max(100).nullable().optional(),
+        request_format: z.enum(["async_id", "sync_url"]).optional(),
+        prompt_key: z.string().min(1).max(64).optional(),
+        fetch_url: z.string().min(1).max(500).nullable().optional(),
+        extra_params: z.record(z.string(), z.unknown()).optional(),
+        is_enabled: z.boolean().optional(),
+        sort_order: z.number().int().min(0).max(10000).optional(),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
     const { id, ...rest } = data;
-    const patch = { ...rest, ...(rest.cost === undefined ? {} : { cost: creditsToCentiCredit(rest.cost) }) };
+    const patch = {
+      ...rest,
+      ...(rest.cost === undefined ? {} : { cost: creditsToCentiCredit(rest.cost) }),
+    };
     await getD1ConfigDb(context).updateModel({ id, patch });
     return { ok: true };
   });
 
 export const adminCreateModel = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) =>
-    z.object({
-      name: z.string().min(1).max(64),
-      model_key: z.string().min(1).max(64).regex(/^[a-zA-Z0-9_\-.]+$/),
-      description: z.string().max(200).optional(),
-      cost: z.number().min(0).max(100000).default(1),
-      api_url: z.string().min(1).max(500).optional(),
-      api_key: z.string().max(500).optional(),
-      request_format: z.enum(["async_id", "sync_url"]).default("async_id"),
-      prompt_key: z.string().min(1).max(64).default("prompt"),
-      fetch_url: z.string().min(1).max(500).optional(),
-      extra_params: z.record(z.string(), z.any()).optional(),
-      sort_order: z.number().int().min(0).max(10000).optional(),
-    }).parse(d),
+    z
+      .object({
+        name: z.string().min(1).max(64),
+        model_key: z
+          .string()
+          .min(1)
+          .max(64)
+          .regex(/^[a-zA-Z0-9_\-.]+$/),
+        description: z.string().max(200).optional(),
+        cost: z.number().min(0).max(100000).default(1),
+        api_url: z.string().min(1).max(500).optional(),
+        secret_ref: z.string().max(100).optional(),
+        request_format: z.enum(["async_id", "sync_url"]).default("async_id"),
+        prompt_key: z.string().min(1).max(64).default("prompt"),
+        fetch_url: z.string().min(1).max(500).optional(),
+        extra_params: z.record(z.string(), z.unknown()).optional(),
+        sort_order: z.number().int().min(0).max(10000).optional(),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
@@ -399,7 +490,7 @@ export const adminCreateModel = createServerFn({ method: "POST" })
       description: data.description ?? null,
       cost: creditsToCentiCredit(data.cost),
       api_url: data.api_url ?? null,
-      api_key: data.api_key ?? null,
+      secret_ref: data.secret_ref ?? null,
       request_format: data.request_format,
       prompt_key: data.prompt_key,
       fetch_url: data.fetch_url ?? null,
@@ -409,7 +500,7 @@ export const adminCreateModel = createServerFn({ method: "POST" })
   });
 
 export const adminDeleteModel = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
@@ -419,18 +510,29 @@ export const adminDeleteModel = createServerFn({ method: "POST" })
 
 // --- Generation: deduct credits + log history (legacy, kept for compat) ---
 export const consumeGeneration = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) =>
-    z.object({ modelKey: z.string().min(1).max(64), prompt: z.string().max(4000).optional() }).parse(d),
+    z
+      .object({
+        modelKey: z.string().min(1).max(64),
+        prompt: z.string().max(4000).optional(),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
+    rejectIsolatedExternalOperation(context);
     const db = getBusinessDb(context);
     const row = await db.consumeCreditsForGeneration({
       userId: context.userId,
       modelKey: data.modelKey,
       prompt: data.prompt ?? "",
     });
-    return { success: row.success, message: row.message, credits: row.credits, cost: row.cost };
+    return {
+      success: row.success,
+      message: row.message,
+      credits: row.credits,
+      cost: row.cost,
+    };
   });
 
 // --- 获取当前用户生成历史（分页 + 缩略图）---
@@ -446,7 +548,10 @@ function buildHistoryThumbUrl(historyId: string, url: string | null | undefined)
   } catch {
     // Preserve the legacy URL below when the stored value is not absolute.
   }
-  if (!url.includes("/storage/v1/object/public/") && !url.includes("/storage/v1/render/image/public/")) {
+  if (
+    !url.includes("/storage/v1/object/public/") &&
+    !url.includes("/storage/v1/render/image/public/")
+  ) {
     return url;
   }
   const transformed = url.includes("/storage/v1/object/public/")
@@ -460,45 +565,8 @@ function getErrorName(error: unknown): string {
   return error instanceof Error ? error.name : typeof error;
 }
 
-async function getPrunedHistoryImageUrls(rows: HistoryPruneRow[]): Promise<string[]> {
-  const urls = new Set<string>();
-  const taskIds = new Set<string>();
-
-  for (const row of rows) {
-    if (row.image_url) urls.add(row.image_url);
-    if (row.generation_task_id) taskIds.add(row.generation_task_id);
-  }
-
-  if (taskIds.size > 0) {
-    try {
-      const { data, error } = await (supabaseAdmin as any)
-        .from("generation_tasks")
-        .select("result_image_url")
-        .in("id", Array.from(taskIds));
-      if (error) {
-        console.warn("[history] prune task image lookup failed", { errorName: getErrorName(error) });
-      } else {
-        for (const task of data ?? []) {
-          if (task.result_image_url) urls.add(task.result_image_url);
-        }
-      }
-    } catch (error) {
-      console.warn("[history] prune task image lookup failed", { errorName: getErrorName(error) });
-    }
-  }
-
-  return Array.from(urls);
-}
-
-async function deletePrunedHistoryR2Images(rows: HistoryPruneRow[]) {
-  const urls = await getPrunedHistoryImageUrls(rows);
-  for (const url of urls) {
-    await deleteGeneratedImageFromR2Url(url);
-  }
-}
-
 export const getMyGenerationHistory = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((input: { limit?: number; offset?: number } | undefined) => ({
     limit: Math.min(50, Math.max(1, Number(input?.limit ?? 20))),
     offset: Math.max(0, Number(input?.offset ?? 0)),
@@ -509,77 +577,26 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
     const { limit, offset } = data;
 
     // 判断是否管理员（admin / founder）
-    const { data: roles } = await supabaseAdmin
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", userId)
-      .in("role", ["admin", "founder"]);
+    const roles = (await rolesFor(userId))
+      .filter((role) => ["admin", "founder"].includes(role))
+      .map((role) => ({ role }));
     const isAdmin = !!(roles && roles.length > 0);
     const maxKeep = isAdmin ? 300 : 100;
     const maxDays = 15;
     const cutoff = new Date(Date.now() - maxDays * 24 * 60 * 60 * 1000).toISOString();
 
-    // 自动清理：超过 15 天 或 超过 maxKeep 张，删除最旧的。
-    // D1 主库阶段先不复制这类隐式 delete/R2 delete 行为，避免读路径触发跨存储副作用。
-    if (db.primary === "lovable") {
-      try {
-        const { data: expiredRows, error: expiredLookupError } = await supabaseAdmin
-          .from("generation_history")
-          .select("id, image_url, generation_task_id")
-          .eq("user_id", userId)
-          .lt("created_at", cutoff);
-        if (expiredLookupError) {
-          console.warn("[history] prune expired lookup failed", { errorName: getErrorName(expiredLookupError) });
-        }
-
-        const { error: expiredDeleteError } = await supabaseAdmin
-          .from("generation_history")
-          .delete()
-          .eq("user_id", userId)
-          .lt("created_at", cutoff);
-        if (expiredDeleteError) {
-          console.warn("[history] prune expired delete failed", { errorName: getErrorName(expiredDeleteError) });
-        } else {
-          await deletePrunedHistoryR2Images((expiredRows ?? []) as HistoryPruneRow[]);
-        }
-
-        const { data: keepIds } = await supabaseAdmin
-          .from("generation_history")
-          .select("id")
-          .eq("user_id", userId)
-          .order("created_at", { ascending: false })
-          .range(0, maxKeep - 1);
-        const keepSet = (keepIds ?? []).map((r: any) => r.id);
-        if (keepSet.length >= maxKeep) {
-          const keepClause = `(${keepSet.map((id: string) => `"${id}"`).join(",")})`;
-          const { data: overflowRows, error: overflowLookupError } = await supabaseAdmin
-            .from("generation_history")
-            .select("id, image_url, generation_task_id")
-            .eq("user_id", userId)
-            .not("id", "in", keepClause);
-          if (overflowLookupError) {
-            console.warn("[history] prune overflow lookup failed", { errorName: getErrorName(overflowLookupError) });
-          }
-
-          const { error: overflowDeleteError } = await supabaseAdmin
-            .from("generation_history")
-            .delete()
-            .eq("user_id", userId)
-            .not("id", "in", keepClause);
-          if (overflowDeleteError) {
-            console.warn("[history] prune overflow delete failed", { errorName: getErrorName(overflowDeleteError) });
-          } else {
-            await deletePrunedHistoryR2Images((overflowRows ?? []) as HistoryPruneRow[]);
-          }
-        }
-      } catch (e) {
-        console.warn("[history] prune failed", { errorName: getErrorName(e) });
-      }
-    }
-
+    // History reads never delete business records or archived objects.
     // 管理员可以查看所有用户的历史（用于核查违规）；普通用户只能看自己的
     if (offset >= maxKeep) {
-      return { items: [], total: maxKeep, limit, offset, maxKeep, maxDays, isAdmin };
+      return {
+        items: [],
+        total: maxKeep,
+        limit,
+        offset,
+        maxKeep,
+        maxDays,
+        isAdmin,
+      };
     }
     const { rows, total: rawTotal } = await db.listGenerationHistory({
       userId: isAdmin ? undefined : userId,
@@ -589,16 +606,25 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
       offset,
     });
 
-    const taskIds = Array.from(new Set((rows ?? [])
-      .map((r: any) => r.generation_task_id)
-      .filter((value: unknown): value is string => typeof value === "string" && value.length > 0)));
-    const taskReuseMap = new Map<string, { modelKey: string | null; inputParams: Record<string, any> | null }>();
+    const taskIds = Array.from(
+      new Set(
+        (rows ?? [])
+          .map((r) => r.generation_task_id)
+          .filter(
+            (value: unknown): value is string => typeof value === "string" && value.length > 0,
+          ),
+      ),
+    );
+    const taskReuseMap = new Map<
+      string,
+      { modelKey: string | null; inputParams: Record<string, JsonValue> | null }
+    >();
     if (taskIds.length > 0) {
       const taskRows = await db.getGenerationTasksByIds(taskIds);
       for (const task of taskRows ?? []) {
         taskReuseMap.set(task.id, {
           modelKey: (task.model_id ?? null) as string | null,
-          inputParams: (task.input_params ?? null) as Record<string, any> | null,
+          inputParams: (task.input_params ?? null) as Record<string, JsonValue> | null,
         });
       }
     }
@@ -606,29 +632,33 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
     // 管理员需要显示作者信息
     let authorEmailMap = new Map<string, string | null>();
     if (isAdmin && rows && rows.length > 0) {
-      const uids = Array.from(new Set(rows.map((r: any) => r.user_id)));
+      const uids = Array.from(new Set(rows.map((r) => r.user_id)));
       const profs = await db.getProfilesByIds(uids);
-      const profileEmailMap = new Map((profs ?? []).map((p: any) => [p.id, p.email ?? null]));
+      const profileEmailMap = new Map((profs ?? []).map((p) => [p.id, p.email ?? null]));
       authorEmailMap = new Map(uids.map((uid) => [uid, profileEmailMap.get(uid) ?? null]));
-      await Promise.all(uids.map(async (uid) => {
-        try {
-          const { data: authData, error: authError } = await supabaseAdmin.auth.admin.getUserById(uid);
-          if (!authError && authData.user?.email) {
-            authorEmailMap.set(uid, authData.user.email);
+      await Promise.all(
+        uids.map(async (uid) => {
+          try {
+            const { data: authData, error: authError } = await readAuthUser(uid);
+            if (!authError && authData.user?.email) {
+              authorEmailMap.set(uid, authData.user.email);
+            }
+          } catch {
+            // Keep profiles.email fallback.
           }
-        } catch {
-          // Keep profiles.email fallback.
-        }
-      }));
+        }),
+      );
     }
 
-    const items = (rows ?? []).map((r: any) => {
+    const items = (rows ?? []).map((r) => {
       const authorEmail = authorEmailMap.get(r.user_id) ?? null;
       return {
         id: r.id as string,
         userId: r.user_id as string,
         generationTaskId: (r.generation_task_id ?? null) as string | null,
-        modelKey: r.generation_task_id ? taskReuseMap.get(r.generation_task_id)?.modelKey ?? null : null,
+        modelKey: r.generation_task_id
+          ? (taskReuseMap.get(r.generation_task_id)?.modelKey ?? null)
+          : null,
         model: r.model as string,
         prompt: (r.prompt ?? null) as string | null,
         finalPrompt: (r.prompt ?? null) as string | null,
@@ -637,7 +667,9 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
         createdAt: r.created_at as string,
         originalImageUrl: r.image_url as string,
         thumbnailUrl: buildHistoryThumbUrl(r.id, r.image_url),
-        inputParams: r.generation_task_id ? taskReuseMap.get(r.generation_task_id)?.inputParams ?? null : null,
+        inputParams: r.generation_task_id
+          ? (taskReuseMap.get(r.generation_task_id)?.inputParams ?? null)
+          : null,
         status: "done" as const,
         cost: Number(r.cost ?? 0),
         authorName: null,
@@ -652,62 +684,72 @@ export const getMyGenerationHistory = createServerFn({ method: "POST" })
   });
 
 export const getMyGenerationTasks = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .handler(async ({ context }) => {
     const { userId } = context;
     const db = getBusinessDb(context);
     const rows = await db.listUserGenerationTasks({
       userId,
       statuses: ["queued", "running"],
-      limit: 3,
+      ...(isProductionConnectedGeneration() ? {} : { limit: 3 }),
       order: "asc",
     });
 
-    const items = (rows ?? []).map((r: any) => ({
-      id: r.id as string,
-      requestId: r.request_id as string,
-      userId: r.user_id as string,
-      status: r.status as "queued" | "running" | "succeeded" | "failed",
-      modelId: r.model_id as string,
-      prompt: (r.prompt ?? null) as string | null,
-      inputParams: asRecord(r.input_params),
-      createdAt: r.created_at as string,
-      updatedAt: r.updated_at as string,
-      startedAt: (r.started_at ?? null) as string | null,
-      completedAt: (r.completed_at ?? null) as string | null,
-      resultImageUrl: (r.result_image_url ?? null) as string | null,
-      errorCode: (r.error_code ?? null) as string | null,
-      errorMessage: (r.error_message ?? null) as string | null,
-      deductionStatus: (r.deduction_status ?? null) as string | null,
-      deductionId: (r.deduction_id ?? null) as string | null,
-    }));
+    const items = (rows ?? [])
+      .filter((r) => !isProductionConnectedGeneration() || isCurrentGenerationTestTask(r))
+      .slice(0, 3)
+      .map((r) => ({
+        id: r.id as string,
+        requestId: r.request_id as string,
+        userId: r.user_id as string,
+        status: r.status as "queued" | "running" | "succeeded" | "failed",
+        modelId: r.model_id as string,
+        prompt: (r.prompt ?? null) as string | null,
+        inputParams: asRecord(r.input_params),
+        createdAt: r.created_at as string,
+        updatedAt: r.updated_at as string,
+        startedAt: (r.started_at ?? null) as string | null,
+        completedAt: (r.completed_at ?? null) as string | null,
+        resultImageUrl: (r.result_image_url ?? null) as string | null,
+        errorCode: (r.error_code ?? null) as string | null,
+        errorMessage: (r.error_message ?? null) as string | null,
+        deductionStatus: (r.deduction_status ?? null) as string | null,
+        deductionId: (r.deduction_id ?? null) as string | null,
+      }));
 
     return { items, isAdmin: false };
   });
 
 export const createGenerationTask = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) =>
-    z.object({
-      modelKey: z.string().min(1).max(64),
-      prompt: z.string().min(1).max(4000),
-      inputParams: z.record(z.string(), z.any()).optional(),
-    }).parse(d),
+    z
+      .object({
+        modelKey: z.string().min(1).max(64),
+        prompt: z.string().min(1).max(4000),
+        inputParams: z.record(z.string(), z.unknown()).optional(),
+      })
+      .parse(d),
   )
   .handler(async ({ context, data }) => {
+    requireProductionConnectedGeneration(context);
     const { userId } = context;
     const db = getBusinessDb(context);
 
-    const activeCount = await db.countUserGenerationTasks({ userId, statuses: ["queued", "running"] });
+    const activeTaskRows = await db.listUserGenerationTasks({
+      userId,
+      statuses: ["queued", "running"],
+    });
+    const activeCount = activeTaskRows.filter(isCurrentGenerationTestTask).length;
     if (activeCount >= 3) {
       throw new Error("当前已有 3 个进行中任务，请等待任务完成后再提交。");
     }
 
     const model = await getBusinessModel(db, data.modelKey, false);
     if (!model) throw new Error("模型不存在或已不可用。");
-    if ((model as any).is_enabled === false) throw new Error("模型不存在或已不可用。");
+    if (model.is_enabled === false) throw new Error("模型不存在或已不可用。");
 
-    const creditsRequired = Math.max(0, Number((model as any).cost ?? 0));
+    const creditsRequired = Math.max(0, Number(model.cost ?? 0));
     const activeTasks = await db.listUserGenerationTasks({
       userId,
       statuses: ["queued", "running"],
@@ -717,7 +759,7 @@ export const createGenerationTask = createServerFn({ method: "POST" })
       (sum: number, task) => sum + Number(task.credits_required ?? 0),
       0,
     );
-    const availableCredits = await db.getCredits(userId) - reservedCredits;
+    const availableCredits = (await db.getCredits(userId)) - reservedCredits;
     if (availableCredits < creditsRequired) {
       throw new Error("余额不足，无法创建多任务。");
     }
@@ -728,7 +770,11 @@ export const createGenerationTask = createServerFn({ method: "POST" })
       userId,
       modelId: data.modelKey,
       prompt: data.prompt,
-      inputParams: { ...(data.inputParams ?? {}), queueVersion: "userQueue" },
+      inputParams: {
+        ...(data.inputParams ?? {}),
+        queueVersion: "userQueue",
+        shuntuTestScope: REAL_GENERATION_TEST_SCOPE,
+      },
       creditsRequired,
     });
 
@@ -743,7 +789,7 @@ export const createGenerationTask = createServerFn({ method: "POST" })
   });
 
 export const cancelMyQueuedGenerationTasks = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .handler(async ({ context }) => {
     const { userId } = context;
     const db = getBusinessDb(context);
@@ -752,14 +798,15 @@ export const cancelMyQueuedGenerationTasks = createServerFn({ method: "POST" })
   });
 
 export const cancelGenerationTask = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z.object({ taskId: z.string().uuid() }).parse(d),
-  )
+  .middleware([requireD1Auth])
+  .inputValidator((d) => z.object({ taskId: z.string().uuid() }).parse(d))
   .handler(async ({ context, data }) => {
     const { userId } = context;
     const db = getBusinessDb(context);
-    const task = await db.cancelQueuedGenerationTask({ taskId: data.taskId, userId });
+    const task = await db.cancelQueuedGenerationTask({
+      taskId: data.taskId,
+      userId,
+    });
     if (!task) throw new Error("任务已开始、已完成、已取消，或不属于当前任务。");
 
     return {
@@ -781,7 +828,7 @@ async function finalizeUserGenerationTaskOnce(
   userId: string,
   taskId: string,
   imageUrl: string,
-  resultPayload?: Record<string, any> | null,
+  resultPayload?: Record<string, JsonValue> | null,
 ): Promise<AdminPreviewFinalizeResult> {
   const row = await db.finalizeUserGenerationTaskOnce({
     taskId,
@@ -807,7 +854,12 @@ async function finalizeUserGenerationTaskOnce(
 
 async function archiveSuccessfulImageUrl(
   imageUrl: string,
-  meta: { taskId: string; userId?: string | null; modelKey?: string | null; cloudflareEnv?: unknown },
+  meta: {
+    taskId: string;
+    userId?: string | null;
+    modelKey?: string | null;
+    cloudflareEnv?: unknown;
+  },
 ): Promise<string> {
   return archiveGeneratedImageToR2({
     imageUrl,
@@ -819,16 +871,14 @@ async function archiveSuccessfulImageUrl(
 }
 
 function getCloudflareEnvFromServerContext(context: unknown): unknown {
-  const serverContext = context as { cloudflare?: { env?: unknown }; cloudflareEnv?: unknown } | null | undefined;
-  return serverContext?.cloudflare?.env ?? serverContext?.cloudflareEnv;
+  return getCloudflareEnvFromContext(context as Parameters<typeof getCloudflareEnvFromContext>[0]);
 }
 
 export const startGenerationTask = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z.object({ taskId: z.string().uuid() }).parse(d),
-  )
+  .middleware([requireD1Auth])
+  .inputValidator((d) => z.object({ taskId: z.string().uuid() }).parse(d))
   .handler(async ({ context, data }) => {
+    requireProductionConnectedGeneration(context);
     const { userId } = context;
     const db = getBusinessDb(context);
     const cloudflareEnv = getCloudflareEnvFromServerContext(context);
@@ -842,8 +892,19 @@ export const startGenerationTask = createServerFn({ method: "POST" })
       throw new Error("已有任务正在生成，请等待当前任务完成。");
     }
 
+    const intendedTask = await db.getUserGenerationTask({
+      taskId: data.taskId,
+      userId,
+    });
+    if (!intendedTask || !isCurrentGenerationTestTask(intendedTask)) {
+      throw new Error("本测试入口仅可启动本轮新建任务，不处理历史任务。");
+    }
     const now = new Date().toISOString();
-    const task = await db.claimQueuedGenerationTask({ taskId: data.taskId, userId, now });
+    const task = await db.claimQueuedGenerationTask({
+      taskId: data.taskId,
+      userId,
+      now,
+    });
     if (!task) {
       throw new Error("任务已被处理、取消，或不属于当前任务。");
     }
@@ -877,7 +938,13 @@ export const startGenerationTask = createServerFn({ method: "POST" })
             modelKey: (task.model_id ?? null) as string | null,
             cloudflareEnv,
           });
-          const finalizeResult = await finalizeUserGenerationTaskOnce(db, userId, task.id as string, finalImageUrl, result.resultPayload);
+          const finalizeResult = await finalizeUserGenerationTaskOnce(
+            db,
+            userId,
+            task.id as string,
+            finalImageUrl,
+            result.resultPayload,
+          );
           return {
             taskId: task.id as string,
             status: "succeeded" as const,
@@ -888,13 +955,13 @@ export const startGenerationTask = createServerFn({ method: "POST" })
             ...finalizeResult,
           };
         } catch (e) {
-          const message = e instanceof Error ? e.message : "Finalize task failed";
+          const message = safeGenerationFailure(e, "IMAGE_FINALIZATION_FAILED");
           await db.updateGenerationTaskLifecycle({
             taskId: task.id,
             userId,
             status: "failed",
             errorMessage: message,
-            resultImageUrl: finalImageUrl,
+            resultImageUrl: null,
             resultPayload: result.resultPayload,
             completedAt: finishedAt,
             now: finishedAt,
@@ -926,7 +993,7 @@ export const startGenerationTask = createServerFn({ method: "POST" })
         resultPayload: result.resultPayload,
       };
     } catch (e) {
-      const message = e instanceof Error ? e.message : "上游提交失败";
+      const message = safeGenerationFailure(e, "MODEL_SUBMISSION_FAILED");
       const failedAt = new Date().toISOString();
       await db.updateGenerationTaskLifecycle({
         taskId: task.id,
@@ -942,25 +1009,29 @@ export const startGenerationTask = createServerFn({ method: "POST" })
         startedAt: task.started_at as string,
         resultImageUrl: null as string | null,
         errorMessage: message,
-        resultPayload: null as any,
+        resultPayload: null as Record<string, JsonValue> | null,
       };
     }
   });
 
 export const pollGenerationTask = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z.object({ taskId: z.string().uuid() }).parse(d),
-  )
+  .middleware([requireD1Auth])
+  .inputValidator((d) => z.object({ taskId: z.string().uuid() }).parse(d))
   .handler(async ({ context, data }) => {
+    requireProductionConnectedGeneration(context);
     const { userId } = context;
     const db = getBusinessDb(context);
     const cloudflareEnv = getCloudflareEnvFromServerContext(context);
 
-    const task = await db.getUserGenerationTask({ taskId: data.taskId, userId });
+    const task = await db.getUserGenerationTask({
+      taskId: data.taskId,
+      userId,
+    });
     if (!task) throw new Error("任务不存在，或不属于当前任务。");
+    if (!isCurrentGenerationTestTask(task)) throw new Error("本测试入口不处理历史任务。");
     if (task.status !== "running") {
-      const finalized = task.status === "succeeded" && task.deduction_status === "charged" && !!task.deduction_id;
+      const finalized =
+        task.status === "succeeded" && task.deduction_status === "charged" && !!task.deduction_id;
       let resultImageUrl = (task.result_image_url ?? null) as string | null;
       if (finalized && resultImageUrl && !resultImageUrl.startsWith("https://img.shuntu.cc/")) {
         const originalImageUrl = resultImageUrl;
@@ -979,15 +1050,34 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
             });
           }
         } catch (e) {
+          if (isProductionConnectedGeneration()) {
+            return {
+              taskId: task.id as string,
+              status: "failed" as const,
+              resultImageUrl: null as string | null,
+              errorMessage: "IMAGE_ARCHIVE_UNVERIFIED",
+              resultPayload: null,
+              deductionStatus: (task.deduction_status ?? null) as string | null,
+              historyId: (task.deduction_id ?? null) as string | null,
+            };
+          }
           console.warn("[pollGenerationTask] archived completed task image failed", e);
           resultImageUrl = originalImageUrl;
         }
       }
       return {
         taskId: task.id as string,
-        status: finalized ? "succeeded" as const : task.status === "succeeded" ? "failed" as const : task.status as "failed" | "queued" | "canceled",
+        status: finalized
+          ? ("succeeded" as const)
+          : task.status === "succeeded"
+            ? ("failed" as const)
+            : (task.status as "failed" | "queued" | "canceled"),
         resultImageUrl,
-        errorMessage: finalized ? (task.error_message ?? null) as string | null : task.status === "succeeded" ? "Task completed without charged deduction or history" : (task.error_message ?? null) as string | null,
+        errorMessage: finalized
+          ? ((task.error_message ?? null) as string | null)
+          : task.status === "succeeded"
+            ? "Task completed without charged deduction or history"
+            : ((task.error_message ?? null) as string | null),
         resultPayload: task.result_payload ?? null,
         deductionStatus: (task.deduction_status ?? null) as string | null,
         historyId: (task.deduction_id ?? null) as string | null,
@@ -1006,10 +1096,18 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
       };
     }
 
-    const pollResult = await pollAdminPreviewProviderTask(db, String(providerTaskId), (task.model_id ?? null) as string | null);
+    const pollResult = await pollAdminPreviewProviderTask(
+      db,
+      String(providerTaskId),
+      (task.model_id ?? null) as string | null,
+    );
     const now = new Date().toISOString();
     if (pollResult.status === "succeeded") {
-      const resultPayload = { ...taskResultPayload, ...pollResult.resultPayload, providerStatus: "succeeded" };
+      const resultPayload = {
+        ...taskResultPayload,
+        ...pollResult.resultPayload,
+        providerStatus: "succeeded",
+      };
       let finalImageUrl = pollResult.resultImageUrl;
       try {
         finalImageUrl = await archiveSuccessfulImageUrl(pollResult.resultImageUrl, {
@@ -1018,7 +1116,13 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
           modelKey: (task.model_id ?? null) as string | null,
           cloudflareEnv,
         });
-        const finalizeResult = await finalizeUserGenerationTaskOnce(db, userId, task.id as string, finalImageUrl, resultPayload);
+        const finalizeResult = await finalizeUserGenerationTaskOnce(
+          db,
+          userId,
+          task.id as string,
+          finalImageUrl,
+          resultPayload,
+        );
         return {
           taskId: task.id as string,
           status: "succeeded" as const,
@@ -1028,7 +1132,7 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
           ...finalizeResult,
         };
       } catch (e) {
-        const message = e instanceof Error ? e.message : "Finalize task failed";
+        const message = safeGenerationFailure(e, "IMAGE_FINALIZATION_FAILED");
         await db.updateGenerationTaskLifecycle({
           taskId: task.id,
           userId,
@@ -1049,7 +1153,11 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
     }
 
     if (pollResult.status === "failed") {
-      const resultPayload = { ...taskResultPayload, ...pollResult.resultPayload, providerStatus: "failed" };
+      const resultPayload = {
+        ...taskResultPayload,
+        ...pollResult.resultPayload,
+        providerStatus: "failed",
+      };
       await db.updateGenerationTaskLifecycle({
         taskId: task.id,
         userId,
@@ -1073,47 +1181,83 @@ export const pollGenerationTask = createServerFn({ method: "POST" })
       status: "running" as const,
       resultImageUrl: null as string | null,
       errorMessage: null as string | null,
-      resultPayload: { ...taskResultPayload, ...pollResult.resultPayload, providerStatus: "running" },
+      resultPayload: {
+        ...taskResultPayload,
+        ...pollResult.resultPayload,
+        providerStatus: "running",
+      },
     };
   });
 
-async function submitAdminPreviewGenerationTask(task: any, db: BusinessDatabase): Promise<
-  | { status: "succeeded"; resultImageUrl: string; resultPayload: Record<string, any> }
-  | { status: "running"; resultImageUrl: null; resultPayload: Record<string, any> }
+async function submitAdminPreviewGenerationTask(
+  task: GenerationTask,
+  db: BusinessDatabase,
+): Promise<
+  | {
+      status: "succeeded";
+      resultImageUrl: string;
+      resultPayload: Record<string, JsonValue>;
+    }
+  | {
+      status: "running";
+      resultImageUrl: null;
+      resultPayload: Record<string, JsonValue>;
+    }
 > {
-  const inputParams = (task.input_params ?? {}) as Record<string, any>;
-  const { base_url, global_api_key } = await loadGlobalConfig(db);
+  const inputParams = (task.input_params ?? {}) as Record<string, JsonValue>;
+  const { base_url } = await loadGlobalConfig(db);
   const model = await getBusinessModel(db, String(task.model_id), true);
   if (!model) throw new Error("模型不存在或已不可用。");
-  if ((model as any).is_enabled === false) throw new Error("模型不存在或已不可用。");
-  if (!(model as any).api_url && (model as any).model_key !== FOXAPI_BACKUP_MODEL_KEY) throw new Error("该模型尚未配置 API 接口地址。");
+  if (model.is_enabled === false) throw new Error("模型不存在或已不可用。");
+  if (isProductionConnectedGeneration()) {
+    const reservedCost = Number(task.credits_required);
+    if (!Number.isFinite(reservedCost) || reservedCost < 0 || Number(model.cost) !== reservedCost) {
+      throw new Error("MODEL_PRICE_CHANGED_BEFORE_SUBMISSION");
+    }
+    if (Number(await db.getCredits(task.user_id)) < reservedCost) {
+      throw new Error("INSUFFICIENT_CREDITS_BEFORE_SUBMISSION");
+    }
+  }
+  if (!model.api_url && model.model_key !== FOXAPI_BACKUP_MODEL_KEY)
+    throw new Error("该模型尚未配置 API 接口地址。");
 
-  const targetKey = (model as any).model_key === FOXAPI_BACKUP_MODEL_KEY
-    ? ""
-    : normalizeUpstreamApiKey((model as any).api_key) || normalizeUpstreamApiKey(global_api_key);
-  const pureApiKey = String(targetKey).replace(/Bearer\s+/i, "").trim();
-  if (!pureApiKey && (model as any).model_key !== FOXAPI_BACKUP_MODEL_KEY) throw new Error("该模型或全局接口设置尚未配置 API Key。");
+  const targetKey =
+    model.model_key === FOXAPI_BACKUP_MODEL_KEY ? "" : getConfiguredModelApiKey(model);
+  const pureApiKey = String(targetKey)
+    .replace(/Bearer\s+/i, "")
+    .trim();
+  if (!pureApiKey && model.model_key !== FOXAPI_BACKUP_MODEL_KEY)
+    throw new Error("该模型或全局接口设置尚未配置 API Key。");
 
-  const isGptImagePro = (model as any).model_key === GPT_IMAGE_PRO_MODEL_KEY;
-  const submitUrl = (model as any).model_key === FOXAPI_BACKUP_MODEL_KEY
-    ? ""
-    : isGptImagePro
-      ? GPT_IMAGE_PRO_VBL_GENERATIONS_URL
-      : resolveUrl(base_url, (model as any).api_url);
+  const isGptImagePro = model.model_key === GPT_IMAGE_PRO_MODEL_KEY;
+  const submitUrl =
+    model.model_key === FOXAPI_BACKUP_MODEL_KEY
+      ? ""
+      : isGptImagePro
+        ? GPT_IMAGE_PRO_VBL_GENERATIONS_URL
+        : resolveUrl(base_url, model.api_url!);
   const prompt = String(task.prompt ?? "").trim();
   if (!prompt) throw new Error("任务提示词为空。");
 
   const aspectRatio = String(inputParams.aspectRatio ?? "1:1");
   const sizeValue = String(inputParams.size ?? "1K");
-  const referenceImages = Array.isArray(inputParams.referenceImages) ? inputParams.referenceImages : [];
-  const gptImageProReferenceImages = isGptImagePro
-    ? referenceImages.filter((value): value is string => typeof value === "string" && /^(https?:|data:image\/)/i.test(value))
+  const referenceImages = Array.isArray(inputParams.referenceImages)
+    ? inputParams.referenceImages
     : [];
-  if ((model as any).model_key === FOXAPI_BACKUP_MODEL_KEY) {
-    const httpRefs = referenceImages.filter((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u));
-    const result = httpRefs.length === 0
-      ? await submitFoxApiImageGenerationTask({ prompt })
-      : await submitFoxApiImageEdit({ prompt, imageUrl: httpRefs[0] });
+  const gptImageProReferenceImages = isGptImagePro
+    ? referenceImages.filter(
+        (value): value is string =>
+          typeof value === "string" && /^(https?:|data:image\/)/i.test(value),
+      )
+    : [];
+  if (model.model_key === FOXAPI_BACKUP_MODEL_KEY) {
+    const httpRefs = referenceImages.filter(
+      (u): u is string => typeof u === "string" && /^https?:\/\//i.test(u),
+    );
+    const result =
+      httpRefs.length === 0
+        ? await submitFoxApiImageGenerationTask({ prompt })
+        : await submitFoxApiImageEdit({ prompt, imageUrl: httpRefs[0] });
     if (!result.ok) throw new Error(result.message);
     return {
       status: "running",
@@ -1128,8 +1272,10 @@ async function submitAdminPreviewGenerationTask(task: any, db: BusinessDatabase)
     };
   }
 
-  const httpReferenceImages = referenceImages.filter((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u));
-  if ((model as any).model_key === GPT_IMAGE_2_BACKUP_MODEL_KEY && httpReferenceImages.length > 0) {
+  const httpReferenceImages = referenceImages.filter(
+    (u): u is string => typeof u === "string" && /^https?:\/\//i.test(u),
+  );
+  if (model.model_key === GPT_IMAGE_2_BACKUP_MODEL_KEY && httpReferenceImages.length > 0) {
     const result = await submitGptImage2BackupEdit({
       model,
       prompt,
@@ -1146,7 +1292,7 @@ async function submitAdminPreviewGenerationTask(task: any, db: BusinessDatabase)
         requestFormat: "sync_url",
         providerStatus: "succeeded",
         requestId: task.request_id,
-        upstreamCode: result.upstreamCode,
+        upstreamCode: result.upstreamCode as JsonValue,
         mode: "edit",
       },
     };
@@ -1167,13 +1313,13 @@ async function submitAdminPreviewGenerationTask(task: any, db: BusinessDatabase)
         requestFormat: "sync_url",
         providerStatus: "succeeded",
         requestId: task.request_id,
-        upstreamCode: result.upstreamCode,
+        upstreamCode: result.upstreamCode as JsonValue,
         mode: "edit",
       },
     };
   }
 
-  const requestFormat = (model as any).request_format || "async_id";
+  const requestFormat = model.request_format || "async_id";
   const body = buildAdminPreviewUpstreamBody({
     model,
     prompt,
@@ -1188,7 +1334,7 @@ async function submitAdminPreviewGenerationTask(task: any, db: BusinessDatabase)
     body: JSON.stringify(body),
   });
   const text = await res.text();
-  const json = parseUpstreamResponse(text);
+  const json = parseUpstreamResponse(text) as Record<string, JsonValue> | null;
   if (!res.ok) throw new Error(friendlyUpstreamError(res.status));
   if (Number(json?.code) >= 400) throw new Error(friendlyUpstreamError(Number(json?.code) || 500));
 
@@ -1202,13 +1348,23 @@ async function submitAdminPreviewGenerationTask(task: any, db: BusinessDatabase)
         requestFormat,
         providerStatus: "succeeded",
         requestId: task.request_id,
-        upstreamCode: json?.code ?? null,
+        upstreamCode: Number.isFinite(Number(json?.code)) ? Number(json?.code) : null,
       },
     };
   }
 
-  const providerTaskId = json?.data?.id ?? json?.id ?? json?.task_id ?? (typeof json?.data === "string" ? json.data : null);
-  if (!providerTaskId) throw new Error(friendlyUpstreamError(502));
+  const providerTaskId =
+    asRecord(json?.data).id ??
+    json?.id ??
+    json?.task_id ??
+    (typeof json?.data === "string" ? json.data : null);
+  if (
+    !providerTaskId ||
+    (isProductionConnectedGeneration() &&
+      (typeof providerTaskId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(providerTaskId)))
+  ) {
+    throw new Error(friendlyUpstreamError(502));
+  }
   return {
     status: "running",
     resultImageUrl: null,
@@ -1217,7 +1373,7 @@ async function submitAdminPreviewGenerationTask(task: any, db: BusinessDatabase)
       providerStatus: "submitted",
       requestFormat: "async_id",
       requestId: task.request_id,
-      upstreamCode: json?.code ?? null,
+      upstreamCode: Number.isFinite(Number(json?.code)) ? Number(json?.code) : null,
     },
   };
 }
@@ -1230,17 +1386,20 @@ function firstConfiguredHttpUrl(value: unknown, fallback: string): string {
 
 function imageFilename(index: number, contentType: string): string {
   const normalized = contentType.toLowerCase();
-  const extension = normalized.includes("jpeg") || normalized.includes("jpg")
-    ? "jpg"
-    : normalized.includes("webp")
-    ? "webp"
-    : "png";
+  const extension =
+    normalized.includes("jpeg") || normalized.includes("jpg")
+      ? "jpg"
+      : normalized.includes("webp")
+        ? "webp"
+        : "png";
   return `reference-${index + 1}.${extension}`;
 }
 
 function resolveGptImage2BackupSize(aspectRatio?: string, resolution?: string): string {
   const ratio = String(aspectRatio ?? "").trim();
-  const normalizedResolution = String(resolution ?? "1K").trim().toUpperCase();
+  const normalizedResolution = String(resolution ?? "1K")
+    .trim()
+    .toUpperCase();
   const sizeMaps: Record<string, Record<string, string>> = {
     "1K": {
       "1:1": "1024x1024",
@@ -1279,14 +1438,18 @@ function resolveGptImage2BackupSize(aspectRatio?: string, resolution?: string): 
   return map[ratio] ?? fallbackByResolution[normalizedResolution] ?? fallbackByResolution["1K"];
 }
 
-async function fetchReferenceImageBlob(imageUrl: string, index: number): Promise<{ blob: Blob; filename: string }> {
+async function fetchReferenceImageBlob(
+  imageUrl: string,
+  index: number,
+): Promise<{ blob: Blob; filename: string }> {
   try {
     const response = await fetch(imageUrl, {
       headers: { accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8" },
       redirect: "follow",
     });
     if (!response.ok) throw new Error("reference image fetch failed");
-    const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
+    const contentType =
+      response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
     if (!contentType.startsWith("image/")) throw new Error("reference image content-type invalid");
     const blob = await response.blob();
     if (!blob.size) throw new Error("reference image empty");
@@ -1297,7 +1460,7 @@ async function fetchReferenceImageBlob(imageUrl: string, index: number): Promise
 }
 
 async function submitGptImage2BackupEdit(params: {
-  model: any;
+  model: ModelConfig;
   prompt: string;
   aspectRatio?: string;
   resolution?: string;
@@ -1327,16 +1490,19 @@ async function submitGptImage2BackupEdit(params: {
     body: form,
   });
   const text = await response.text();
-  const json = parseUpstreamResponse(text);
+  const json = parseUpstreamResponse(text) as Record<string, JsonValue> | null;
   if (!response.ok) throw new Error(friendlyUpstreamError(response.status));
   if (Number(json?.code) >= 400) throw new Error(friendlyUpstreamError(Number(json?.code) || 500));
   const imageUrl = extractImageUrl(json ?? text);
   if (!imageUrl) throw new Error(friendlyUpstreamError(502));
-  return { imageUrl, upstreamCode: json?.code ?? null };
+  return {
+    imageUrl,
+    upstreamCode: Number.isFinite(Number(json?.code)) ? Number(json?.code) : null,
+  };
 }
 
 async function submitGptImageProEdit(params: {
-  model: any;
+  model: ModelConfig;
   prompt: string;
   aspectRatio?: string;
   resolution?: string;
@@ -1377,21 +1543,24 @@ async function submitGptImageProEdit(params: {
     body: form,
   });
   const text = await response.text();
-  const json = parseUpstreamResponse(text);
+  const json = parseUpstreamResponse(text) as Record<string, JsonValue> | null;
   if (!response.ok) throw new Error(friendlyUpstreamError(response.status));
   if (Number(json?.code) >= 400) throw new Error(friendlyUpstreamError(Number(json?.code) || 500));
   const imageUrl = extractImageUrl(json ?? text);
   if (!imageUrl) throw new Error(friendlyUpstreamError(502));
-  return { imageUrl, upstreamCode: json?.code ?? null };
+  return {
+    imageUrl,
+    upstreamCode: Number.isFinite(Number(json?.code)) ? Number(json?.code) : null,
+  };
 }
 
 function buildAdminPreviewUpstreamBody(params: {
-  model: any;
+  model: ModelConfig;
   prompt: string;
   aspectRatio: string;
   size: string;
   referenceImages: unknown[];
-}): Record<string, any> {
+}): Record<string, JsonValue> {
   if (params.model?.model_key === GPT_IMAGE_PRO_MODEL_KEY) {
     return buildGptImageProProviderPayload({
       prompt: params.prompt,
@@ -1406,7 +1575,9 @@ function buildAdminPreviewUpstreamBody(params: {
   const textOnlyModels = new Set(["wan26", "gpt_image_2_backup"]);
   const httpRefs = textOnlyModels.has(modelKey)
     ? []
-    : params.referenceImages.filter((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u));
+    : params.referenceImages.filter(
+        (u): u is string => typeof u === "string" && /^https?:\/\//i.test(u),
+      );
   const urlToken = "__LOVABLE_URLS_ARRAY__";
   const wanSizeMap: Record<string, string> = {
     "1:1": "1280*1280",
@@ -1418,14 +1589,22 @@ function buildAdminPreviewUpstreamBody(params: {
   const wanSize = wanSizeMap[params.aspectRatio] ?? "1280*1280";
   const grokAllowed = new Set(["2:3", "3:2", "1:1", "16:9", "9:16"]);
   const grokFallback: Record<string, string> = {
-    "3:4": "2:3", "4:3": "3:2", "4:5": "2:3", "5:4": "3:2",
-    "9:21": "9:16", "21:9": "16:9", "1:2": "9:16", "2:1": "16:9",
-    "1:3": "9:16", "3:1": "16:9", "auto": "1:1",
+    "3:4": "2:3",
+    "4:3": "3:2",
+    "4:5": "2:3",
+    "5:4": "3:2",
+    "9:21": "9:16",
+    "21:9": "16:9",
+    "1:2": "9:16",
+    "2:1": "16:9",
+    "1:3": "9:16",
+    "3:1": "16:9",
+    auto: "1:1",
   };
   const grokAspect = grokAllowed.has(params.aspectRatio)
     ? params.aspectRatio
     : (grokFallback[params.aspectRatio] ?? "1:1");
-  const substitute = (v: any): any => {
+  const substitute = (v: JsonValue): JsonValue => {
     if (typeof v === "string") {
       const trimmed = v.trim();
       if (/^\{\{\s*urls\s*\}\}$/.test(trimmed)) return urlToken;
@@ -1438,13 +1617,16 @@ function buildAdminPreviewUpstreamBody(params: {
     }
     if (Array.isArray(v)) return v.map(substitute);
     if (v && typeof v === "object") {
-      const o: Record<string, any> = {};
+      const o: Record<string, JsonValue> = {};
       for (const k of Object.keys(v)) o[k] = substitute(v[k]);
       return o;
     }
     return v;
   };
-  const extra = substitute(sanitizeUpstreamExtraParams(params.model?.extra_params)) as Record<string, any>;
+  const extra = substitute(sanitizeUpstreamExtraParams(params.model?.extra_params)) as Record<
+    string,
+    JsonValue
+  >;
   let urlsHandledByExtra = false;
   for (const [key, val] of Object.entries(extra)) {
     if (val === urlToken) {
@@ -1454,9 +1636,9 @@ function buildAdminPreviewUpstreamBody(params: {
     }
   }
   if (modelKey === "grok_imagine" && httpRefs.length > 0) {
-    delete (extra as any).aspect_ratio;
+    delete extra.aspect_ratio;
   }
-  const body: Record<string, any> = {
+  const body: Record<string, JsonValue> = {
     [promptKey]: params.prompt,
     ...extra,
   };
@@ -1470,10 +1652,29 @@ function buildAdminPreviewUpstreamBody(params: {
   return body;
 }
 
-async function pollAdminPreviewProviderTask(db: BusinessDatabase, providerTaskId: string, modelKey?: string | null): Promise<
-  | { status: "running"; resultImageUrl: null; errorMessage: null; resultPayload: Record<string, any> }
-  | { status: "succeeded"; resultImageUrl: string; errorMessage: null; resultPayload: Record<string, any> }
-  | { status: "failed"; resultImageUrl: null; errorMessage: string; resultPayload: Record<string, any> }
+async function pollAdminPreviewProviderTask(
+  db: BusinessDatabase,
+  providerTaskId: string,
+  modelKey?: string | null,
+): Promise<
+  | {
+      status: "running";
+      resultImageUrl: null;
+      errorMessage: null;
+      resultPayload: Record<string, JsonValue>;
+    }
+  | {
+      status: "succeeded";
+      resultImageUrl: string;
+      errorMessage: null;
+      resultPayload: Record<string, JsonValue>;
+    }
+  | {
+      status: "failed";
+      resultImageUrl: null;
+      errorMessage: string;
+      resultPayload: Record<string, JsonValue>;
+    }
 > {
   if (modelKey === FOXAPI_BACKUP_MODEL_KEY) {
     const result = await pollFoxApiTask(providerTaskId);
@@ -1484,12 +1685,27 @@ async function pollAdminPreviewProviderTask(db: BusinessDatabase, providerTaskId
       message: result.message,
     };
     if (result.status === "succeeded") {
-      return { status: "succeeded", resultImageUrl: result.imageUrl, errorMessage: null, resultPayload };
+      return {
+        status: "succeeded",
+        resultImageUrl: result.imageUrl,
+        errorMessage: null,
+        resultPayload,
+      };
     }
     if (result.status === "failed") {
-      return { status: "failed", resultImageUrl: null, errorMessage: result.message, resultPayload };
+      return {
+        status: "failed",
+        resultImageUrl: null,
+        errorMessage: result.message,
+        resultPayload,
+      };
     }
-    return { status: "running", resultImageUrl: null, errorMessage: null, resultPayload };
+    return {
+      status: "running",
+      resultImageUrl: null,
+      errorMessage: null,
+      resultPayload,
+    };
   }
 
   const { global_api_key } = await loadGlobalConfig(db);
@@ -1502,10 +1718,16 @@ async function pollAdminPreviewProviderTask(db: BusinessDatabase, providerTaskId
     headers: buildUpstreamHeaders(pureApiKey),
   });
   const text = await res.text();
-  const json = parseUpstreamResponse(text);
+  const json = parseUpstreamResponse(text) as Record<string, JsonValue> | null;
   const code = Number(json?.code);
-  const taskStatus = Number.isFinite(Number(json?.data?.status)) ? Number(json?.data?.status) : null;
-  const rawMsg = (json?.data?.message ?? json?.msg ?? json?.message ?? null) as string | null;
+  const taskStatus = Number.isFinite(Number(asRecord(json?.data).status))
+    ? Number(asRecord(json?.data).status)
+    : null;
+  const rawMsg = (
+    isProductionConnectedGeneration()
+      ? null
+      : (asRecord(json?.data).message ?? json?.msg ?? json?.message ?? null)
+  ) as string | null;
   const resultPayload = {
     providerTaskId,
     code: Number.isFinite(code) ? code : null,
@@ -1514,7 +1736,12 @@ async function pollAdminPreviewProviderTask(db: BusinessDatabase, providerTaskId
   };
 
   if (!res.ok) {
-    return { status: "running", resultImageUrl: null, errorMessage: null, resultPayload: { ...resultPayload, httpStatus: res.status } };
+    return {
+      status: "running",
+      resultImageUrl: null,
+      errorMessage: null,
+      resultPayload: { ...resultPayload, httpStatus: res.status },
+    };
   }
   if (code >= 400) {
     console.error("[generation-task] upstream detail code", {
@@ -1522,10 +1749,15 @@ async function pollAdminPreviewProviderTask(db: BusinessDatabase, providerTaskId
       modelKey,
       providerTaskId,
       upstreamCode: code,
-      code: json?.code ?? null,
+      code: Number.isFinite(Number(json?.code)) ? Number(json?.code) : null,
       message: rawMsg,
     });
-    return { status: "failed", resultImageUrl: null, errorMessage: friendlyUpstreamError(code), resultPayload };
+    return {
+      status: "failed",
+      resultImageUrl: null,
+      errorMessage: friendlyUpstreamError(code),
+      resultPayload,
+    };
   }
   if (taskStatus === 3) {
     console.error("[generation-task] upstream detail failed", {
@@ -1533,252 +1765,338 @@ async function pollAdminPreviewProviderTask(db: BusinessDatabase, providerTaskId
       modelKey,
       providerTaskId,
       upstreamCode: Number.isFinite(code) ? code : null,
-      code: json?.code ?? null,
+      code: Number.isFinite(Number(json?.code)) ? Number(json?.code) : null,
       message: rawMsg,
     });
-    return { status: "failed", resultImageUrl: null, errorMessage: rawMsg || "任务被拒绝", resultPayload };
+    return {
+      status: "failed",
+      resultImageUrl: null,
+      errorMessage: rawMsg || "任务被拒绝",
+      resultPayload,
+    };
   }
   if (taskStatus === 2) {
     const url = extractImageUrl(json?.data) ?? extractImageUrl(json);
-    if (url) return { status: "succeeded", resultImageUrl: url, errorMessage: null, resultPayload };
-    return { status: "running", resultImageUrl: null, errorMessage: null, resultPayload: { ...resultPayload, message: rawMsg ?? "成功但URL未就绪" } };
+    if (url)
+      return {
+        status: "succeeded",
+        resultImageUrl: url,
+        errorMessage: null,
+        resultPayload,
+      };
+    return {
+      status: "running",
+      resultImageUrl: null,
+      errorMessage: null,
+      resultPayload: { ...resultPayload, message: rawMsg ?? "成功但URL未就绪" },
+    };
   }
-  return { status: "running", resultImageUrl: null, errorMessage: null, resultPayload };
+  return {
+    status: "running",
+    resultImageUrl: null,
+    errorMessage: null,
+    resultPayload,
+  };
 }
 
 // --- NEW: Dynamic upstream image generation (per-model API routing) ---
-function extractImageUrl(payload: any): string | null {
+function extractImageUrl(payload: unknown): string | null {
+  const read = (value: unknown, ...path: (string | number)[]): unknown => {
+    for (const key of path) {
+      if (value == null) return undefined;
+      value = (Object(value) as Record<string | number, unknown>)[key];
+    }
+    return value;
+  };
   if (!payload) return null;
   if (typeof payload === "string" && /^https?:\/\//i.test(payload)) return payload;
   // OpenAI style: { data: [{ url, b64_json }] }
-  const d0 = payload?.data?.[0];
-  if (d0?.url) return d0.url;
-  if (d0?.b64_json) return `data:image/png;base64,${d0.b64_json}`;
+  const d0 = read(payload, "data", 0);
+  if (read(d0, "url")) return read(d0, "url") as string;
+  if (read(d0, "b64_json")) return `data:image/png;base64,${read(d0, "b64_json")}`;
   // Common variants, including wuyinkeji async detail payloads.
   const candidates = [
-    payload?.url,
-    payload?.image_url,
-    payload?.image,
-    payload?.output,
-    payload?.result,
-    payload?.message,
-    payload?.data,
-    payload?.output?.[0],
-    payload?.images?.[0]?.url,
-    payload?.images?.[0],
-    payload?.result?.url,
-    payload?.result?.image,
-    payload?.result?.images?.[0]?.url,
-    payload?.result?.images?.[0],
-    payload?.data?.url,
-    payload?.data?.image_url,
-    payload?.data?.image,
-    payload?.data?.output,
-    payload?.data?.result,
-    payload?.data?.message,
-    payload?.data?.output?.[0],
-    payload?.data?.images?.[0]?.url,
-    payload?.data?.images?.[0],
-    payload?.data?.result?.url,
-    payload?.data?.result?.image,
-    payload?.data?.result?.images?.[0]?.url,
-    payload?.data?.result?.images?.[0],
-    payload?.data?.urls?.[0],
-    payload?.urls?.[0],
+    read(payload, "url"),
+    read(payload, "image_url"),
+    read(payload, "image"),
+    read(payload, "output"),
+    read(payload, "result"),
+    read(payload, "message"),
+    read(payload, "data"),
+    read(payload, "output", 0),
+    read(payload, "images", 0, "url"),
+    read(payload, "images", 0),
+    read(payload, "result", "url"),
+    read(payload, "result", "image"),
+    read(payload, "result", "images", 0, "url"),
+    read(payload, "result", "images", 0),
+    read(payload, "data", "url"),
+    read(payload, "data", "image_url"),
+    read(payload, "data", "image"),
+    read(payload, "data", "output"),
+    read(payload, "data", "result"),
+    read(payload, "data", "message"),
+    read(payload, "data", "output", 0),
+    read(payload, "data", "images", 0, "url"),
+    read(payload, "data", "images", 0),
+    read(payload, "data", "result", "url"),
+    read(payload, "data", "result", "image"),
+    read(payload, "data", "result", "images", 0, "url"),
+    read(payload, "data", "result", "images", 0),
+    read(payload, "data", "urls", 0),
+    read(payload, "urls", 0),
   ];
-   for (const c of candidates) {
-     if (typeof c === "string" && /^https?:\/\//i.test(c)) return c;
-   }
-   // Deep scan for any http(s) url string within payload
-   try {
-     const seen = new Set<any>();
-     const stack: any[] = [payload];
-     while (stack.length) {
-       const v = stack.pop();
-       if (!v || seen.has(v)) continue;
-        if (typeof v === "string") {
-          const embedded = v.match(/https?:\/\/[^\s"'<>\\]+(?:png|jpe?g|webp|gif|bmp)(?:\?[^\s"'<>\\]*)?/i);
-          if (embedded) return embedded[0];
-          if (/^https?:\/\/\S+$/i.test(v)) return v;
-         continue;
-       }
-       if (typeof v === "object") {
-         seen.add(v);
-         for (const k of Object.keys(v)) stack.push((v as any)[k]);
-       }
-     }
-   } catch { /* ignore */ }
-   return null;
- }
-
- // Derive the async fetch_result endpoint from the configured submit URL.
- // e.g. https://api.wuyinkeji.com/api/async/image_gpt -> https://api.wuyinkeji.com/api/async/fetch_result
- function deriveFetchResultUrl(submitUrl: string): string {
-   try {
-     const u = new URL(submitUrl);
-     const parts = u.pathname.split("/").filter(Boolean);
-     if (parts.length > 0) parts[parts.length - 1] = "fetch_result";
-     else parts.push("fetch_result");
-     u.pathname = "/" + parts.join("/");
-     u.search = "";
-     return u.toString();
-   } catch {
-     return submitUrl.replace(/\/[^/]*$/, "/fetch_result");
-   }
+  for (const c of candidates) {
+    if (typeof c === "string" && /^https?:\/\//i.test(c)) return c;
   }
-
-  // 对上游 429 / 5xx / 网络错误做一次带退避的自动重试。
-  async function fetchWithRetry(url: string, init: RequestInit, opts?: { retries?: number; backoffMs?: number }): Promise<Response> {
-    const retries = opts?.retries ?? 1;
-    const backoffMs = opts?.backoffMs ?? 800;
-    let lastErr: any = null;
-    for (let attempt = 0; attempt <= retries; attempt++) {
-      try {
-        const res = await fetch(url, init);
-        if ((res.status === 429 || res.status >= 500) && attempt < retries) {
-          await new Promise((r) => setTimeout(r, backoffMs * (attempt + 1)));
-          continue;
-        }
-        return res;
-      } catch (e) {
-        lastErr = e;
-        if (attempt < retries) {
-          await new Promise((r) => setTimeout(r, backoffMs * (attempt + 1)));
-          continue;
-        }
-        throw e;
+  // Deep scan for any http(s) url string within payload
+  try {
+    const seen = new Set<unknown>();
+    const stack: unknown[] = [payload];
+    while (stack.length) {
+      const v = stack.pop();
+      if (!v || seen.has(v)) continue;
+      if (typeof v === "string") {
+        const embedded = v.match(
+          /https?:\/\/[^\s"'<>\\]+(?:png|jpe?g|webp|gif|bmp)(?:\?[^\s"'<>\\]*)?/i,
+        );
+        if (embedded) return embedded[0];
+        if (/^https?:\/\/\S+$/i.test(v)) return v;
+        continue;
+      }
+      if (typeof v === "object") {
+        seen.add(v);
+        for (const k of Object.keys(v)) stack.push((v as Record<string, unknown>)[k]);
       }
     }
-    if (lastErr) throw lastErr;
-    throw new Error("upstream request failed");
+  } catch {
+    /* ignore */
   }
+  return null;
+}
 
-  // 生成对用户友好的统一上游错误文案，不暴露上游细节。
-  function friendlyUpstreamError(code: string | number): string {
-    return `错误代码 ${code}，模型繁忙，请稍后再试`;
+// Derive the async fetch_result endpoint from the configured submit URL.
+// e.g. https://api.wuyinkeji.com/api/async/image_gpt -> https://api.wuyinkeji.com/api/async/fetch_result
+function deriveFetchResultUrl(submitUrl: string): string {
+  try {
+    const u = new URL(submitUrl);
+    const parts = u.pathname.split("/").filter(Boolean);
+    if (parts.length > 0) parts[parts.length - 1] = "fetch_result";
+    else parts.push("fetch_result");
+    u.pathname = "/" + parts.join("/");
+    u.search = "";
+    return u.toString();
+  } catch {
+    return submitUrl.replace(/\/[^/]*$/, "/fetch_result");
   }
+}
 
-  const VALID_SIZES = new Set(["auto","1:1","2:3","16:9","9:16","4:3","3:4","21:9","9:21","1:3","3:1","1:2"]);
-
- // --- Global upstream config (Base URL + global API key) ---
- async function loadGlobalConfig(db?: BusinessDatabase): Promise<{ base_url: string; global_api_key: string | null }> {
-   const data = await (db ?? getBusinessDb(undefined)).getGlobalConfig();
-    return {
-      base_url: String((data?.base_url as string | undefined) || "https://api.wuyinkeji.com").replace(/\/+$/, ""),
-      global_api_key: (data?.global_api_key as string | undefined) ?? process.env.WUYIN_API_KEY ?? null,
-    };
- }
-
- export const adminGetGlobalConfig = createServerFn({ method: "POST" })
-   .middleware([requireSupabaseAuth])
-   .handler(async ({ context }) => {
-     await assertAdmin(context.userId);
-     return await loadGlobalConfig(getBusinessDb(context));
-   });
-
- export const adminUpdateGlobalConfig = createServerFn({ method: "POST" })
-   .middleware([requireSupabaseAuth])
-   .inputValidator((d) =>
-     z.object({
-       base_url: z.string().url().max(500),
-       global_api_key: z.string().max(500).nullable().optional(),
-     }).parse(d),
-   )
-   .handler(async ({ data, context }) => {
-     await assertAdmin(context.userId);
-     assertLovableOnlyLegacyWrite(context, "adminUpdateGlobalConfig");
-     const { error } = await supabaseAdmin
-       .from("global_config")
-       .upsert({
-         id: 1,
-         base_url: data.base_url.replace(/\/+$/, ""),
-         global_api_key: data.global_api_key ?? null,
-         updated_at: new Date().toISOString(),
-       });
-     if (error) throw new Error(error.message);
-     return { ok: true };
-   });
-
- function resolveUrl(base: string, endpoint: string): string {
-   if (/^https?:\/\//i.test(endpoint)) return endpoint;
-   const path = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
-   return `${base}${path}`;
- }
-
-  function normalizeUpstreamApiKey(targetKey: unknown): string {
-    const pureApiKey = String(targetKey ?? "").replace(/Bearer\s+/i, "").trim();
-    return pureApiKey;
-  }
-
-  function buildUpstreamHeaders(pureApiKey: string): Record<string, string> {
-    return {
-      "Content-Type": "application/json",
-      Authorization: pureApiKey,
-    };
-  }
-
-  function appendApiKeyToUrl(apiUrl: string, pureApiKey: string): string {
-    const cleanUrl = apiUrl.replace(/([?&])key=[^&]*&?/i, "$1").replace(/[?&]$/, "");
-    const joinChar = cleanUrl.includes("?") ? "&" : "?";
-    return `${cleanUrl}${joinChar}key=${pureApiKey}`;
-  }
-
-  function parseUpstreamJson(text: string): any {
+// Only read-only requests may retry; paid submissions are never automatically repeated.
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  opts?: { retries?: number; backoffMs?: number },
+): Promise<Response> {
+  const retries = ["GET", "HEAD"].includes((init.method ?? "GET").toUpperCase())
+    ? (opts?.retries ?? 1)
+    : 0;
+  const backoffMs = opts?.backoffMs ?? 800;
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      return JSON.parse(text);
+      const res = await fetch(url, init);
+      if ((res.status === 429 || res.status >= 500) && attempt < retries) {
+        await new Promise((r) => setTimeout(r, backoffMs * (attempt + 1)));
+        continue;
+      }
+      return res;
+    } catch (e) {
+      lastErr = e;
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, backoffMs * (attempt + 1)));
+        continue;
+      }
+      throw e;
+    }
+  }
+  if (lastErr) throw lastErr;
+  throw new Error("upstream request failed");
+}
+
+// 生成对用户友好的统一上游错误文案，不暴露上游细节。
+function friendlyUpstreamError(code: string | number): string {
+  return `错误代码 ${code}，模型繁忙，请稍后再试`;
+}
+
+const VALID_SIZES = new Set([
+  "auto",
+  "1:1",
+  "2:3",
+  "16:9",
+  "9:16",
+  "4:3",
+  "3:4",
+  "21:9",
+  "9:21",
+  "1:3",
+  "3:1",
+  "1:2",
+]);
+
+// --- Global upstream config (Base URL + global API key) ---
+async function loadGlobalConfig(
+  db?: BusinessDatabase,
+): Promise<{ base_url: string; global_api_key: string | null }> {
+  const data = await (db ?? getBusinessDb(undefined)).getGlobalConfig();
+  return {
+    base_url: String((data?.base_url as string | undefined) || "https://api.wuyinkeji.com").replace(
+      /\/+$/,
+      "",
+    ),
+    global_api_key: getWorkerGlobalApiKey(),
+  };
+}
+
+function getWorkerGlobalApiKey(): string | null {
+  const globals = globalThis as typeof globalThis & {
+    __SHUNTU_CLOUDFLARE_ENV__?: { WUYIN_API_KEY?: string };
+  };
+  const value =
+    globals.__SHUNTU_CLOUDFLARE_ENV__?.WUYIN_API_KEY ??
+    (typeof process !== "undefined" ? process.env?.WUYIN_API_KEY : undefined);
+  if (typeof value !== "string" || !value.trim()) return null;
+  return (
+    value
+      .trim()
+      .replace(/^Bearer\s+/i, "")
+      .trim() || null
+  );
+}
+
+export const adminGetGlobalConfig = createServerFn({ method: "POST" })
+  .middleware([requireD1Auth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context.userId);
+    const cfg = await loadGlobalConfig(getBusinessDb(context));
+    return {
+      base_url: cfg.base_url,
+      api_key_configured: Boolean(cfg.global_api_key),
+      api_key_source: cfg.global_api_key ? "server_only" : "missing",
+    };
+  });
+
+export const adminUpdateGlobalConfig = createServerFn({ method: "POST" })
+  .middleware([requireD1Auth])
+  .inputValidator((d) =>
+    z
+      .object({
+        base_url: z.string().url().max(500),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const db = getD1ConfigDb(context);
+    if (!db.updateGlobalConfig) throw new Error("D1 global config unavailable");
+    await db.updateGlobalConfig({ base_url: data.base_url });
+    return { ok: true };
+  });
+
+function resolveUrl(base: string, endpoint: string): string {
+  if (/^https?:\/\//i.test(endpoint)) return endpoint;
+  const path = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  return `${base}${path}`;
+}
+
+function normalizeUpstreamApiKey(targetKey: unknown): string {
+  const pureApiKey = String(targetKey ?? "")
+    .replace(/Bearer\s+/i, "")
+    .trim();
+  return pureApiKey;
+}
+
+function buildUpstreamHeaders(pureApiKey: string): Record<string, string> {
+  return {
+    "Content-Type": "application/json",
+    Authorization: pureApiKey,
+  };
+}
+
+function appendApiKeyToUrl(apiUrl: string, pureApiKey: string): string {
+  const cleanUrl = apiUrl.replace(/([?&])key=[^&]*&?/i, "$1").replace(/[?&]$/, "");
+  const joinChar = cleanUrl.includes("?") ? "&" : "?";
+  return `${cleanUrl}${joinChar}key=${pureApiKey}`;
+}
+
+function parseUpstreamJson(text: string): JsonValue | null {
+  try {
+    return JSON.parse(text);
+  } catch {
+    const cleaned = text
+      .replace(/```json\s*/gi, "")
+      .replace(/```/g, "")
+      .trim();
+    const start = cleaned.search(/[[{]/);
+    const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
+    if (start < 0 || end < start) return null;
+    try {
+      return JSON.parse(cleaned.slice(start, end + 1));
     } catch {
-      const cleaned = text.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
-      const start = cleaned.search(/[\[{]/);
-      const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
-      if (start < 0 || end < start) return null;
-      try { return JSON.parse(cleaned.slice(start, end + 1)); }
-      catch {
-        try {
-          return JSON.parse(
-            cleaned.slice(start, end + 1)
-              .replace(/,\s*}/g, "}")
-              .replace(/,\s*]/g, "]")
-              .replace(/[\x00-\x1F\x7F]/g, ""),
-          );
-        } catch {
-          return null;
-        }
+      try {
+        return JSON.parse(
+          cleaned
+            .slice(start, end + 1)
+            .replace(/,\s*}/g, "}")
+            .replace(/,\s*]/g, "]")
+            .split("")
+            .filter((char) => char.charCodeAt(0) > 31 && char.charCodeAt(0) !== 127)
+            .join(""),
+        );
+      } catch {
+        return null;
       }
     }
   }
+}
 
-  function parseUpstreamResponse(text: string): any {
-    const parsed = parseUpstreamJson(text);
-    const normalizeNested = (value: any): any => {
-      if (typeof value === "string" && /^[\[{]/.test(value.trim())) {
-        const nested = parseUpstreamJson(value);
-        return nested == null ? value : normalizeNested(nested);
-      }
-      if (Array.isArray(value)) return value.map(normalizeNested);
-      if (value && typeof value === "object") {
-        for (const key of Object.keys(value)) value[key] = normalizeNested(value[key]);
-      }
-      return value;
-    };
-    return normalizeNested(parsed);
-  }
+function parseUpstreamResponse(text: string): JsonValue | null {
+  const parsed = parseUpstreamJson(text);
+  const normalizeNested = (value: JsonValue): JsonValue => {
+    if (typeof value === "string" && /^[[{]/.test(value.trim())) {
+      const nested = parseUpstreamJson(value);
+      return nested == null ? value : normalizeNested(nested);
+    }
+    if (Array.isArray(value)) return value.map(normalizeNested);
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      for (const key of Object.keys(value)) value[key] = normalizeNested(value[key]);
+    }
+    return value;
+  };
+  return normalizeNested(parsed);
+}
 
 // 提交生图任务：上游提交 + 立即扣费记账，**不在服务端循环轮询**。
 // 同步模型（sync_url）直接返回 imageUrl；异步模型返回 taskId 由前端轮询 checkImageStatus。
 
 export const generateImage = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) =>
-    z.object({
-      modelKey: z.string().min(1).max(64),
-      prompt: z.string().min(1).max(4000),
-      aspectRatio: z.string().min(1).max(16).default("1:1"),
-      size: z.enum(["1K", "2K", "4K"]).default("1K"),
-      referenceImages: z.array(z.string().url().or(z.string().startsWith("data:"))).max(5).optional(),
-      styleId: z.string().max(64).optional().or(z.literal("")),
-    }).parse(d),
+    z
+      .object({
+        modelKey: z.string().min(1).max(64),
+        prompt: z.string().min(1).max(4000),
+        aspectRatio: z.string().min(1).max(16).default("1:1"),
+        size: z.enum(["1K", "2K", "4K"]).default("1K"),
+        referenceImages: z
+          .array(z.string().url().or(z.string().startsWith("data:")))
+          .max(5)
+          .optional(),
+        styleId: z.string().max(64).optional().or(z.literal("")),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
+    rejectIsolatedExternalOperation(context);
     const { userId } = context;
     const db = getBusinessDb(context);
     const cloudflareEnv = getCloudflareEnvFromServerContext(context);
@@ -1794,12 +2112,13 @@ export const generateImage = createServerFn({ method: "POST" })
       throw new Error(SAFETY_SERVER_BLOCK_MESSAGE);
     }
 
-    const { base_url, global_api_key } = await loadGlobalConfig(db);
+    const { base_url } = await loadGlobalConfig(db);
 
     const model = await getBusinessModel(db, data.modelKey, true);
     if (!model) throw new Error("模型不存在");
     if (model.is_enabled === false) throw new Error("该模型已被管理员停用");
-    if (!model.api_url && model.model_key !== FOXAPI_BACKUP_MODEL_KEY) throw new Error("该模型尚未配置 API 接口地址，请联系管理员");
+    if (!model.api_url && model.model_key !== FOXAPI_BACKUP_MODEL_KEY)
+      throw new Error("该模型尚未配置 API 接口地址，请联系管理员");
 
     const currentCredits = await db.getCredits(userId);
     if (currentCredits < Number(model.cost)) {
@@ -1819,25 +2138,26 @@ export const generateImage = createServerFn({ method: "POST" })
     // styleId 字段仅作为可选元数据保留（兼容旧客户端），不参与提示词拼接。
     const finalPrompt = data.prompt.trim();
 
-
-    const targetKey = model.model_key === FOXAPI_BACKUP_MODEL_KEY
-      ? ""
-      : normalizeUpstreamApiKey((model as any).api_key) || normalizeUpstreamApiKey(global_api_key);
-    const pureApiKey = String(targetKey).replace(/Bearer\s+/i, "").trim();
+    const targetKey =
+      model.model_key === FOXAPI_BACKUP_MODEL_KEY ? "" : getConfiguredModelApiKey(model);
+    const pureApiKey = String(targetKey)
+      .replace(/Bearer\s+/i, "")
+      .trim();
     if (!pureApiKey && model.model_key !== FOXAPI_BACKUP_MODEL_KEY) {
       throw new Error("该模型或全局接口设置尚未配置 API Key，请联系管理员");
     }
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      "Authorization": pureApiKey,
+      Authorization: pureApiKey,
     };
     const isGptImagePro = model.model_key === GPT_IMAGE_PRO_MODEL_KEY;
-    let submitUrl = model.model_key === FOXAPI_BACKUP_MODEL_KEY
-      ? ""
-      : isGptImagePro
-        ? GPT_IMAGE_PRO_VBL_GENERATIONS_URL
-        : resolveUrl(base_url, model.api_url || "");
+    const submitUrl =
+      model.model_key === FOXAPI_BACKUP_MODEL_KEY
+        ? ""
+        : isGptImagePro
+          ? GPT_IMAGE_PRO_VBL_GENERATIONS_URL
+          : resolveUrl(base_url, model.api_url || "");
 
     const size = VALID_SIZES.has(data.aspectRatio) ? data.aspectRatio : "auto";
     // 后端硬性限制：仅文生图模型不允许带参考图
@@ -1849,13 +2169,17 @@ export const generateImage = createServerFn({ method: "POST" })
     const gptImageProReferenceImages = isGptImagePro
       ? (data.referenceImages ?? []).filter((u) => /^(https?:|data:image\/)/i.test(u))
       : [];
-    const promptKey = (model as any).prompt_key || "prompt";
-    const requestFormat = (model as any).request_format || "async_id";
+    const promptKey = model.prompt_key || "prompt";
+    const requestFormat = model.request_format || "async_id";
 
     if (model.model_key === FOXAPI_BACKUP_MODEL_KEY) {
-      const result = httpRefs.length === 0
-        ? await submitFoxApiImageGenerationTask({ prompt: finalPrompt })
-        : await submitFoxApiImageEdit({ prompt: finalPrompt, imageUrl: httpRefs[0] });
+      const result =
+        httpRefs.length === 0
+          ? await submitFoxApiImageGenerationTask({ prompt: finalPrompt })
+          : await submitFoxApiImageEdit({
+              prompt: finalPrompt,
+              imageUrl: httpRefs[0],
+            });
       if (!result.ok) return failGeneration(result.message);
       return {
         success: true,
@@ -1881,15 +2205,23 @@ export const generateImage = createServerFn({ method: "POST" })
     // grok_imagine 仅支持 2:3 / 3:2 / 1:1 / 16:9 / 9:16，其他比例需就近映射
     const GROK_ALLOWED = new Set(["2:3", "3:2", "1:1", "16:9", "9:16"]);
     const GROK_FALLBACK: Record<string, string> = {
-      "3:4": "2:3", "4:3": "3:2", "4:5": "2:3", "5:4": "3:2",
-      "9:21": "9:16", "21:9": "16:9", "1:2": "9:16", "2:1": "16:9",
-      "1:3": "9:16", "3:1": "16:9", "auto": "1:1",
+      "3:4": "2:3",
+      "4:3": "3:2",
+      "4:5": "2:3",
+      "5:4": "3:2",
+      "9:21": "9:16",
+      "21:9": "16:9",
+      "1:2": "9:16",
+      "2:1": "16:9",
+      "1:3": "9:16",
+      "3:1": "16:9",
+      auto: "1:1",
     };
     const grokAspect = GROK_ALLOWED.has(data.aspectRatio)
       ? data.aspectRatio
       : (GROK_FALLBACK[data.aspectRatio] ?? "1:1");
-    const rawExtra = sanitizeUpstreamExtraParams((model as any).extra_params);
-    const substitute = (v: any): any => {
+    const rawExtra = sanitizeUpstreamExtraParams(model.extra_params);
+    const substitute = (v: JsonValue): JsonValue => {
       if (typeof v === "string") {
         const trimmed = v.trim();
         // 整个字符串就是 {{urls}} → 直接替换为数组
@@ -1904,7 +2236,7 @@ export const generateImage = createServerFn({ method: "POST" })
 
       if (Array.isArray(v)) return v.map(substitute);
       if (v && typeof v === "object") {
-        const o: Record<string, any> = {};
+        const o: Record<string, JsonValue> = {};
         for (const k of Object.keys(v)) o[k] = substitute(v[k]);
         return o;
       }
@@ -1924,7 +2256,7 @@ export const generateImage = createServerFn({ method: "POST" })
 
     // grok_imagine：带参考图时 aspect_ratio 会被上游忽略，主动清掉以降低 400 风险
     if (model.model_key === "grok_imagine" && httpRefs.length > 0) {
-      delete (extra as any).aspect_ratio;
+      delete extra.aspect_ratio;
     }
 
     let body: Record<string, unknown> = {
@@ -1950,9 +2282,11 @@ export const generateImage = createServerFn({ method: "POST" })
         referenceImageCount: gptImageProReferenceImages.length,
       });
     } else {
-      console.log("[generateImage] submit body →", JSON.stringify({ url: submitUrl, body }, null, 2));
+      console.log(
+        "[generateImage] submit body →",
+        JSON.stringify({ url: submitUrl, body }, null, 2),
+      );
     }
-
 
     let imageUrl: string | null = null;
     let taskId: string | null = null;
@@ -1977,13 +2311,17 @@ export const generateImage = createServerFn({ method: "POST" })
     if (imageUrl === null && requestFormat === "sync_url") {
       let res: Response;
       try {
-        res = await fetchWithRetry(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
-      } catch (e: any) {
+        res = await fetchWithRetry(submitUrl, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body),
+        });
+      } catch (e) {
         console.error("[generateImage] sync upstream network error", e);
         return failGeneration(friendlyUpstreamError(0));
       }
       const text = await res.text();
-      const json: any = parseUpstreamResponse(text);
+      const json = parseUpstreamResponse(text) as Record<string, JsonValue> | null;
       if (!res.ok) {
         console.error("[generateImage] sync upstream HTTP", res.status, text?.slice(0, 500));
         return failGeneration(friendlyUpstreamError(res.status));
@@ -1996,10 +2334,18 @@ export const generateImage = createServerFn({ method: "POST" })
       if (!imageUrl) return failGeneration(friendlyUpstreamError(502));
     } else if (imageUrl === null) {
       try {
-        const res = await fetchWithRetry(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
+        const res = await fetchWithRetry(submitUrl, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body),
+        });
         const text = await res.text();
-        const json = parseUpstreamResponse(text);
-        console.log("[generateImage] upstream response →", { status: res.status, ok: res.ok, body: text?.slice(0, 1000) });
+        const json = parseUpstreamResponse(text) as Record<string, JsonValue> | null;
+        console.log("[generateImage] upstream response →", {
+          status: res.status,
+          ok: res.ok,
+          body: text?.slice(0, 1000),
+        });
         if (!res.ok) {
           console.error("[generateImage] async upstream HTTP", res.status, text?.slice(0, 500));
           return failGeneration(friendlyUpstreamError(res.status));
@@ -2008,12 +2354,15 @@ export const generateImage = createServerFn({ method: "POST" })
           console.error("[generateImage] async upstream code", json?.code, json?.msg);
           return failGeneration(friendlyUpstreamError(Number(json?.code) || 500));
         }
-        taskId = json?.data?.id ?? json?.id ?? json?.task_id ?? (typeof json?.data === "string" ? json.data : null);
+        taskId = (asRecord(json?.data).id ??
+          json?.id ??
+          json?.task_id ??
+          (typeof json?.data === "string" ? json.data : null)) as string | null;
         if (!taskId) {
           console.error("[generateImage] async no taskId", text?.slice(0, 500));
           return failGeneration(friendlyUpstreamError(502));
         }
-      } catch (e: any) {
+      } catch (e) {
         console.error("[generateImage] async upstream network error", e);
         return failGeneration(friendlyUpstreamError(0));
       }
@@ -2053,44 +2402,65 @@ export const generateImage = createServerFn({ method: "POST" })
 
     return {
       success: true,
-      imageUrl,            // sync 模型直接返回，async 模型为 null
-      taskId,              // async 模型返回 taskId 供前端轮询
+      imageUrl, // sync 模型直接返回，async 模型为 null
+      taskId, // async 模型返回 taskId 供前端轮询
       historyId: syncHistoryId,
       cost: safeCost,
       credits: safeCredits,
       modelName: model.name,
     };
-
   });
 
 // 前端主动轮询的任务状态查询。运行在浏览器侧，不受 Worker 单次请求超时限制。
 export const checkImageStatus = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) =>
-    z.object({
-      taskId: z.string().min(1).max(128),
-      modelName: z.string().max(128).optional(),
-      modelKey: z.string().max(64).optional(),
-      prompt: z.string().max(4000).optional(),
-    }).parse(d),
+    z
+      .object({
+        taskId: z.string().min(1).max(128),
+        modelName: z.string().max(128).optional(),
+        modelKey: z.string().max(64).optional(),
+        prompt: z.string().max(4000).optional(),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
+    rejectIsolatedExternalOperation(context);
     const { userId } = context;
     const db = getBusinessDb(context);
     const cloudflareEnv = getCloudflareEnvFromServerContext(context);
     if (data.modelKey === FOXAPI_BACKUP_MODEL_KEY) {
       const result = await pollFoxApiTask(data.taskId);
       if (result.status === "running") {
-        return { status: "pending" as const, reason: null as null, imageUrl: null as string | null, message: result.message, code: null as number | null, taskStatus: result.providerStatus, rawMsg: result.message, debug: null as null };
+        return {
+          status: "pending" as const,
+          reason: null as null,
+          imageUrl: null as string | null,
+          message: result.message,
+          code: null as number | null,
+          taskStatus: result.providerStatus,
+          rawMsg: result.message,
+          debug: null as null,
+        };
       }
       if (result.status === "failed") {
-        const message = result.message === "FoxAPI returned base64 result, not supported yet"
-          ? "Backup model returned an unsupported result format. Please switch to another model."
-          : result.message;
-        return { status: "failed" as const, reason: "upstream" as const, imageUrl: null as string | null, message, code: null as number | null, taskStatus: result.providerStatus, rawMsg: result.message, debug: null as null };
+        const message =
+          result.message === "FoxAPI returned base64 result, not supported yet"
+            ? "Backup model returned an unsupported result format. Please switch to another model."
+            : result.message;
+        return {
+          status: "failed" as const,
+          reason: "upstream" as const,
+          imageUrl: null as string | null,
+          message,
+          code: null as number | null,
+          taskStatus: result.providerStatus,
+          rawMsg: result.message,
+          debug: null as null,
+        };
       }
       const url = result.imageUrl;
-      let historyId: string | null = null;
+      const historyId: string | null = null;
       // 上游成功返回图片后再扣费记账，避免失败也扣点
       let chargeHistoryId: string | null = null;
       if (data.modelKey && data.prompt) {
@@ -2104,10 +2474,22 @@ export const checkImageStatus = createServerFn({ method: "POST" })
           if (charge.success) {
             chargeHistoryId = charge.history_id;
           } else {
-            console.error("[foxapi-backup]", { modelKey: data.modelKey, stage: "deduction_not_charged", taskId: data.taskId, providerStatus: result.providerStatus, elapsedMs: result.elapsedMs });
+            console.error("[foxapi-backup]", {
+              modelKey: data.modelKey,
+              stage: "deduction_not_charged",
+              taskId: data.taskId,
+              providerStatus: result.providerStatus,
+              elapsedMs: result.elapsedMs,
+            });
           }
         } catch {
-          console.error("[foxapi-backup]", { modelKey: data.modelKey, stage: "deduction_exception", taskId: data.taskId, providerStatus: result.providerStatus, elapsedMs: result.elapsedMs });
+          console.error("[foxapi-backup]", {
+            modelKey: data.modelKey,
+            stage: "deduction_exception",
+            taskId: data.taskId,
+            providerStatus: result.providerStatus,
+            elapsedMs: result.elapsedMs,
+          });
         }
       }
       const archivedUrl = await archiveSuccessfulImageUrl(url, {
@@ -2125,7 +2507,17 @@ export const checkImageStatus = createServerFn({ method: "POST" })
           historyId: chargeHistoryId,
         });
       }
-      return { status: "success" as const, reason: null as null, imageUrl: archivedUrl, historyId, message: null as string | null, code: null as number | null, taskStatus: result.providerStatus, rawMsg: null as string | null, debug: null as null };
+      return {
+        status: "success" as const,
+        reason: null as null,
+        imageUrl: archivedUrl,
+        historyId,
+        message: null as string | null,
+        code: null as number | null,
+        taskStatus: result.providerStatus,
+        rawMsg: null as string | null,
+        debug: null as null,
+      };
     }
 
     const { global_api_key } = await loadGlobalConfig(db);
@@ -2137,31 +2529,72 @@ export const checkImageStatus = createServerFn({ method: "POST" })
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": pureApiKey,
+        Authorization: pureApiKey,
       },
     });
     const t = await r.text();
-    const j = parseUpstreamResponse(t);
+    const j = parseUpstreamResponse(t) as Record<string, JsonValue> | null;
 
-    const rawMsg: string | null = j?.msg ?? j?.message ?? null;
-    const rawDebug = j?.debug ?? j?.data?.debug ?? null;
-    const taskStatus = Number.isFinite(Number(j?.data?.status)) ? Number(j?.data?.status) : null;
+    const rawMsg = (j?.msg ?? j?.message ?? null) as string | null;
+    const rawDebug = j?.debug ?? asRecord(j?.data).debug ?? null;
+    const taskStatus = Number.isFinite(Number(asRecord(j?.data).status))
+      ? Number(asRecord(j?.data).status)
+      : null;
 
     if (!r.ok) {
-      return { status: "pending" as const, reason: null as null, imageUrl: null as string | null, message: `HTTP ${r.status}`, code: r.status, taskStatus, rawMsg, debug: rawDebug };
+      return {
+        status: "pending" as const,
+        reason: null as null,
+        imageUrl: null as string | null,
+        message: `HTTP ${r.status}`,
+        code: r.status,
+        taskStatus,
+        rawMsg,
+        debug: rawDebug,
+      };
     }
     const code = Number(j?.code);
     if (code >= 400) {
       console.error("[checkImageStatus] upstream code", code, rawMsg);
-      return { status: "failed" as const, reason: "upstream" as const, imageUrl: null as string | null, message: friendlyUpstreamError(code), code, taskStatus, rawMsg, debug: rawDebug };
+      return {
+        status: "failed" as const,
+        reason: "upstream" as const,
+        imageUrl: null as string | null,
+        message: friendlyUpstreamError(code),
+        code,
+        taskStatus,
+        rawMsg,
+        debug: rawDebug,
+      };
     }
     if (taskStatus === 3) {
-      const detailMsg: string = String(j?.data?.message ?? rawMsg ?? "");
-      const isRefUrlIssue = /参考图|垫图|图片.*(下载|读取|获取|无法|失败|超时)|url.*(download|fetch|timeout|not.*found|404)|download.*image|fetch.*image/i.test(detailMsg);
+      const detailMsg: string = String(asRecord(j?.data).message ?? rawMsg ?? "");
+      const isRefUrlIssue =
+        /参考图|垫图|图片.*(下载|读取|获取|无法|失败|超时)|url.*(download|fetch|timeout|not.*found|404)|download.*image|fetch.*image/i.test(
+          detailMsg,
+        );
       if (isRefUrlIssue) {
-        return { status: "failed" as const, reason: "ref_url" as const, imageUrl: null as string | null, message: detailMsg || "参考图读取失败，请检查链接是否为公开的 HTTPS 链接", code, taskStatus, rawMsg, debug: rawDebug };
+        return {
+          status: "failed" as const,
+          reason: "ref_url" as const,
+          imageUrl: null as string | null,
+          message: detailMsg || "参考图读取失败，请检查链接是否为公开的 HTTPS 链接",
+          code,
+          taskStatus,
+          rawMsg,
+          debug: rawDebug,
+        };
       }
-      return { status: "failed" as const, reason: "rejected" as const, imageUrl: null as string | null, message: detailMsg || "任务被拒绝", code, taskStatus, rawMsg, debug: rawDebug };
+      return {
+        status: "failed" as const,
+        reason: "rejected" as const,
+        imageUrl: null as string | null,
+        message: detailMsg || "任务被拒绝",
+        code,
+        taskStatus,
+        rawMsg,
+        debug: rawDebug,
+      };
     }
 
     if (taskStatus === 2) {
@@ -2180,11 +2613,22 @@ export const checkImageStatus = createServerFn({ method: "POST" })
             if (charge.success) {
               chargeHistoryId = charge.history_id;
             } else {
-              console.error("[checkImageStatus] 扣费返回失败", { message: charge.message });
+              console.error("[checkImageStatus] 扣费返回失败", {
+                message: charge.message,
+              });
             }
           } catch (e) {
             console.error("[checkImageStatus] 扣费异常", e);
-            return { status: "failed" as const, reason: "deduction" as const, imageUrl: null as string | null, message: "扣费失败，请稍后重试", code, taskStatus, rawMsg, debug: rawDebug };
+            return {
+              status: "failed" as const,
+              reason: "deduction" as const,
+              imageUrl: null as string | null,
+              message: "扣费失败，请稍后重试",
+              code,
+              taskStatus,
+              rawMsg,
+              debug: rawDebug,
+            };
           }
         }
         const archivedUrl = await archiveSuccessfulImageUrl(url, {
@@ -2202,39 +2646,64 @@ export const checkImageStatus = createServerFn({ method: "POST" })
             historyId: chargeHistoryId,
           });
         }
-        return { status: "success" as const, reason: null as null, imageUrl: archivedUrl, historyId: chargeHistoryId, message: null as string | null, code, taskStatus, rawMsg, debug: rawDebug };
+        return {
+          status: "success" as const,
+          reason: null as null,
+          imageUrl: archivedUrl,
+          historyId: chargeHistoryId,
+          message: null as string | null,
+          code,
+          taskStatus,
+          rawMsg,
+          debug: rawDebug,
+        };
       }
-      return { status: "pending" as const, reason: null as null, imageUrl: null as string | null, message: "成功但URL未就绪", code, taskStatus, rawMsg, debug: rawDebug };
+      return {
+        status: "pending" as const,
+        reason: null as null,
+        imageUrl: null as string | null,
+        message: "成功但URL未就绪",
+        code,
+        taskStatus,
+        rawMsg,
+        debug: rawDebug,
+      };
     }
-    return { status: "pending" as const, reason: null as null, imageUrl: null as string | null, message: `处理中 status=${j?.data?.status ?? "?"}`, code, taskStatus, rawMsg, debug: rawDebug };
+    return {
+      status: "pending" as const,
+      reason: null as null,
+      imageUrl: null as string | null,
+      message: `处理中 status=${asRecord(j?.data).status ?? "?"}`,
+      code,
+      taskStatus,
+      rawMsg,
+      debug: rawDebug,
+    };
   });
-
 
 // --- Role check ---
 export const checkIsAdmin = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .handler(async ({ context }) => {
-    const { data } = await supabaseAdmin
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", context.userId)
-      .in("role", ["admin", "founder"]);
-    const roles = (data ?? []).map((r: any) => r.role);
+    const data = (await rolesFor(context.userId))
+      .filter((role) => ["admin", "founder"].includes(role))
+      .map((role) => ({ role }));
+    const roles = (data ?? []).map((r) => r.role);
     return {
       isAdmin: roles.length > 0,
       isFounder: roles.includes("founder"),
     };
   });
 
-
 // --- Analytics ---
 export const adminGetAnalytics = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
     const { startUtc, endUtc } = getBeijingDayRange();
     const db = getBusinessDb(context);
-    if (db.primary !== "d1" || !db.getAdminAnalyticsData) throw new Error("admin analytics requires D1 primary");
+    if (db.primary !== "d1" || !db.getAdminAnalyticsData)
+      throw new Error("admin analytics requires D1 primary");
     const analytics = await db.getAdminAnalyticsData({ startUtc, endUtc });
 
     return {
@@ -2279,7 +2748,7 @@ function assertHttpPurchaseUrl(purchaseUrl: string | null | undefined) {
   return trimmed;
 }
 
-function mapRechargePackage(row: any) {
+function mapRechargePackage(row: Omit<RechargePackage, "features"> & { features: unknown }) {
   const configuredPackage = getConfiguredRechargePackage(String(row.id));
   const isConfiguredVersion = Boolean(
     configuredPackage &&
@@ -2325,28 +2794,25 @@ const rechargePackageInput = z.object({
   purchaseUrl: z.string().max(1000).nullable().optional(),
 });
 
-export const listVisibleRechargePackages = createServerFn({ method: "GET" })
-  .handler(async ({ context }) => {
-    const db = getBusinessDb(context);
-    const rows = await db.listRechargePackages();
-    return rows.map(mapRechargePackage);
-  });
+export const listVisibleRechargePackages = createServerFn({
+  method: "GET",
+}).handler(async ({ context }) => {
+  const db = getBusinessDb(context);
+  const rows = await db.listRechargePackages();
+  return rows.map((row) => mapRechargePackage(row));
+});
 
 export const listAdminRechargePackages = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
-    const { data, error } = await (supabaseAdmin as any)
-      .from("recharge_packages")
-      .select("*")
-      .order("sort_order", { ascending: true })
-      .order("created_at", { ascending: true });
-    if (error) throw new Error(error.message);
-    return (data ?? []).map(mapRechargePackage);
+    const db = getBusinessDb(context);
+    if (db.primary !== "d1") throw new Error("admin packages require D1 primary");
+    return (await db.listRechargePackages({ includeHidden: true })).map(mapRechargePackage);
   });
 
 export const upsertAdminRechargePackage = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) => rechargePackageInput.parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
@@ -2377,7 +2843,7 @@ export const upsertAdminRechargePackage = createServerFn({ method: "POST" })
   });
 
 export const hideAdminRechargePackage = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
@@ -2386,7 +2852,7 @@ export const hideAdminRechargePackage = createServerFn({ method: "POST" })
   });
 
 export const deleteAdminRechargePackage = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
@@ -2395,52 +2861,63 @@ export const deleteAdminRechargePackage = createServerFn({ method: "POST" })
   });
 
 // --- Ads ---
-export const listActiveAds = createServerFn({ method: "GET" })
-  .handler(async ({ context }) => {
-    const db = getBusinessDb(context);
-    const rows = await db.listAds();
-    return rows
-      .filter((row) => Boolean(row.is_active))
-      .map((row) => ({
-        id: String(row.id ?? ""),
-        title: String(row.title ?? ""),
-        link_url: (row.link_url ?? null) as string | null,
-        sort_order: Number(row.sort_order ?? 0),
-      }));
-  });
+export const listActiveAds = createServerFn({ method: "GET" }).handler(async ({ context }) => {
+  const db = getBusinessDb(context);
+  const rows = await db.listAds();
+  return rows
+    .filter((row) => Boolean(row.is_active))
+    .map((row) => ({
+      id: String(row.id ?? ""),
+      title: String(row.title ?? ""),
+      link_url: (row.link_url ?? null) as string | null,
+      sort_order: Number(row.sort_order ?? 0),
+    }));
+});
 
 export const adminListAds = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
-    const { data, error } = await supabaseAdmin
-      .from("ads")
-      .select("*")
-      .order("sort_order", { ascending: true })
-      .order("created_at", { ascending: false });
-    if (error) throw new Error(error.message);
-    return data ?? [];
+    const db = getBusinessDb(context);
+    if (db.primary !== "d1") throw new Error("admin ads require D1 primary");
+    return (await db.listAds()).map((row) => ({
+      id: String(row.id ?? ""),
+      title: String(row.title ?? ""),
+      link_url: row.link_url == null ? null : String(row.link_url),
+      is_active: Boolean(row.is_active),
+      sort_order: Number(row.sort_order ?? 0),
+      created_at: String(row.created_at ?? ""),
+      updated_at: String(row.updated_at ?? ""),
+    }));
   });
 
 export const adminUpsertAd = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) =>
-    z.object({
-      id: z.string().uuid().optional(),
-      title: z.string().min(1).max(200),
-      link_url: z.string().max(500).nullable().optional(),
-      is_active: z.boolean(),
-      sort_order: z.number().int().min(0).max(9999),
-    }).parse(d),
+    z
+      .object({
+        id: z.string().uuid().optional(),
+        title: z.string().min(1).max(200),
+        link_url: z.string().max(500).nullable().optional(),
+        is_active: z.boolean(),
+        sort_order: z.number().int().min(0).max(9999),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    await getD1ConfigDb(context).upsertAd({ id: data.id, title: data.title, link_url: data.link_url ?? null, is_active: data.is_active, sort_order: data.sort_order });
+    await getD1ConfigDb(context).upsertAd({
+      id: data.id,
+      title: data.title,
+      link_url: data.link_url ?? null,
+      is_active: data.is_active,
+      sort_order: data.sort_order,
+    });
     return { ok: true };
   });
 
 export const adminDeleteAd = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
@@ -2450,12 +2927,16 @@ export const adminDeleteAd = createServerFn({ method: "POST" })
 
 // --- Announcements / 公告通知 ---
 export const listAnnouncements = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .handler(async ({ context }) => {
     const db = getBusinessDb(context);
     return (await db.listAnnouncements())
       .filter((row) => Boolean(row.is_published))
-      .sort((a, b) => Number(Boolean(b.is_pinned)) - Number(Boolean(a.is_pinned)) || String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))
+      .sort(
+        (a, b) =>
+          Number(Boolean(b.is_pinned)) - Number(Boolean(a.is_pinned)) ||
+          String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")),
+      )
       .slice(0, 50)
       .map((row) => ({
         id: String(row.id ?? ""),
@@ -2471,32 +2952,48 @@ export const listAnnouncements = createServerFn({ method: "POST" })
   });
 
 export const adminListAnnouncements = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
-    const { data, error } = await supabaseAdmin
-      .from("announcements")
-      .select("*")
-      .order("is_pinned", { ascending: false })
-      .order("created_at", { ascending: false });
-    if (error) throw new Error(error.message);
-    return data ?? [];
+    const db = getBusinessDb(context);
+    if (db.primary !== "d1") throw new Error("admin announcements require D1 primary");
+    return (await db.listAnnouncements())
+      .map((row) => ({
+        id: String(row.id ?? ""),
+        title: String(row.title ?? ""),
+        content: String(row.content ?? ""),
+        type: String(row.type ?? "info"),
+        image_url: row.image_url == null ? null : String(row.image_url),
+        link_url: row.link_url == null ? null : String(row.link_url),
+        link_label: row.link_label == null ? null : String(row.link_label),
+        is_pinned: Boolean(row.is_pinned),
+        is_published: Boolean(row.is_published),
+        created_at: String(row.created_at ?? ""),
+        updated_at: String(row.updated_at ?? ""),
+      }))
+      .sort(
+        (a, b) =>
+          Number(Boolean(b.is_pinned)) - Number(Boolean(a.is_pinned)) ||
+          String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")),
+      );
   });
 
 export const adminUpsertAnnouncement = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) =>
-    z.object({
-      id: z.string().uuid().optional(),
-      title: z.string().min(1).max(200),
-      content: z.string().max(5000).default(""),
-      type: z.enum(["info", "success", "warning", "promo"]).default("info"),
-      image_url: z.string().max(1000).nullable().optional(),
-      link_url: z.string().max(1000).nullable().optional(),
-      link_label: z.string().max(100).nullable().optional(),
-      is_pinned: z.boolean().default(false),
-      is_published: z.boolean().default(true),
-    }).parse(d),
+    z
+      .object({
+        id: z.string().uuid().optional(),
+        title: z.string().min(1).max(200),
+        content: z.string().max(5000).default(""),
+        type: z.enum(["info", "success", "warning", "promo"]).default("info"),
+        image_url: z.string().max(1000).nullable().optional(),
+        link_url: z.string().max(1000).nullable().optional(),
+        link_label: z.string().max(100).nullable().optional(),
+        is_pinned: z.boolean().default(false),
+        is_published: z.boolean().default(true),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
@@ -2510,12 +3007,15 @@ export const adminUpsertAnnouncement = createServerFn({ method: "POST" })
       is_pinned: data.is_pinned,
       is_published: data.is_published,
     };
-    await getD1ConfigDb(context).upsertAnnouncement({ ...payload, id: data.id });
+    await getD1ConfigDb(context).upsertAnnouncement({
+      ...payload,
+      id: data.id,
+    });
     return { ok: true };
   });
 
 export const adminDeleteAnnouncement = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
@@ -2525,66 +3025,31 @@ export const adminDeleteAnnouncement = createServerFn({ method: "POST" })
 
 // --- Founder: Admin role management ---
 export const founderListAdmins = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .handler(async ({ context }) => {
     await assertFounder(context.userId);
-    const { data: roles, error } = await supabaseAdmin
-      .from("user_roles")
-      .select("user_id, role, created_at")
-      .in("role", ["admin", "founder"]);
-    if (error) throw new Error(error.message);
-    const ids = (roles ?? []).map((r: any) => r.user_id);
-    if (ids.length === 0) return [];
-    const { data: profiles } = await supabaseAdmin
-      .from("profiles")
-      .select("id, email, display_name")
-      .in("id", ids);
-    const pmap = new Map((profiles ?? []).map((p: any) => [p.id, p]));
-    return (roles ?? []).map((r: any) => ({
-      user_id: r.user_id,
-      role: r.role,
-      created_at: r.created_at,
-      email: pmap.get(r.user_id)?.email ?? null,
-      display_name: pmap.get(r.user_id)?.display_name ?? null,
-    }));
+    return listAdminIdentities();
   });
 
 export const founderAddAdmin = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) => z.object({ email: z.string().trim().email() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertFounder(context.userId);
-    const { data: prof, error: e1 } = await supabaseAdmin
-      .from("profiles")
-      .select("id, email")
-      .ilike("email", data.email)
-      .maybeSingle();
-    if (e1) throw new Error(e1.message);
-    if (!prof) throw new Error("找不到该邮箱用户，请确认对方已注册");
-    const { error } = await supabaseAdmin
-      .from("user_roles")
-      .insert({ user_id: prof.id, role: "admin" as any });
-    if (error && !error.message.includes("duplicate")) throw new Error(error.message);
-    return { ok: true, email: prof.email };
+    return addAdminIdentity(data.email);
   });
 
 export const founderRemoveAdmin = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) => z.object({ userId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertFounder(context.userId);
-    const { error } = await supabaseAdmin
-      .from("user_roles")
-      .delete()
-      .eq("user_id", data.userId)
-      .eq("role", "admin");
-    if (error) throw new Error(error.message);
-    return { ok: true };
+    return removeAdminIdentity(data.userId);
   });
 
 // --- Backend access password ---
 export const verifyAdminAccessPassword = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) => z.object({ password: z.string().min(1).max(200) }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
@@ -2595,25 +3060,30 @@ export const verifyAdminAccessPassword = createServerFn({ method: "POST" })
   });
 
 export const founderGetAccessPassword = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .handler(async ({ context }) => {
     await assertFounder(context.userId);
     const data = await getBusinessDb(context).getAdminSettings();
-    return { password: data?.access_password ?? "888888", updated_at: data?.updated_at ?? null };
+    return {
+      password: data?.access_password ?? "888888",
+      updated_at: data?.updated_at ?? null,
+    };
   });
 
 export const founderSetAccessPassword = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) => z.object({ password: z.string().min(1).max(200) }).parse(d))
   .handler(async ({ data, context }) => {
     await assertFounder(context.userId);
-    await getD1ConfigDb(context).updateAdminSettings({ access_password: data.password.trim() });
+    await getD1ConfigDb(context).updateAdminSettings({
+      access_password: data.password.trim(),
+    });
     return { ok: true };
   });
 
 // --- Style templates & system prompt ---
 export const listStyleTemplates = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .handler(async ({ context }) => {
     const db = getBusinessDb(context);
     return (await db.listStyleTemplates()).map((row) => ({
@@ -2625,26 +3095,35 @@ export const listStyleTemplates = createServerFn({ method: "POST" })
   });
 
 export const adminListStyleTemplates = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
-    const { data, error } = await supabaseAdmin
-      .from("style_templates")
-      .select("id, name, prompt, image_url, sort_order, updated_at")
-      .order("sort_order", { ascending: true });
-    if (error) throw new Error(error.message);
-    return data ?? [];
+    const db = getBusinessDb(context);
+    if (db.primary !== "d1") throw new Error("admin style templates require D1 primary");
+    return (await db.listStyleTemplates())
+      .map((row) => ({
+        id: String(row.id ?? ""),
+        name: String(row.name ?? ""),
+        prompt: String(row.prompt ?? ""),
+        image_url: row.image_url == null ? null : String(row.image_url),
+        sort_order: Number(row.sort_order ?? 0),
+        created_at: String(row.created_at ?? ""),
+        updated_at: String(row.updated_at ?? ""),
+      }))
+      .sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0));
   });
 
 export const adminUpdateStyleTemplate = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) =>
-    z.object({
-      id: z.string().min(1).max(64),
-      name: z.string().min(1).max(64).optional(),
-      prompt: z.string().max(4000).optional(),
-      image_url: z.string().max(1000).nullable().optional(),
-    }).parse(d),
+    z
+      .object({
+        id: z.string().min(1).max(64),
+        name: z.string().min(1).max(64).optional(),
+        prompt: z.string().max(4000).optional(),
+        image_url: z.string().max(1000).nullable().optional(),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
@@ -2654,25 +3133,34 @@ export const adminUpdateStyleTemplate = createServerFn({ method: "POST" })
   });
 
 export const adminCreateStyleTemplate = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) =>
-    z.object({
-      name: z.string().min(1).max(64),
-      prompt: z.string().max(4000).optional().default(""),
-      image_url: z.string().max(1000).nullable().optional(),
-    }).parse(d),
+    z
+      .object({
+        name: z.string().min(1).max(64),
+        prompt: z.string().max(4000).optional().default(""),
+        image_url: z.string().max(1000).nullable().optional(),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
     const id = `tpl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
     const templates = await getBusinessDb(context).listStyleTemplates();
-    const sort_order = (Math.max(0, ...templates.map((row) => Number(row.sort_order ?? 0))) || 0) + 10;
-    await getD1ConfigDb(context).createStyleTemplate({ id, name: data.name, prompt: data.prompt ?? "", image_url: data.image_url ?? null, sort_order });
+    const sort_order =
+      (Math.max(0, ...templates.map((row) => Number(row.sort_order ?? 0))) || 0) + 10;
+    await getD1ConfigDb(context).createStyleTemplate({
+      id,
+      name: data.name,
+      prompt: data.prompt ?? "",
+      image_url: data.image_url ?? null,
+      sort_order,
+    });
     return { ok: true, id };
   });
 
 export const adminDeleteStyleTemplate = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) => z.object({ id: z.string().min(1).max(64) }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
@@ -2681,83 +3169,104 @@ export const adminDeleteStyleTemplate = createServerFn({ method: "POST" })
   });
 
 export const adminGetSystemPrompt = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
     const data = await getBusinessDb(context).getAdminSettings();
-    return { system_prompt: data?.system_prompt ?? "", updated_at: data?.updated_at ?? null };
+    return {
+      system_prompt: data?.system_prompt ?? "",
+      updated_at: data?.updated_at ?? null,
+    };
   });
 
 export const adminSetSystemPrompt = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) => z.object({ system_prompt: z.string().max(4000) }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    await getD1ConfigDb(context).updateAdminSettings({ system_prompt: data.system_prompt });
+    await getD1ConfigDb(context).updateAdminSettings({
+      system_prompt: data.system_prompt,
+    });
     return { ok: true };
   });
 
 export const adminGetImagePreviewMode = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
     const data = await getBusinessDb(context).getAdminSettings();
     const mode = data?.image_preview_mode;
     return {
-      image_preview_mode: mode === "auto" || mode === "preview_only" || mode === "original_only" ? mode : "original_only",
+      image_preview_mode:
+        mode === "auto" || mode === "preview_only" || mode === "original_only"
+          ? mode
+          : "original_only",
       updated_at: data?.updated_at ?? null,
     } as { image_preview_mode: ImagePreviewMode; updated_at: string | null };
   });
 
 export const adminSetImagePreviewMode = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ image_preview_mode: z.enum(["auto", "preview_only", "original_only"]) }).parse(d))
+  .middleware([requireD1Auth])
+  .inputValidator((d) =>
+    z
+      .object({
+        image_preview_mode: z.enum(["auto", "preview_only", "original_only"]),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    await getD1ConfigDb(context).updateAdminSettings({ image_preview_mode: data.image_preview_mode });
+    await getD1ConfigDb(context).updateAdminSettings({
+      image_preview_mode: data.image_preview_mode,
+    });
     return { ok: true };
   });
 
 // Public: anyone (including unauthenticated) can fetch contact info to display
-export const getContactInfo = createServerFn({ method: "GET" })
-  .handler(async ({ context }) => {
-    const data = await getBusinessDb(context).getAdminSettings();
-    return {
-      wechat: ((data as any)?.contact_wechat ?? "") as string,
-      qq: ((data as any)?.contact_qq ?? "") as string,
-    };
-  });
+export const getContactInfo = createServerFn({ method: "GET" }).handler(async ({ context }) => {
+  const data = await getBusinessDb(context).getAdminSettings();
+  return {
+    wechat: (data?.contact_wechat ?? "") as string,
+    qq: (data?.contact_qq ?? "") as string,
+  };
+});
 
 export const adminGetContactInfo = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
     const data = await getBusinessDb(context).getAdminSettings();
     return {
-      wechat: ((data as any)?.contact_wechat ?? "") as string,
-      qq: ((data as any)?.contact_qq ?? "") as string,
-      updated_at: (data as any)?.updated_at ?? null,
+      wechat: (data?.contact_wechat ?? "") as string,
+      qq: (data?.contact_qq ?? "") as string,
+      updated_at: data?.updated_at ?? null,
     };
   });
 
 export const adminSetContactInfo = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) =>
-    z.object({
-      wechat: z.string().max(120).default(""),
-      qq: z.string().max(120).default(""),
-    }).parse(d),
+    z
+      .object({
+        wechat: z.string().max(120).default(""),
+        qq: z.string().max(120).default(""),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    await getD1ConfigDb(context).updateAdminSettings({ contact_wechat: data.wechat.trim(), contact_qq: data.qq.trim() });
+    await getD1ConfigDb(context).updateAdminSettings({
+      contact_wechat: data.wechat.trim(),
+      contact_qq: data.qq.trim(),
+    });
     return { ok: true };
   });
 
 // Generate a random creative prompt from local templates. No external AI Gateway credits required.
 export const generateRandomPrompt = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .handler(async () => {
+  .middleware([requireD1Auth])
+  .handler(async ({ context }) => {
+    rejectIsolatedExternalOperation(context);
     const pick = (items: readonly string[]) =>
       items[Math.floor(Math.random() * items.length)] ?? items[0] ?? "";
 
@@ -2814,84 +3323,144 @@ export const generateRandomPrompt = createServerFn({ method: "POST" })
       "构图有留白，方便后期添加标题和卖点文案",
     ] as const;
 
-    const prompt = [
-      pick(subjects),
-      pick(scenes),
-      pick(lighting),
-      pick(camera),
-      pick(colors),
-      pick(details),
-    ].join("，") + "。";
+    const prompt =
+      [
+        pick(subjects),
+        pick(scenes),
+        pick(lighting),
+        pick(camera),
+        pick(colors),
+        pick(details),
+      ].join("，") + "。";
 
     return { prompt };
   });
 
 export const adminTestModel = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireD1Auth])
   .inputValidator((d) =>
-    z.object({
-      modelKey: z.string().min(1).max(64),
-      prompt: z.string().min(1).max(500).optional(),
-    }).parse(d),
+    z
+      .object({
+        modelKey: z.string().min(1).max(64),
+        prompt: z.string().min(1).max(500).optional(),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
+    rejectIsolatedExternalOperation(context);
     const startedAt = Date.now();
     await assertAdmin(context.userId);
     const db = getBusinessDb(context);
 
-    const { base_url, global_api_key } = await loadGlobalConfig(db);
+    const { base_url } = await loadGlobalConfig(db);
     const model = await getBusinessModel(db, data.modelKey, true);
     if (!model) throw new Error("模型不存在");
-    if ((model as any).model_key === FOXAPI_BACKUP_MODEL_KEY) {
-      const extraParams = sanitizeUpstreamExtraParams((model as any).extra_params) as Record<string, unknown>;
-      const testImageUrl = [extraParams.testImageUrl, extraParams.test_image_url, extraParams.referenceImageUrl, extraParams.reference_image_url]
-        .find((value): value is string => typeof value === "string" && /^https?:\/\//i.test(value));
+    if (model.model_key === FOXAPI_BACKUP_MODEL_KEY) {
+      const extraParams = sanitizeUpstreamExtraParams(model.extra_params) as Record<
+        string,
+        unknown
+      >;
+      const testImageUrl = [
+        extraParams.testImageUrl,
+        extraParams.test_image_url,
+        extraParams.referenceImageUrl,
+        extraParams.reference_image_url,
+      ].find((value): value is string => typeof value === "string" && /^https?:\/\//i.test(value));
       if (!testImageUrl) {
-        return { ok: false, stage: "config", message: "Backup model test requires extra_params.testImageUrl.", elapsedMs: Date.now() - startedAt, imageUrl: null as string | null };
+        return {
+          ok: false,
+          stage: "config",
+          message: "Backup model test requires extra_params.testImageUrl.",
+          elapsedMs: Date.now() - startedAt,
+          imageUrl: null as string | null,
+        };
       }
-      const submit = await submitFoxApiImageEdit({ prompt: (data.prompt && data.prompt.trim()) || "a high quality product photo edit", imageUrl: testImageUrl });
+      const submit = await submitFoxApiImageEdit({
+        prompt: (data.prompt && data.prompt.trim()) || "a high quality product photo edit",
+        imageUrl: testImageUrl,
+      });
       if (!submit.ok) {
-        return { ok: false, stage: "submit", message: submit.message, elapsedMs: Date.now() - startedAt, imageUrl: null as string | null };
+        return {
+          ok: false,
+          stage: "submit",
+          message: submit.message,
+          elapsedMs: Date.now() - startedAt,
+          imageUrl: null as string | null,
+        };
       }
       const deadline = Date.now() + 300_000;
       while (Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 2500));
         const poll = await pollFoxApiTask(submit.taskId);
         if (poll.status === "succeeded") {
-          return { ok: true, stage: "result", message: "Test succeeded", elapsedMs: Date.now() - startedAt, imageUrl: poll.imageUrl };
+          return {
+            ok: true,
+            stage: "result",
+            message: "Test succeeded",
+            elapsedMs: Date.now() - startedAt,
+            imageUrl: poll.imageUrl,
+          };
         }
         if (poll.status === "failed") {
-          return { ok: false, stage: "result", message: poll.message, elapsedMs: Date.now() - startedAt, imageUrl: null as string | null };
+          return {
+            ok: false,
+            stage: "result",
+            message: poll.message,
+            elapsedMs: Date.now() - startedAt,
+            imageUrl: null as string | null,
+          };
         }
       }
-      return { ok: false, stage: "timeout", message: `Task submitted (taskId=${submit.taskId}), but did not complete within 300 seconds`, elapsedMs: Date.now() - startedAt, imageUrl: null as string | null };
+      return {
+        ok: false,
+        stage: "timeout",
+        message: `Task submitted (taskId=${submit.taskId}), but did not complete within 300 seconds`,
+        elapsedMs: Date.now() - startedAt,
+        imageUrl: null as string | null,
+      };
     }
     if (!model.api_url) {
-      return { ok: false, stage: "config", message: "未配置 API 接口地址", elapsedMs: Date.now() - startedAt, imageUrl: null as string | null };
+      return {
+        ok: false,
+        stage: "config",
+        message: "未配置 API 接口地址",
+        elapsedMs: Date.now() - startedAt,
+        imageUrl: null as string | null,
+      };
     }
 
-    const targetKey = normalizeUpstreamApiKey((model as any).api_key) || normalizeUpstreamApiKey(global_api_key);
-    const pureApiKey = String(targetKey).replace(/Bearer\s+/i, "").trim();
+    const targetKey = getConfiguredModelApiKey(model);
+    const pureApiKey = String(targetKey)
+      .replace(/Bearer\s+/i, "")
+      .trim();
     if (!pureApiKey) {
-      return { ok: false, stage: "config", message: "未配置该模型或全局 API Key", elapsedMs: Date.now() - startedAt, imageUrl: null };
+      return {
+        ok: false,
+        stage: "config",
+        message: "未配置该模型或全局 API Key",
+        elapsedMs: Date.now() - startedAt,
+        imageUrl: null,
+      };
     }
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      "Authorization": pureApiKey,
+      Authorization: pureApiKey,
     };
     const isGptImagePro = model.model_key === GPT_IMAGE_PRO_MODEL_KEY;
     const submitUrl = isGptImagePro
       ? GPT_IMAGE_PRO_VBL_GENERATIONS_URL
-      : resolveUrl(base_url, model.api_url);
-    const promptKey = (model as any).prompt_key || "prompt";
-    const requestFormat = (model as any).request_format || "async_id";
-    const testPrompt = (data.prompt && data.prompt.trim()) || "a cute orange tabby kitten sitting in a sunny garden, soft natural light, high detail";
+      : resolveUrl(base_url, model.api_url!);
+    const promptKey = model.prompt_key || "prompt";
+    const requestFormat = model.request_format || "async_id";
+    const testPrompt =
+      (data.prompt && data.prompt.trim()) ||
+      "a cute orange tabby kitten sitting in a sunny garden, soft natural light, high detail";
 
     // 占位符替换（同 generateImage 的精简版，不带参考图）
     const WAN_SIZE_MAP: Record<string, string> = { "1:1": "1280*1280" };
     const wanSize = WAN_SIZE_MAP["1:1"];
-    const substitute = (v: any): any => {
+    const substitute = (v: JsonValue): JsonValue => {
       if (typeof v === "string") {
         return v
           .replace(/\{\{\s*wan_size\s*\}\}/g, wanSize)
@@ -2903,26 +3472,29 @@ export const adminTestModel = createServerFn({ method: "POST" })
       }
       if (Array.isArray(v)) return v.map(substitute);
       if (v && typeof v === "object") {
-        const o: Record<string, any> = {};
+        const o: Record<string, JsonValue> = {};
         for (const k of Object.keys(v)) o[k] = substitute(v[k]);
         return o;
       }
       return v;
     };
-    const extra = substitute(sanitizeUpstreamExtraParams((model as any).extra_params)) as Record<string, unknown>;
+    const extra = substitute(sanitizeUpstreamExtraParams(model.extra_params)) as Record<
+      string,
+      unknown
+    >;
     // 清掉空字符串占位（urls）
     for (const k of Object.keys(extra)) {
-      if (extra[k] === "" || (Array.isArray(extra[k]) && (extra[k] as any[]).length === 0)) {
+      if (extra[k] === "" || (Array.isArray(extra[k]) && (extra[k] as JsonValue[]).length === 0)) {
         delete extra[k];
       }
     }
     const body: Record<string, unknown> = isGptImagePro
       ? buildGptImageProProviderPayload({
-        prompt: testPrompt,
-        aspectRatio: "1:1",
-        resolution: "1K",
-        providerOptions: extra,
-      })
+          prompt: testPrompt,
+          aspectRatio: "1:1",
+          resolution: "1K",
+          providerOptions: extra,
+        })
       : { [promptKey]: testPrompt, ...extra };
     if (isGptImagePro) {
       console.info("[gpt-image-pro] provider request", {
@@ -2937,31 +3509,76 @@ export const adminTestModel = createServerFn({ method: "POST" })
     // 提交
     let res: Response;
     try {
-      res = await fetch(submitUrl, { method: "POST", headers, body: JSON.stringify(body) });
-    } catch (e: any) {
-      return { ok: false, stage: "submit", message: `网络错误：${e?.message ?? "fetch 失败"}`, elapsedMs: Date.now() - startedAt, imageUrl: null };
+      res = await fetch(submitUrl, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      return {
+        ok: false,
+        stage: "submit",
+        message: `网络错误：${e instanceof Error ? e.message : "fetch 失败"}`,
+        elapsedMs: Date.now() - startedAt,
+        imageUrl: null,
+      };
     }
     const text = await res.text();
-    const json: any = parseUpstreamResponse(text);
+    const json = parseUpstreamResponse(text) as Record<string, JsonValue> | null;
     if (!res.ok) {
-      const msg = (json?.msg ?? json?.error?.message ?? text ?? "").toString().slice(0, 300);
-      return { ok: false, stage: "submit", message: `HTTP ${res.status}: ${msg || "(空响应)"}`, elapsedMs: Date.now() - startedAt, imageUrl: null };
+      const msg = (json?.msg ?? asRecord(json?.error).message ?? text ?? "")
+        .toString()
+        .slice(0, 300);
+      return {
+        ok: false,
+        stage: "submit",
+        message: `HTTP ${res.status}: ${msg || "(空响应)"}`,
+        elapsedMs: Date.now() - startedAt,
+        imageUrl: null,
+      };
     }
     if (Number(json?.code) >= 400) {
-      return { ok: false, stage: "submit", message: `上游 code=${json?.code}: ${(json?.msg ?? "").toString().slice(0, 200)}`, elapsedMs: Date.now() - startedAt, imageUrl: null };
+      return {
+        ok: false,
+        stage: "submit",
+        message: `上游 code=${json?.code}: ${(json?.msg ?? "").toString().slice(0, 200)}`,
+        elapsedMs: Date.now() - startedAt,
+        imageUrl: null,
+      };
     }
 
     if (requestFormat === "sync_url") {
       const url = extractImageUrl(json ?? text);
-      if (!url) return { ok: false, stage: "result", message: "上游未返回图片 URL", elapsedMs: Date.now() - startedAt, imageUrl: null };
-      return { ok: true, stage: "result", message: "测试成功", elapsedMs: Date.now() - startedAt, imageUrl: url };
+      if (!url)
+        return {
+          ok: false,
+          stage: "result",
+          message: "上游未返回图片 URL",
+          elapsedMs: Date.now() - startedAt,
+          imageUrl: null,
+        };
+      return {
+        ok: true,
+        stage: "result",
+        message: "测试成功",
+        elapsedMs: Date.now() - startedAt,
+        imageUrl: url,
+      };
     }
 
     // 异步：轮询任务
-    const taskId: string | null =
-      json?.data?.id ?? json?.id ?? json?.task_id ?? (typeof json?.data === "string" ? json.data : null);
+    const taskId = (asRecord(json?.data).id ??
+      json?.id ??
+      json?.task_id ??
+      (typeof json?.data === "string" ? json.data : null)) as string | null;
     if (!taskId) {
-      return { ok: false, stage: "submit", message: `提交成功但未返回任务 ID：${text.slice(0, 200)}`, elapsedMs: Date.now() - startedAt, imageUrl: null };
+      return {
+        ok: false,
+        stage: "submit",
+        message: `提交成功但未返回任务 ID：${text.slice(0, 200)}`,
+        elapsedMs: Date.now() - startedAt,
+        imageUrl: null,
+      };
     }
 
     const deadline = Date.now() + 300_000; // 最多轮询 300s
@@ -2971,17 +3588,82 @@ export const adminTestModel = createServerFn({ method: "POST" })
       try {
         const r = await fetch(detailUrl, { method: "GET", headers });
         const t = await r.text();
-        const j: any = parseUpstreamResponse(t);
+        const j = parseUpstreamResponse(t) as Record<string, JsonValue> | null;
         if (!r.ok) continue;
-        const status = Number(j?.data?.status);
+        const status = Number(asRecord(j?.data).status);
         if (status === 2) {
           const url = extractImageUrl(j?.data) ?? extractImageUrl(j);
-          if (url) return { ok: true, stage: "result", message: "测试成功", elapsedMs: Date.now() - startedAt, imageUrl: url };
+          if (url)
+            return {
+              ok: true,
+              stage: "result",
+              message: "测试成功",
+              elapsedMs: Date.now() - startedAt,
+              imageUrl: url,
+            };
         }
         if (status === 3) {
-          return { ok: false, stage: "result", message: `任务失败：${(j?.data?.message ?? j?.msg ?? "").toString().slice(0, 200) || "上游拒绝"}`, elapsedMs: Date.now() - startedAt, imageUrl: null };
+          return {
+            ok: false,
+            stage: "result",
+            message: `任务失败：${(asRecord(j?.data).message ?? j?.msg ?? "").toString().slice(0, 200) || "上游拒绝"}`,
+            elapsedMs: Date.now() - startedAt,
+            imageUrl: null,
+          };
         }
-      } catch { /* keep polling */ }
+      } catch {
+        /* keep polling */
+      }
     }
-    return { ok: false, stage: "timeout", message: `任务已提交（taskId=${taskId}），但 300 秒内未生成完成`, elapsedMs: Date.now() - startedAt, imageUrl: null };
+    return {
+      ok: false,
+      stage: "timeout",
+      message: `任务已提交（taskId=${taskId}），但 300 秒内未生成完成`,
+      elapsedMs: Date.now() - startedAt,
+      imageUrl: null,
+    };
   });
+
+// Isolated full-site candidate only: reject before any paid or external operation.
+function rejectIsolatedExternalOperation(context?: unknown): void {
+  const env = getCloudflareEnvFromServerContext(context) as
+    | { REAL_PAYMENT_ENABLED?: string }
+    | undefined;
+  if (env?.REAL_PAYMENT_ENABLED !== "production") {
+    throw new Error("真实支付尚未启用；请等待正式配置完成");
+  }
+}
+
+// This flag is supplied only by the reviewed generation-action runtime.
+function requireProductionConnectedGeneration(context?: unknown): void {
+  const env = getCloudflareEnvFromServerContext(context) as
+    | {
+        REAL_GENERATION_ENABLED?: string;
+        REAL_GENERATION_ARCHIVER?: unknown;
+      }
+    | undefined;
+  if (
+    env?.REAL_GENERATION_ENABLED !== "production" &&
+    env?.REAL_GENERATION_ENABLED !== "user-triggered"
+  ) {
+    throw new Error("真实模型尚未启用；请等待测试接入完成");
+  }
+}
+
+const REAL_GENERATION_TEST_SCOPE = "r82-real-user-20261028";
+function safeGenerationFailure(error: unknown, code: string): string {
+  if (isProductionConnectedGeneration()) return code;
+  return error instanceof Error ? error.message : code;
+}
+function isProductionConnectedGeneration(): boolean {
+  const enabled = (
+    globalThis as typeof globalThis & {
+      __SHUNTU_CLOUDFLARE_ENV__?: { REAL_GENERATION_ENABLED?: string };
+    }
+  ).__SHUNTU_CLOUDFLARE_ENV__?.REAL_GENERATION_ENABLED;
+  return enabled === "production" || enabled === "user-triggered";
+}
+function isCurrentGenerationTestTask(task: Pick<GenerationTask, "input_params">): boolean {
+  const input = asRecord(task.input_params);
+  return input.queueVersion === "userQueue" || input.shuntuTestScope === REAL_GENERATION_TEST_SCOPE;
+}
