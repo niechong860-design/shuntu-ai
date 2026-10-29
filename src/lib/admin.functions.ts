@@ -15,6 +15,12 @@ import { z } from "zod";
 import { requireD1Auth } from "@/lib/d1-auth-middleware";
 import { getConfiguredRechargePackage } from "@/lib/recharge-packages";
 import { getModelSecretStatus, resolveModelSecret } from "@/lib/model-secrets";
+import {
+  BANANA_PROVIDER_CHAT_URL,
+  buildBananaProviderPayload,
+  extractBananaImageData,
+  isBananaModelConfig,
+} from "@/lib/banana-provider-contract";
 
 import { checkPromptSafety, SAFETY_SERVER_BLOCK_MESSAGE } from "@/lib/promptSafety";
 import {
@@ -98,6 +104,17 @@ async function getBusinessModel(
 function getConfiguredModelApiKey(model: ModelConfig): string {
   if (model.model_key === FOXAPI_BACKUP_MODEL_KEY) return "";
   return resolveModelSecret(model.secret_ref);
+}
+
+function isConfiguredBananaModel(model: ModelConfig): boolean {
+  return isBananaModelConfig(model) || model.secret_ref === "vibelearning:banana";
+}
+
+function buildModelUpstreamHeaders(pureApiKey: string, banana: boolean): Record<string, string> {
+  return {
+    "Content-Type": "application/json",
+    Authorization: banana ? `Bearer ${pureApiKey}` : pureApiKey,
+  };
 }
 
 async function attachImageToConsumedHistory(input: {
@@ -1219,7 +1236,7 @@ async function submitAdminPreviewGenerationTask(
     }
   }
   if (!model.api_url && model.model_key !== FOXAPI_BACKUP_MODEL_KEY)
-    throw new Error("该模型尚未配置 API 接口地址。");
+    if (!isConfiguredBananaModel(model)) throw new Error("该模型尚未配置 API 接口地址。");
 
   const targetKey =
     model.model_key === FOXAPI_BACKUP_MODEL_KEY ? "" : getConfiguredModelApiKey(model);
@@ -1230,12 +1247,15 @@ async function submitAdminPreviewGenerationTask(
     throw new Error("该模型或全局接口设置尚未配置 API Key。");
 
   const isGptImagePro = model.model_key === GPT_IMAGE_PRO_MODEL_KEY;
+  const isBanana = isConfiguredBananaModel(model);
   const submitUrl =
     model.model_key === FOXAPI_BACKUP_MODEL_KEY
       ? ""
       : isGptImagePro
         ? GPT_IMAGE_PRO_VBL_GENERATIONS_URL
-        : resolveUrl(base_url, model.api_url!);
+        : isBanana
+          ? BANANA_PROVIDER_CHAT_URL
+          : resolveUrl(base_url, model.api_url!);
   const prompt = String(task.prompt ?? "").trim();
   if (!prompt) throw new Error("任务提示词为空。");
 
@@ -1319,18 +1339,20 @@ async function submitAdminPreviewGenerationTask(
     };
   }
 
-  const requestFormat = model.request_format || "async_id";
-  const body = buildAdminPreviewUpstreamBody({
-    model,
-    prompt,
-    aspectRatio,
-    size: sizeValue,
-    referenceImages,
-  });
+  const requestFormat = isBanana ? "sync_url" : model.request_format || "async_id";
+  const body = isBanana
+    ? buildBananaProviderPayload({ model, prompt, referenceImages })
+    : buildAdminPreviewUpstreamBody({
+        model,
+        prompt,
+        aspectRatio,
+        size: sizeValue,
+        referenceImages,
+      });
 
   const res = await fetchWithRetry(submitUrl, {
     method: "POST",
-    headers: buildUpstreamHeaders(pureApiKey),
+    headers: buildModelUpstreamHeaders(pureApiKey, isBanana),
     body: JSON.stringify(body),
   });
   const text = await res.text();
@@ -1809,6 +1831,8 @@ function extractImageUrl(payload: unknown): string | null {
     return value;
   };
   if (!payload) return null;
+  const bananaImage = extractBananaImageData(payload);
+  if (bananaImage) return bananaImage;
   if (typeof payload === "string" && /^https?:\/\//i.test(payload)) return payload;
   // OpenAI style: { data: [{ url, b64_json }] }
   const d0 = read(payload, "data", 0);
@@ -2117,8 +2141,11 @@ export const generateImage = createServerFn({ method: "POST" })
     const model = await getBusinessModel(db, data.modelKey, true);
     if (!model) throw new Error("模型不存在");
     if (model.is_enabled === false) throw new Error("该模型已被管理员停用");
-    if (!model.api_url && model.model_key !== FOXAPI_BACKUP_MODEL_KEY)
-      throw new Error("该模型尚未配置 API 接口地址，请联系管理员");
+    if (!model.api_url && model.model_key !== FOXAPI_BACKUP_MODEL_KEY) {
+      if (!isConfiguredBananaModel(model)) {
+        throw new Error("该模型尚未配置 API 接口地址，请联系管理员");
+      }
+    }
 
     const currentCredits = await db.getCredits(userId);
     if (currentCredits < Number(model.cost)) {
@@ -2147,17 +2174,17 @@ export const generateImage = createServerFn({ method: "POST" })
       throw new Error("该模型或全局接口设置尚未配置 API Key，请联系管理员");
     }
 
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      Authorization: pureApiKey,
-    };
+    const isBanana = isConfiguredBananaModel(model);
+    const headers = buildModelUpstreamHeaders(pureApiKey, isBanana);
     const isGptImagePro = model.model_key === GPT_IMAGE_PRO_MODEL_KEY;
     const submitUrl =
       model.model_key === FOXAPI_BACKUP_MODEL_KEY
         ? ""
         : isGptImagePro
           ? GPT_IMAGE_PRO_VBL_GENERATIONS_URL
-          : resolveUrl(base_url, model.api_url || "");
+          : isBanana
+            ? BANANA_PROVIDER_CHAT_URL
+            : resolveUrl(base_url, model.api_url || "");
 
     const size = VALID_SIZES.has(data.aspectRatio) ? data.aspectRatio : "auto";
     // 后端硬性限制：仅文生图模型不允许带参考图
@@ -2170,7 +2197,7 @@ export const generateImage = createServerFn({ method: "POST" })
       ? (data.referenceImages ?? []).filter((u) => /^(https?:|data:image\/)/i.test(u))
       : [];
     const promptKey = model.prompt_key || "prompt";
-    const requestFormat = model.request_format || "async_id";
+    const requestFormat = isBanana ? "sync_url" : model.request_format || "async_id";
 
     if (model.model_key === FOXAPI_BACKUP_MODEL_KEY) {
       const result =
@@ -2280,6 +2307,12 @@ export const generateImage = createServerFn({ method: "POST" })
         quality: body.quality,
         size: body.size,
         referenceImageCount: gptImageProReferenceImages.length,
+      });
+    } else if (isBanana) {
+      body = buildBananaProviderPayload({
+        model,
+        prompt: finalPrompt,
+        referenceImages: httpRefs,
       });
     } else {
       console.log(
@@ -3419,7 +3452,7 @@ export const adminTestModel = createServerFn({ method: "POST" })
         imageUrl: null as string | null,
       };
     }
-    if (!model.api_url) {
+    if (!model.api_url && !isConfiguredBananaModel(model)) {
       return {
         ok: false,
         stage: "config",
@@ -3443,16 +3476,16 @@ export const adminTestModel = createServerFn({ method: "POST" })
       };
     }
 
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      Authorization: pureApiKey,
-    };
     const isGptImagePro = model.model_key === GPT_IMAGE_PRO_MODEL_KEY;
+    const isBanana = isConfiguredBananaModel(model);
+    const headers = buildModelUpstreamHeaders(pureApiKey, isBanana);
     const submitUrl = isGptImagePro
       ? GPT_IMAGE_PRO_VBL_GENERATIONS_URL
-      : resolveUrl(base_url, model.api_url!);
+      : isBanana
+        ? BANANA_PROVIDER_CHAT_URL
+        : resolveUrl(base_url, model.api_url!);
     const promptKey = model.prompt_key || "prompt";
-    const requestFormat = model.request_format || "async_id";
+    const requestFormat = isBanana ? "sync_url" : model.request_format || "async_id";
     const testPrompt =
       (data.prompt && data.prompt.trim()) ||
       "a cute orange tabby kitten sitting in a sunny garden, soft natural light, high detail";
@@ -3495,7 +3528,9 @@ export const adminTestModel = createServerFn({ method: "POST" })
           resolution: "1K",
           providerOptions: extra,
         })
-      : { [promptKey]: testPrompt, ...extra };
+      : isBanana
+        ? buildBananaProviderPayload({ model, prompt: testPrompt })
+        : { [promptKey]: testPrompt, ...extra };
     if (isGptImagePro) {
       console.info("[gpt-image-pro] provider request", {
         route: "/v1/images/generations",

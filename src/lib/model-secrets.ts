@@ -4,6 +4,7 @@ export const MODEL_SECRET_REFERENCES = [
   "wuyin:nanobanana",
   "vibelearning:gpt_image_2_backup",
   "vibelearning:gpt_image_2_native_pro",
+  "vibelearning:banana",
 ] as const;
 
 const SECRET_BY_REFERENCE: Record<(typeof MODEL_SECRET_REFERENCES)[number], string> = {
@@ -12,6 +13,7 @@ const SECRET_BY_REFERENCE: Record<(typeof MODEL_SECRET_REFERENCES)[number], stri
   "wuyin:nanobanana": "WUYIN_MODEL_NANOBANANA_API_KEY",
   "vibelearning:gpt_image_2_backup": "VIBELEARNING_GPT_IMAGE_2_BACKUP_API_KEY",
   "vibelearning:gpt_image_2_native_pro": "VIBELEARNING_GPT_IMAGE_2_NATIVE_PRO_API_KEY",
+  "vibelearning:banana": "VIBELEARNING_BANANA_API_KEY",
 };
 
 function envValue(name: string, env?: Record<string, unknown>): unknown {

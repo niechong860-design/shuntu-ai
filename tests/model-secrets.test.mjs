@@ -17,13 +17,14 @@ vm.runInNewContext(
 const { MODEL_SECRET_REFERENCES, getModelSecretStatus, resolveModelSecret } = module.exports;
 
 test("each model credential uses an explicit, distinct allowlisted Worker Secret", () => {
-  assert.equal(new Set(MODEL_SECRET_REFERENCES).size, 5);
+  assert.equal(new Set(MODEL_SECRET_REFERENCES).size, 6);
   const env = {
     WUYIN_MODEL_GPT_IMAGE_2_API_KEY: "synthetic-one",
     WUYIN_MODEL_NANOBANANA2_API_KEY: "synthetic-two",
     WUYIN_MODEL_NANOBANANA_API_KEY: "synthetic-three",
     VIBELEARNING_GPT_IMAGE_2_BACKUP_API_KEY: "synthetic-four",
     VIBELEARNING_GPT_IMAGE_2_NATIVE_PRO_API_KEY: "synthetic-five",
+    VIBELEARNING_BANANA_API_KEY: "synthetic-six",
   };
   for (const reference of MODEL_SECRET_REFERENCES) {
     assert.equal(getModelSecretStatus(reference, env), true);
