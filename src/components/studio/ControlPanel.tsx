@@ -63,6 +63,22 @@ const RATIOS = [
   { id: "4:5", icon: RectangleVertical, label: "竖版" },
 ];
 
+// Gemini image models accept this set. Keep `auto` as the adaptive option;
+// the provider chooses the best supported ratio when it is selected.
+const BANANA_RATIO_IDS = new Set([
+  "auto",
+  "1:1",
+  "2:3",
+  "3:2",
+  "3:4",
+  "4:3",
+  "4:5",
+  "5:4",
+  "9:16",
+  "16:9",
+  "21:9",
+]);
+
 type StyleTpl = StyleTemplate;
 
 export type GenProgress = {
@@ -404,13 +420,21 @@ export function ControlPanel({
   }, [referenceResetToken]);
 
   const activeModel = models.find((m) => m.model_key === modelKey);
+  const isBananaModel = activeModel?.extra_params?.provider === "banana";
+  const visibleRatios = isBananaModel
+    ? RATIOS.filter((item) => BANANA_RATIO_IDS.has(item.id))
+    : RATIOS;
   const activeBadge = getModelBadge(activeModel);
-  const activeRatio = RATIOS.find((r) => r.id === ratio)!;
+  const activeRatio = visibleRatios.find((r) => r.id === ratio) ?? visibleRatios[0];
   const ActiveRatioIcon = activeRatio.icon;
   const activeCost = Number(activeModel?.cost ?? 0);
   // 仅文生图的模型：禁止参考图（前端隐藏入口 + 提交时不带 refs）
   const TEXT_ONLY_MODELS = new Set(["wan26"]);
   const isTextOnly = activeModel ? TEXT_ONLY_MODELS.has(activeModel.model_key) : false;
+  useEffect(() => {
+    const allowed = isBananaModel ? BANANA_RATIO_IDS : new Set(RATIOS.map((item) => item.id));
+    if (!allowed.has(ratio)) setRatio("auto");
+  }, [isBananaModel, ratio]);
   const uploadedHttpRefs = refs
     .filter(
       (item) => item.status === "ready" && !!item.sourceUrl && /^https?:\/\//i.test(item.sourceUrl),
@@ -1219,7 +1243,7 @@ export function ControlPanel({
                         画面比例
                       </div>
                       <div className="grid grid-cols-4 gap-1.5">
-                        {RATIOS.map((r) => {
+                        {visibleRatios.map((r) => {
                           const Icon = r.icon;
                           const active = ratio === r.id;
                           return (

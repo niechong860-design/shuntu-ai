@@ -1,6 +1,19 @@
 export const BANANA_PROVIDER_BASE_URL = "https://image1.vibelearning.top";
 export const BANANA_PROVIDER_CHAT_URL = `${BANANA_PROVIDER_BASE_URL}/v1/chat/completions`;
 
+const BANANA_ASPECT_RATIOS = new Set([
+  "1:1",
+  "2:3",
+  "3:2",
+  "3:4",
+  "4:3",
+  "4:5",
+  "5:4",
+  "9:16",
+  "16:9",
+  "21:9",
+]);
+
 type JsonRecord = Record<string, unknown>;
 
 function asRecord(value: unknown): JsonRecord {
@@ -39,6 +52,8 @@ export function buildBananaProviderPayload(input: {
   model: { model_key?: string | null; extra_params?: unknown };
   prompt: string;
   referenceImages?: unknown[];
+  aspectRatio?: string;
+  resolution?: string;
 }): JsonRecord {
   const options = asRecord(input.model.extra_params);
   const modelName = getBananaModelName(input.model, options);
@@ -50,12 +65,26 @@ export function buildBananaProviderPayload(input: {
       ]
     : input.prompt.trim();
   const configuredGeneration = asRecord(options.generationConfig);
+  const configuredImage = asRecord(
+    configuredGeneration.imageConfig ?? configuredGeneration.image_config,
+  );
+  const imageConfig: JsonRecord = { ...configuredImage };
+  const aspectRatio = typeof input.aspectRatio === "string" ? input.aspectRatio.trim() : "";
+  const resolution =
+    typeof input.resolution === "string" ? input.resolution.trim().toUpperCase() : "";
+  // Gemini's `auto` means the provider chooses the best ratio. Omit the field
+  // instead of sending an unsupported literal value.
+  if (aspectRatio && aspectRatio !== "auto" && BANANA_ASPECT_RATIOS.has(aspectRatio)) {
+    imageConfig.aspectRatio = aspectRatio;
+  }
+  if (["1K", "2K", "4K"].includes(resolution)) imageConfig.imageSize = resolution;
   return {
     model: modelName,
     messages: [{ role: "user", content }],
     generationConfig: {
       ...configuredGeneration,
       responseModalities: ["TEXT", "IMAGE"],
+      ...(Object.keys(imageConfig).length ? { imageConfig } : {}),
     },
     stream: false,
   };

@@ -33,12 +33,25 @@ test("Banana models use the shared provider adapter and model name", () => {
     },
   };
   assert.equal(isBananaModelConfig(model), true);
-  assert.deepEqual(plain(buildBananaProviderPayload({ model, prompt: "a product photo" })), {
-    model: "gemini-3-pro-image-preview",
-    messages: [{ role: "user", content: "a product photo" }],
-    generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
-    stream: false,
-  });
+  assert.deepEqual(
+    plain(
+      buildBananaProviderPayload({
+        model,
+        prompt: "a product photo",
+        aspectRatio: "16:9",
+        resolution: "2K",
+      }),
+    ),
+    {
+      model: "gemini-3-pro-image-preview",
+      messages: [{ role: "user", content: "a product photo" }],
+      generationConfig: {
+        responseModalities: ["TEXT", "IMAGE"],
+        imageConfig: { aspectRatio: "16:9", imageSize: "2K" },
+      },
+      stream: false,
+    },
+  );
 });
 
 test("Banana reference images use OpenAI-compatible image_url parts", () => {
@@ -55,6 +68,40 @@ test("Banana reference images use OpenAI-compatible image_url parts", () => {
     { type: "text", text: "keep the product shape" },
     { type: "image_url", image_url: { url: "https://img.example.test/reference.png" } },
   ]);
+  assert.equal("imageConfig" in payload.generationConfig, false);
+});
+
+test("Banana adaptive ratio omits imageConfig ratio and keeps only supported ratios", () => {
+  const model = {
+    model_key: "nanobanana2",
+    extra_params: { provider: "banana", model: "gemini-3.1-flash-image-preview" },
+  };
+  const adaptive = buildBananaProviderPayload({
+    model,
+    prompt: "adaptive image",
+    aspectRatio: "auto",
+    resolution: "4K",
+  });
+  assert.deepEqual(plain(adaptive.generationConfig.imageConfig), { imageSize: "4K" });
+
+  const supported = buildBananaProviderPayload({
+    model,
+    prompt: "portrait image",
+    aspectRatio: "4:5",
+    resolution: "1K",
+  });
+  assert.deepEqual(plain(supported.generationConfig.imageConfig), {
+    aspectRatio: "4:5",
+    imageSize: "1K",
+  });
+
+  const unsupported = buildBananaProviderPayload({
+    model,
+    prompt: "unsupported ratio",
+    aspectRatio: "9:21",
+    resolution: "8K",
+  });
+  assert.equal("imageConfig" in unsupported.generationConfig, false);
 });
 
 test("Banana response data URLs and native inline data are extracted", () => {

@@ -117,6 +117,13 @@ function buildModelUpstreamHeaders(pureApiKey: string, banana: boolean): Record<
   };
 }
 
+function bananaUpstreamError(status: number): string {
+  if (status === 403) {
+    return "供应商拒绝此模型访问（403）。请确认当前 Banana Key 所属分组已开通所选模型；如果分组已开通，请联系供应商核查该 Key 的模型权限。";
+  }
+  return friendlyUpstreamError(status);
+}
+
 async function attachImageToConsumedHistory(input: {
   db: BusinessDatabase;
   userId: string;
@@ -1341,7 +1348,13 @@ async function submitAdminPreviewGenerationTask(
 
   const requestFormat = isBanana ? "sync_url" : model.request_format || "async_id";
   const body = isBanana
-    ? buildBananaProviderPayload({ model, prompt, referenceImages })
+    ? buildBananaProviderPayload({
+        model,
+        prompt,
+        referenceImages,
+        aspectRatio,
+        resolution: sizeValue,
+      })
     : buildAdminPreviewUpstreamBody({
         model,
         prompt,
@@ -1357,8 +1370,12 @@ async function submitAdminPreviewGenerationTask(
   });
   const text = await res.text();
   const json = parseUpstreamResponse(text) as Record<string, JsonValue> | null;
-  if (!res.ok) throw new Error(friendlyUpstreamError(res.status));
-  if (Number(json?.code) >= 400) throw new Error(friendlyUpstreamError(Number(json?.code) || 500));
+  if (!res.ok)
+    throw new Error(isBanana ? bananaUpstreamError(res.status) : friendlyUpstreamError(res.status));
+  if (Number(json?.code) >= 400) {
+    const status = Number(json?.code) || 500;
+    throw new Error(isBanana ? bananaUpstreamError(status) : friendlyUpstreamError(status));
+  }
 
   if (requestFormat === "sync_url") {
     const imageUrl = extractImageUrl(json ?? text);
@@ -2313,6 +2330,8 @@ export const generateImage = createServerFn({ method: "POST" })
         model,
         prompt: finalPrompt,
         referenceImages: httpRefs,
+        aspectRatio: data.aspectRatio,
+        resolution: data.size,
       });
     } else {
       console.log(
@@ -2357,11 +2376,16 @@ export const generateImage = createServerFn({ method: "POST" })
       const json = parseUpstreamResponse(text) as Record<string, JsonValue> | null;
       if (!res.ok) {
         console.error("[generateImage] sync upstream HTTP", res.status, text?.slice(0, 500));
-        return failGeneration(friendlyUpstreamError(res.status));
+        return failGeneration(
+          isBanana ? bananaUpstreamError(res.status) : friendlyUpstreamError(res.status),
+        );
       }
       if (Number(json?.code) >= 400) {
         console.error("[generateImage] sync upstream code", json?.code, json?.msg);
-        return failGeneration(friendlyUpstreamError(Number(json?.code) || 500));
+        const status = Number(json?.code) || 500;
+        return failGeneration(
+          isBanana ? bananaUpstreamError(status) : friendlyUpstreamError(status),
+        );
       }
       imageUrl = extractImageUrl(json ?? text);
       if (!imageUrl) return failGeneration(friendlyUpstreamError(502));
@@ -3529,7 +3553,12 @@ export const adminTestModel = createServerFn({ method: "POST" })
           providerOptions: extra,
         })
       : isBanana
-        ? buildBananaProviderPayload({ model, prompt: testPrompt })
+        ? buildBananaProviderPayload({
+            model,
+            prompt: testPrompt,
+            aspectRatio: "1:1",
+            resolution: "1K",
+          })
         : { [promptKey]: testPrompt, ...extra };
     if (isGptImagePro) {
       console.info("[gpt-image-pro] provider request", {
