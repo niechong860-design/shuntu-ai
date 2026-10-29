@@ -178,9 +178,11 @@ export async function archiveGeneratedImageToR2({
         httpMetadata: { contentType: dataImage.contentType },
       });
       const finalUrl = `${publicBaseUrl}/${key}`;
-      await ensureGeneratedPreviewFromBytes(finalUrl, dataImage.body, env).catch((error) => {
+      // Preview generation uses the Sharp container and must never delay task
+      // settlement after the original bytes are safely stored in R2. The
+      // authenticated thumbnail route will lazily create missing previews.
+      void ensureGeneratedPreviewFromBytes(finalUrl, dataImage.body, env).catch((error) => {
         console.warn("[preview] archive preview failed", error);
-        return false;
       });
       return finalUrl;
     } catch {
@@ -197,6 +199,7 @@ export async function archiveGeneratedImageToR2({
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
       },
       redirect: "follow",
+      signal: AbortSignal.timeout(30_000),
     });
     if (!response.ok) {
       return imageUrl;
@@ -213,9 +216,8 @@ export async function archiveGeneratedImageToR2({
     const body = await response.arrayBuffer();
     await bucket.put(key, body, { httpMetadata: { contentType } });
     const finalUrl = `${publicBaseUrl}/${key}`;
-    await ensureGeneratedPreviewFromBytes(finalUrl, new Uint8Array(body), env).catch((error) => {
+    void ensureGeneratedPreviewFromBytes(finalUrl, new Uint8Array(body), env).catch((error) => {
       console.warn("[preview] archive preview failed", error);
-      return false;
     });
     return finalUrl;
   } catch (error) {
