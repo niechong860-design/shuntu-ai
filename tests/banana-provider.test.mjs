@@ -43,18 +43,25 @@ test("Banana models use the shared provider adapter and model name", () => {
       }),
     ),
     {
-      model: "gemini-3-pro-image-preview",
-      messages: [{ role: "user", content: "a product photo" }],
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: "a product photo\nOutput aspect ratio: 16:9. Preserve this exact aspect ratio.",
+            },
+          ],
+        },
+      ],
       generationConfig: {
         responseModalities: ["TEXT", "IMAGE"],
         imageConfig: { aspectRatio: "16:9", imageSize: "2K" },
       },
-      stream: false,
     },
   );
 });
 
-test("Banana reference images use OpenAI-compatible image_url parts", () => {
+test("Banana reference images use native inline data parts", () => {
   const model = {
     model_key: "banana",
     extra_params: { provider: "banana", model: "gemini-3.1-flash-image-preview" },
@@ -62,11 +69,13 @@ test("Banana reference images use OpenAI-compatible image_url parts", () => {
   const payload = buildBananaProviderPayload({
     model,
     prompt: "keep the product shape",
-    referenceImages: ["https://img.example.test/reference.png"],
+    referenceImages: [{ mimeType: "image/png", data: "abc=" }],
   });
-  assert.deepEqual(plain(payload.messages[0].content), [
-    { type: "text", text: "keep the product shape" },
-    { type: "image_url", image_url: { url: "https://img.example.test/reference.png" } },
+  assert.deepEqual(plain(payload.contents[0].parts), [
+    {
+      text: "keep the product shape",
+    },
+    { inline_data: { mime_type: "image/png", data: "abc=" } },
   ]);
   assert.equal("imageConfig" in payload.generationConfig, false);
 });

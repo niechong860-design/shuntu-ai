@@ -16,9 +16,9 @@ import { requireD1Auth } from "@/lib/d1-auth-middleware";
 import { getConfiguredRechargePackage } from "@/lib/recharge-packages";
 import { getModelSecretStatus, resolveModelSecret } from "@/lib/model-secrets";
 import {
-  BANANA_PROVIDER_CHAT_URL,
   buildBananaProviderPayload,
   extractBananaImageData,
+  getBananaProviderUrl,
   isBananaModelConfig,
 } from "@/lib/banana-provider-contract";
 
@@ -1261,7 +1261,7 @@ async function submitAdminPreviewGenerationTask(
       : isGptImagePro
         ? GPT_IMAGE_PRO_VBL_GENERATIONS_URL
         : isBanana
-          ? BANANA_PROVIDER_CHAT_URL
+          ? getBananaProviderUrl(model)
           : resolveUrl(base_url, model.api_url!);
   const prompt = String(task.prompt ?? "").trim();
   if (!prompt) throw new Error("任务提示词为空。");
@@ -1302,6 +1302,9 @@ async function submitAdminPreviewGenerationTask(
   const httpReferenceImages = referenceImages.filter(
     (u): u is string => typeof u === "string" && /^https?:\/\//i.test(u),
   );
+  const bananaReferenceImages = isBanana
+    ? await Promise.all(httpReferenceImages.map(fetchReferenceImageInlineData))
+    : [];
   if (model.model_key === GPT_IMAGE_2_BACKUP_MODEL_KEY && httpReferenceImages.length > 0) {
     const result = await submitGptImage2BackupEdit({
       model,
@@ -1351,7 +1354,7 @@ async function submitAdminPreviewGenerationTask(
     ? buildBananaProviderPayload({
         model,
         prompt,
-        referenceImages,
+        referenceImages: bananaReferenceImages,
         aspectRatio,
         resolution: sizeValue,
       })
@@ -1496,6 +1499,20 @@ async function fetchReferenceImageBlob(
   } catch {
     throw new Error("参考图读取失败，请更换图片后重试");
   }
+}
+
+async function fetchReferenceImageInlineData(
+  imageUrl: string,
+): Promise<{ mimeType: string; data: string }> {
+  const { blob } = await fetchReferenceImageBlob(imageUrl, 0);
+  const mimeType = blob.type.toLowerCase().startsWith("image/") ? blob.type : "image/png";
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let data = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    data += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return { mimeType, data: btoa(data) };
 }
 
 async function submitGptImage2BackupEdit(params: {
@@ -2200,7 +2217,7 @@ export const generateImage = createServerFn({ method: "POST" })
         : isGptImagePro
           ? GPT_IMAGE_PRO_VBL_GENERATIONS_URL
           : isBanana
-            ? BANANA_PROVIDER_CHAT_URL
+            ? getBananaProviderUrl(model)
             : resolveUrl(base_url, model.api_url || "");
 
     const size = VALID_SIZES.has(data.aspectRatio) ? data.aspectRatio : "auto";
@@ -2210,6 +2227,9 @@ export const generateImage = createServerFn({ method: "POST" })
     const httpRefs = isTextOnly
       ? []
       : (data.referenceImages ?? []).filter((u) => /^https?:\/\//i.test(u));
+    const bananaReferenceImages = isBanana
+      ? await Promise.all(httpRefs.map(fetchReferenceImageInlineData))
+      : [];
     const gptImageProReferenceImages = isGptImagePro
       ? (data.referenceImages ?? []).filter((u) => /^(https?:|data:image\/)/i.test(u))
       : [];
@@ -2329,7 +2349,7 @@ export const generateImage = createServerFn({ method: "POST" })
       body = buildBananaProviderPayload({
         model,
         prompt: finalPrompt,
-        referenceImages: httpRefs,
+        referenceImages: bananaReferenceImages,
         aspectRatio: data.aspectRatio,
         resolution: data.size,
       });
@@ -3506,7 +3526,7 @@ export const adminTestModel = createServerFn({ method: "POST" })
     const submitUrl = isGptImagePro
       ? GPT_IMAGE_PRO_VBL_GENERATIONS_URL
       : isBanana
-        ? BANANA_PROVIDER_CHAT_URL
+        ? getBananaProviderUrl(model)
         : resolveUrl(base_url, model.api_url!);
     const promptKey = model.prompt_key || "prompt";
     const requestFormat = isBanana ? "sync_url" : model.request_format || "async_id";
