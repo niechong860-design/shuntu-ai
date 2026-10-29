@@ -907,7 +907,7 @@ export function ControlPanel({
       inputParams,
     });
     const tStart = Date.now();
-    const initialPos = 18 + Math.floor(Math.random() * 25);
+    const initialPos = 5 + Math.floor(Math.random() * 14);
     const renderBudget = 12 + Math.floor(Math.random() * 10);
     onProgress?.({
       stage: "submitting",

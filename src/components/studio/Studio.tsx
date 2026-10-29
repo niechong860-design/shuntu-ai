@@ -77,6 +77,12 @@ function getActiveQueueTask(tasks: FloatingTask[]) {
   );
 }
 
+function displayQueuePosition(taskId: string): number {
+  let hash = 0;
+  for (const char of taskId) hash = (hash * 31 + char.charCodeAt(0)) | 0;
+  return 5 + (Math.abs(hash) % 14);
+}
+
 function getQueueProgress(task: FloatingTask): GenProgress {
   const displayAsGenerating =
     task.status === "generating" ||
@@ -89,7 +95,7 @@ function getQueueProgress(task: FloatingTask): GenProgress {
       elapsedSec: 0,
       taskId: task.id,
       message: "AI 正在生成图片，请稍候...",
-      initialPos: 18,
+      initialPos: displayQueuePosition(task.id),
       renderBudget: 12,
     };
   }
@@ -101,7 +107,7 @@ function getQueueProgress(task: FloatingTask): GenProgress {
       elapsedSec: 0,
       taskId: task.id,
       message: "正在提交任务到生成队列...",
-      initialPos: 18,
+      initialPos: displayQueuePosition(task.id),
       renderBudget: 12,
     };
   }
@@ -112,7 +118,7 @@ function getQueueProgress(task: FloatingTask): GenProgress {
     elapsedSec: 0,
     taskId: task.id,
     message: "任务已加入队列，等待开始生成...",
-    initialPos: 18,
+    initialPos: displayQueuePosition(task.id),
     renderBudget: 12,
   };
 }
@@ -829,6 +835,7 @@ export function Studio() {
             generating={generating || shouldShowQueueLoadingOnCanvas}
             heroIndex={0}
             generatedUrl={generatedUrl}
+            generatedUrlSource={generatedUrlSource}
             generatedImageDragToken={generatedImageDragToken}
             currentHistoryId={currentHistoryId}
             currentPrompt={currentPrompt}

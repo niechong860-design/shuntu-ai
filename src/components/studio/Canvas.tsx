@@ -148,6 +148,7 @@ type Props = {
   generatedUrl?: string | null;
   generatedImageDragToken?: string | null;
   currentHistoryId?: string | null;
+  generatedUrlSource?: "result" | "history" | null;
   currentPrompt?: string;
   currentModel?: string;
   progress?: GenProgress | null;
@@ -220,6 +221,7 @@ export function Canvas({
   generatedUrl,
   generatedImageDragToken,
   currentHistoryId,
+  generatedUrlSource,
   currentPrompt,
   currentModel,
   progress,
@@ -239,6 +241,7 @@ export function Canvas({
   const [loadingMore, setLoadingMore] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
+  const [resultImageReady, setResultImageReady] = useState(!generatedUrl);
   const fetchHistory = useServerFn(getMyGenerationHistory);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const historySentinelRef = useRef<HTMLDivElement | null>(null);
@@ -261,6 +264,9 @@ export function Canvas({
   useEffect(() => {
     userIdRef.current = userId;
   }, [userId]);
+  useEffect(() => {
+    setResultImageReady(!generatedUrl);
+  }, [generatedUrl]);
 
   useEffect(() => {
     inFlightRef.current = false;
@@ -465,8 +471,27 @@ export function Canvas({
                 previewSize={1536}
                 alt="生成结果"
                 className="absolute inset-0"
+                onReady={() => setResultImageReady(true)}
+                onFailed={() => setResultImageReady(true)}
               />
             </div>
+            {!resultImageReady && generatedUrlSource === "result" && (
+              <div className="absolute inset-0 z-30">
+                <QueueProgress
+                  progress={
+                    progress ?? {
+                      stage: "rendering",
+                      attempt: 0,
+                      elapsedSec: 0,
+                      taskId: currentHistoryId ?? undefined,
+                      initialPos: 5,
+                      renderBudget: 8,
+                      message: "正在加载生成结果…",
+                    }
+                  }
+                />
+              </div>
+            )}
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/30 opacity-0 transition-opacity group-hover:opacity-100" />
             <div className="absolute left-3 top-3 z-20 flex items-center gap-1.5 opacity-70 transition-opacity group-hover:opacity-100">
               <HeroAction label="查看大图" onClick={() => setHeroLightbox(true)}>
@@ -758,17 +783,44 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
 
   // initialPos / renderBudget 优先从 progress 中读取（已在 ControlPanel 持久化），
   // 这样刷新页面恢复任务时，UI 显示的"第 N 位"和渲染百分比保持一致。
-  const [fallbackPos] = useState(() => 18 + Math.floor(Math.random() * 25));
+  const [fallbackPos] = useState(() => 5 + Math.floor(Math.random() * 14));
   const [fallbackBudget] = useState(() => 12 + Math.floor(Math.random() * 10));
   const initialPos = progress?.initialPos ?? fallbackPos;
   const renderBudget = progress?.renderBudget ?? fallbackBudget;
 
+  // Polling updates arrive every few seconds; keep the display moving between them.
+  const [clockMs, setClockMs] = useState(() => Date.now());
+  const progressClockRef = useRef({
+    stage,
+    taskId: progress?.taskId ?? null,
+    elapsed,
+    at: Date.now(),
+  });
+  useEffect(() => {
+    const id = window.setInterval(() => setClockMs(Date.now()), 250);
+    return () => window.clearInterval(id);
+  }, []);
+  useEffect(() => {
+    progressClockRef.current = {
+      stage,
+      taskId: progress?.taskId ?? null,
+      elapsed,
+      at: Date.now(),
+    };
+  }, [stage, progress?.taskId, elapsed]);
+  const smoothElapsed = progress
+    ? Math.max(
+        elapsed,
+        progressClockRef.current.elapsed + (clockMs - progressClockRef.current.at) / 1000,
+      )
+    : 0;
+
   const SEC_PER_TICK = 1.6; // 每 1.6 秒前进一位
   const queuePos = useMemo(() => {
     if (stage === "rendering") return 0;
-    const advanced = Math.floor(elapsed / SEC_PER_TICK);
+    const advanced = Math.floor(smoothElapsed / SEC_PER_TICK);
     return Math.max(1, initialPos - advanced);
-  }, [stage, elapsed, initialPos]);
+  }, [stage, smoothElapsed, initialPos]);
 
   // 终端滚动日志：每 ~450ms 追加一行
   const [logs, setLogs] = useState<string[]>(() => [TERMINAL_LINES_POOL[0]]);
@@ -794,23 +846,23 @@ function QueueProgress({ progress }: { progress: GenProgress | null }) {
   const renderStartRef = useRef<number | null>(null);
   useEffect(() => {
     if (stage === "rendering" && renderStartRef.current === null) {
-      renderStartRef.current = elapsed;
+      renderStartRef.current = smoothElapsed;
     }
     if (stage !== "rendering") renderStartRef.current = null;
-  }, [stage, elapsed]);
+  }, [stage, smoothElapsed]);
 
   // 总进度百分比
   let pct = 8;
-  if (stage === "submitting") pct = 8;
+  if (stage === "submitting") pct = Math.min(25, 8 + smoothElapsed * 4);
   else if (stage === "queued" || stage === "polling") {
     const queueProgress = 1 - queuePos / initialPos; // 0 → 1
     pct = Math.min(60, 15 + queueProgress * 45);
   } else if (stage === "rendering") {
-    const rStart = renderStartRef.current ?? elapsed;
-    const renderElapsed = Math.max(0, elapsed - rStart);
-    // 60% → 99%，使用对数避免到 100% 卡住
+    const rStart = renderStartRef.current ?? smoothElapsed;
+    const renderElapsed = Math.max(0, smoothElapsed - rStart);
+    // Reach a displayed 100% near the expected finish, then hand off immediately.
     const rp = Math.min(1, renderElapsed / renderBudget);
-    pct = 60 + rp * 39;
+    pct = 60 + rp * 39.9;
   }
 
   // 友好提示文案（轮播，不显示具体耗时）
@@ -1005,6 +1057,8 @@ function GeneratedPreviewImage({
   alt,
   className,
   imageClassName,
+  onReady,
+  onFailed,
 }: {
   previewSrc?: string | null;
   thumbnailSrc?: string | null;
@@ -1016,6 +1070,8 @@ function GeneratedPreviewImage({
   alt: string;
   className?: string;
   imageClassName?: string;
+  onReady?: () => void;
+  onFailed?: () => void;
 }) {
   const [resolvedPreviewSrc, setResolvedPreviewSrc] = useState<string | null>(
     thumbnailSrc ?? (historyId ? fallbackSrc || null : (previewSrc ?? fallbackSrc ?? null)),
@@ -1079,7 +1135,10 @@ function GeneratedPreviewImage({
           key={src}
           src={src}
           alt={alt}
-          onLoad={() => setLoading(false)}
+          onLoad={() => {
+            setLoading(false);
+            onReady?.();
+          }}
           onError={() => {
             if (src !== fallbackSrc && fallbackSrc) {
               setResolvedPreviewSrc(fallbackSrc);
@@ -1089,6 +1148,7 @@ function GeneratedPreviewImage({
             }
             setLoading(false);
             setFailed(true);
+            onFailed?.();
           }}
           className={`${imageClassName ?? "h-full w-full object-contain"} transition-opacity duration-200 ${loading || failed ? "opacity-0" : "opacity-100"}`}
         />
