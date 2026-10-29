@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { ControlPanel, type GenProgress } from "./ControlPanel";
-import { Canvas } from "./Canvas";
+import { Canvas, type GeneratedImageResult } from "./Canvas";
 import { TopBar } from "./TopBar";
 import { TaskFloatingPanel, type FloatingTask } from "./TaskFloatingPanel";
 import { useAuth } from "@/hooks/use-auth";
@@ -134,6 +134,7 @@ export function Studio() {
   const pollTask = useServerFn(pollGenerationTask);
   const [generating, setGenerating] = useState(false);
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
+  const [generatedResults, setGeneratedResults] = useState<GeneratedImageResult[]>([]);
   const [generatedImageDragToken, setGeneratedImageDragToken] = useState<string | null>(null);
   const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
   const [generatedUrlSource, setGeneratedUrlSource] = useState<"result" | "history" | null>(null);
@@ -241,6 +242,7 @@ export function Studio() {
     if (!shouldClearDisplay) return;
 
     setGeneratedUrl(null);
+    setGeneratedResults([]);
     setGeneratedUrlSource(null);
     if (!task) {
       setProgress(null);
@@ -350,6 +352,7 @@ export function Studio() {
         const activeTask = getActiveQueueTask(trimmed);
         if (activeTask) {
           setGeneratedUrl(null);
+          setGeneratedResults([]);
           setCurrentHistoryId(null);
           setGeneratedUrlSource(null);
           setCurrentPrompt(activeTask.prompt ?? activeTask.title ?? "");
@@ -468,12 +471,21 @@ export function Studio() {
     modelName: string;
     modelKey?: string;
     inputParams?: Record<string, unknown>;
+    batchTotal?: number;
   }) => {
     if (session && !adminBatchHasContext) {
       setAdminTasks([]);
     }
     setAdminPrimaryTaskInBatch(!!session);
     setGenerating(true);
+    setGeneratedResults(
+      info.batchTotal && info.batchTotal > 1
+        ? Array.from({ length: info.batchTotal }, (_, index) => ({
+            index,
+            status: "pending" as const,
+          }))
+        : [],
+    );
     setAdminPreparingNextTask(false);
     prepareCanvasForNewTask();
     setCurrentPrompt(info.prompt);
@@ -484,7 +496,40 @@ export function Studio() {
       inputParams: info.inputParams,
     });
   };
-  const handleGenerateDone = (url: string | null, historyId?: string | null) => {
+  const handleGenerateDone = (
+    url: string | null,
+    historyId?: string | null,
+    batch?: { index: number; total: number },
+  ) => {
+    if (batch && batch.total > 1) {
+      setGeneratedResults((results) =>
+        results.map((result) =>
+          result.index === batch.index
+            ? {
+                ...result,
+                status: url ? "done" : "failed",
+                imageUrl: url,
+                historyId: historyId ?? null,
+              }
+            : result,
+        ),
+      );
+      if (url) {
+        setGeneratedUrl(url);
+        setCurrentHistoryId(historyId ?? null);
+        setGeneratedUrlSource("result");
+        rememberLatestResult(url, currentPrompt, currentModel);
+      }
+      if (batch.index < batch.total - 1) {
+        setGenerating(true);
+        return;
+      }
+      setGenerating(false);
+      setAdminPreparingNextTask(false);
+      setProgress(null);
+      return;
+    }
+
     setGenerating(false);
     setAdminPreparingNextTask(false);
     setAdminTasks((tasks) =>
@@ -835,6 +880,7 @@ export function Studio() {
             generating={generating || shouldShowQueueLoadingOnCanvas}
             heroIndex={0}
             generatedUrl={generatedUrl}
+            generatedResults={generatedResults}
             generatedUrlSource={generatedUrlSource}
             generatedImageDragToken={generatedImageDragToken}
             currentHistoryId={currentHistoryId}
@@ -846,6 +892,7 @@ export function Studio() {
             onReuseCurrent={handleReuseCurrentResult}
             onSelectHistory={(url, historyId, prompt, model, reuseSource) => {
               setGeneratedUrl(url);
+              setGeneratedResults([]);
               setCurrentHistoryId(historyId);
               setGeneratedUrlSource("history");
               setCurrentPrompt(prompt);

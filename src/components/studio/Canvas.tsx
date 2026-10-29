@@ -14,6 +14,7 @@ import {
   Loader2,
   CheckCircle2,
   RotateCcw,
+  XCircle,
 } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
@@ -129,6 +130,61 @@ function normalizeHistoryImageKey(item: HistoryItem) {
   }
 }
 
+function BatchResultCanvas({ results }: { results: GeneratedImageResult[] }) {
+  const completed = results.filter((result) => result.status === "done").length;
+  return (
+    <div className="flex h-full w-full flex-col gap-3 bg-card/80 p-4">
+      <div className="flex items-center justify-between rounded-xl border border-border/60 bg-black/20 px-4 py-3">
+        <div>
+          <div className="text-sm font-semibold text-foreground">批量生成结果</div>
+          <div className="mt-0.5 text-[11px] text-muted-foreground">
+            同一提示词 · 完成一张显示一张
+          </div>
+        </div>
+        <span className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 font-mono text-xs text-primary">
+          {completed}/{results.length}
+        </span>
+      </div>
+      <div className="grid min-h-0 flex-1 grid-cols-2 grid-rows-2 gap-3">
+        {results.map((result) => (
+          <div
+            key={result.index}
+            className="group relative min-h-0 overflow-hidden rounded-xl border border-border/70 bg-black/30"
+          >
+            {result.status === "done" && result.imageUrl ? (
+              <>
+                <img
+                  src={result.imageUrl}
+                  alt={`第 ${result.index + 1} 张生成结果`}
+                  className="h-full w-full object-contain"
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    downloadImage(result.imageUrl!, `shuntu-batch-${result.index + 1}.png`)
+                  }
+                  className="absolute bottom-2 right-2 rounded-lg bg-black/70 px-2.5 py-1.5 text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100"
+                >
+                  下载原图
+                </button>
+              </>
+            ) : result.status === "failed" ? (
+              <div className="flex h-full flex-col items-center justify-center gap-2 text-xs text-destructive/90">
+                <XCircle className="h-5 w-5" />第 {result.index + 1} 张生成失败
+              </div>
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />第 {result.index + 1}{" "}
+                张生成中…
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function timeAgo(iso: string) {
   const t = new Date(iso).getTime();
   const diff = Math.max(0, Date.now() - t);
@@ -146,6 +202,7 @@ type Props = {
   generating: boolean;
   heroIndex?: number;
   generatedUrl?: string | null;
+  generatedResults?: GeneratedImageResult[];
   generatedImageDragToken?: string | null;
   currentHistoryId?: string | null;
   generatedUrlSource?: "result" | "history" | null;
@@ -162,6 +219,13 @@ type Props = {
     model: string,
     reuseSource?: { modelKey?: string | null; inputParams?: Record<string, unknown> | null },
   ) => void;
+};
+
+export type GeneratedImageResult = {
+  index: number;
+  status: "pending" | "done" | "failed";
+  imageUrl?: string | null;
+  historyId?: string | null;
 };
 
 function safeDecodeFilename(value: string) {
@@ -219,6 +283,7 @@ export function Canvas({
   userId,
   generating,
   generatedUrl,
+  generatedResults = [],
   generatedImageDragToken,
   currentHistoryId,
   generatedUrlSource,
@@ -447,7 +512,9 @@ export function Canvas({
     <main className="flex min-h-[70dvh] flex-col overflow-visible bg-background p-3 lg:h-full lg:min-h-0 lg:overflow-hidden">
       {/* Main canvas — pure, full height */}
       <div className="group relative min-h-[62dvh] overflow-hidden rounded-2xl border border-border bg-card lg:flex-1 lg:min-h-0">
-        {generating ? (
+        {generatedResults.length > 1 ? (
+          <BatchResultCanvas results={generatedResults} />
+        ) : generating ? (
           <QueueProgress progress={progress ?? null} />
         ) : generatedUrl ? (
           <>

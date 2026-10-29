@@ -220,8 +220,13 @@ type Props = {
     modelName: string;
     modelKey?: string;
     inputParams?: Record<string, unknown>;
+    batchTotal?: number;
   }) => void;
-  onGenerateDone: (imageUrl: string | null, historyId?: string | null) => void;
+  onGenerateDone: (
+    imageUrl: string | null,
+    historyId?: string | null,
+    batch?: { index: number; total: number },
+  ) => void;
   generatedImageUrl?: string | null;
   generatedHistoryId?: string | null;
   generatedImageDragToken?: string | null;
@@ -282,6 +287,7 @@ export function ControlPanel({
   const [modelKey, setModelKey] = useState<string>("");
   const [ratio, setRatio] = useState("1:1");
   const [size, setSize] = useState<"1K" | "2K" | "4K">("1K");
+  const [imageCount, setImageCount] = useState<1 | 2 | 4>(4);
   const [modelOpen, setModelOpen] = useState(false);
   const [ratioOpen, setRatioOpen] = useState(false);
   const [sizeOpen, setSizeOpen] = useState(false);
@@ -428,6 +434,8 @@ export function ControlPanel({
   const activeRatio = visibleRatios.find((r) => r.id === ratio) ?? visibleRatios[0];
   const ActiveRatioIcon = activeRatio.icon;
   const activeCost = Number(activeModel?.cost ?? 0);
+  const batchCost = activeCost * imageCount;
+  const displayedCost = isQueueMode ? activeCost : batchCost;
   // 仅文生图的模型：禁止参考图（前端隐藏入口 + 提交时不带 refs）
   const TEXT_ONLY_MODELS = new Set(["wan26"]);
   const isTextOnly = activeModel ? TEXT_ONLY_MODELS.has(activeModel.model_key) : false;
@@ -644,15 +652,21 @@ export function ControlPanel({
   };
 
   // 轮询任务到完成。tStart 是任务开始时间戳（毫秒），用于刷新后从持久化时间继续计算 elapsed
-  const pollTask = async (args: {
-    taskId: string;
-    modelName: string;
-    modelKey: string;
-    prompt: string;
-    tStart: number;
-    initialPos: number;
-    renderBudget: number;
-  }) => {
+  const pollTask = async (
+    args: {
+      taskId: string;
+      modelName: string;
+      modelKey: string;
+      prompt: string;
+      tStart: number;
+      initialPos: number;
+      renderBudget: number;
+    },
+    callbacks: {
+      onSuccess?: (imageUrl: string, historyId?: string | null) => void;
+      onFailure?: () => void;
+    } = {},
+  ) => {
     const { taskId, modelName, tStart, initialPos, renderBudget } = args;
     const elapsed = () => Math.floor((Date.now() - tStart) / 1000);
     const POLL_INTERVAL = 5000;
@@ -677,7 +691,8 @@ export function ControlPanel({
         });
         clearActive();
         onProgress?.(null);
-        onGenerateDone(null);
+        callbacks.onFailure?.();
+        if (!callbacks.onFailure) onGenerateDone(null);
         return;
       }
       await new Promise((res) => setTimeout(res, POLL_INTERVAL));
@@ -689,7 +704,9 @@ export function ControlPanel({
         if (s.status === "success" && s.imageUrl) {
           clearActive();
           onProgress?.(null);
-          onGenerateDone(s.imageUrl, (s as { historyId?: string | null }).historyId);
+          const historyId = (s as { historyId?: string | null }).historyId;
+          if (callbacks.onSuccess) callbacks.onSuccess(s.imageUrl, historyId);
+          else onGenerateDone(s.imageUrl, historyId);
           refreshProfile();
           return;
         }
@@ -717,7 +734,8 @@ export function ControlPanel({
           }
           clearActive();
           onProgress?.(null);
-          onGenerateDone(null);
+          callbacks.onFailure?.();
+          if (!callbacks.onFailure) onGenerateDone(null);
           return;
         }
         transientRetries = 0;
@@ -762,7 +780,8 @@ export function ControlPanel({
         toast.error(m, { duration: 6000 });
         clearActive();
         onProgress?.(null);
-        onGenerateDone(null);
+        callbacks.onFailure?.();
+        if (!callbacks.onFailure) onGenerateDone(null);
         return;
       }
     }
@@ -905,88 +924,86 @@ export function ControlPanel({
       modelName: activeModel.name ?? activeModel.model_key,
       modelKey: activeModel.model_key,
       inputParams,
+      batchTotal: imageCount,
     });
-    const tStart = Date.now();
-    const initialPos = 5 + Math.floor(Math.random() * 14);
-    const renderBudget = 12 + Math.floor(Math.random() * 10);
-    onProgress?.({
-      stage: "submitting",
-      attempt: 0,
-      elapsedSec: 0,
-      initialPos,
-      renderBudget,
-      message: "正在提交任务到生成队列…",
-    });
-    try {
-      const payload = {
-        modelKey: activeModel.model_key,
-        prompt: finalPrompt,
-        aspectRatio: ratio,
-        size,
-        referenceImages: httpRefs.length ? httpRefs : undefined,
-      };
-      console.log("[generate click] payload →", JSON.stringify(payload, null, 2));
-      const r = await generate({ data: payload });
-
-      if (!r.success) {
-        toast.error(r.message ?? "生成提交失败，请检查模型配置或稍后重试", { duration: 7000 });
-        onProgress?.(null);
-        onGenerateDone(null);
-        return;
-      }
-
-      if (r.imageUrl) {
-        // sync 模型：服务端已扣费，刷新余额
-        await refreshProfile();
-        onProgress?.(null);
-        onGenerateDone(r.imageUrl, r.historyId);
-        return;
-      }
-
-      if (!r.taskId) throw new Error("未获取到任务ID");
-      const modelName = activeModel.name ?? activeModel.model_key;
-      const userId = session?.user?.id;
-      if (!userId) throw new Error("请先登录后再生成");
-      saveActive({
-        userId,
-        taskId: r.taskId,
-        modelKey: activeModel.model_key,
-        modelName,
-        prompt: finalPrompt,
-        inputParams,
-        startTs: tStart,
+    const batchTotal = imageCount;
+    const modelName = activeModel.name ?? activeModel.model_key;
+    const userId = session?.user?.id;
+    if (!userId) throw new Error("请先登录后再生成");
+    for (let batchIndex = 0; batchIndex < batchTotal; batchIndex += 1) {
+      const tStart = Date.now();
+      const initialPos = 5 + Math.floor(Math.random() * 14);
+      const renderBudget = 12 + Math.floor(Math.random() * 10);
+      onProgress?.({
+        stage: "submitting",
+        attempt: 0,
+        elapsedSec: 0,
         initialPos,
         renderBudget,
+        message: `正在提交第 ${batchIndex + 1}/${batchTotal} 张…`,
       });
-      await pollTask({
-        taskId: r.taskId,
-        modelName,
-        modelKey: activeModel.model_key,
-        prompt: finalPrompt,
-        tStart,
-        initialPos,
-        renderBudget,
-      });
-    } catch (e: unknown) {
-      let msg = "生成失败，请稍后再试";
+      const batchMeta = { index: batchIndex, total: batchTotal };
       try {
-        const raw = errorMessage(e) ?? errorMessage(e) ?? e?.toString?.() ?? "";
-        const text = typeof raw === "string" ? raw : JSON.stringify(raw);
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          msg = parsed?.message || parsed?.error || parsed?.msg || text;
-        } else if (text) {
-          msg = text;
+        const payload = {
+          modelKey: activeModel.model_key,
+          prompt: finalPrompt,
+          aspectRatio: ratio,
+          size,
+          referenceImages: httpRefs.length ? httpRefs : undefined,
+        };
+        console.log("[generate click] payload →", JSON.stringify(payload, null, 2));
+        const r = await generate({ data: payload });
+
+        if (!r.success) {
+          toast.error(`第 ${batchIndex + 1} 张生成失败：${r.message ?? "上游服务异常"}`, {
+            duration: 7000,
+          });
+          onGenerateDone(null, null, batchMeta);
+          continue;
         }
-      } catch {
-        msg = String(errorMessage(e) ?? e ?? "生成失败");
+
+        if (r.imageUrl) {
+          await refreshProfile();
+          onGenerateDone(r.imageUrl, r.historyId, batchMeta);
+          continue;
+        }
+
+        if (!r.taskId) throw new Error("未获取到任务ID");
+        saveActive({
+          userId,
+          taskId: r.taskId,
+          modelKey: activeModel.model_key,
+          modelName,
+          prompt: finalPrompt,
+          inputParams,
+          startTs: tStart,
+          initialPos,
+          renderBudget,
+        });
+        await pollTask(
+          {
+            taskId: r.taskId,
+            modelName,
+            modelKey: activeModel.model_key,
+            prompt: finalPrompt,
+            tStart,
+            initialPos,
+            renderBudget,
+          },
+          {
+            onSuccess: (url, historyId) => onGenerateDone(url, historyId, batchMeta),
+            onFailure: () => onGenerateDone(null, null, batchMeta),
+          },
+        );
+      } catch (e: unknown) {
+        const msg = errorMessage(e) ?? "生成失败，请稍后再试";
+        toast.error(`第 ${batchIndex + 1} 张：${msg}`, { duration: 6000 });
+        clearActive();
+        onGenerateDone(null, null, batchMeta);
       }
-      toast.error(msg, { duration: 6000 });
-      clearActive();
-      onProgress?.(null);
-      onGenerateDone(null);
     }
+    clearActive();
+    onProgress?.(null);
   };
 
   return (
@@ -1302,6 +1319,39 @@ export function ControlPanel({
                       </div>
                     </PopoverContent>
                   </Popover>
+
+                  {!isQueueMode && (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button className="flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/[0.05] px-2.5 py-1.5 text-[11px] font-medium transition-colors hover:border-primary/45 hover:bg-primary/[0.1]">
+                          <span className="font-mono">×{imageCount}</span>
+                          <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        align="start"
+                        className="w-44 border-border bg-popover/95 p-2"
+                      >
+                        <div className="mb-1.5 px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                          生成数量
+                        </div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {([1, 2, 4] as const).map((count) => (
+                            <button
+                              key={count}
+                              onClick={() => setImageCount(count)}
+                              className={`rounded-lg border px-2 py-2 text-xs font-semibold ${imageCount === count ? "border-primary/50 bg-primary/10 text-primary" : "border-border bg-white/[0.02] text-muted-foreground hover:bg-white/5"}`}
+                            >
+                              {count} 张
+                            </button>
+                          ))}
+                        </div>
+                        <div className="mt-2 px-1 text-[9px] text-muted-foreground">
+                          同一提示词顺序生成，每张单独计费
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-1">
@@ -1489,7 +1539,7 @@ export function ControlPanel({
             )}
           </div>
           <span className="flex items-center gap-1 rounded-lg bg-black/25 px-2 py-1 font-mono text-[10px]">
-            <Zap className="h-2.5 w-2.5" fill="currentColor" /> 消耗 {activeCost} 点
+            <Zap className="h-2.5 w-2.5" fill="currentColor" /> 消耗 {displayedCost} 点
           </span>
         </button>
       </div>
