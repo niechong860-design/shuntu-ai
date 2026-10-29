@@ -567,32 +567,41 @@ export function Studio() {
     modelKey: string;
     modelName: string;
     inputParams: Record<string, unknown>;
+    count?: number;
   }) => {
     if (!session) return false;
-    if (effectiveCurrentBatchTaskCount >= 4) {
+    const requestedCount = Math.max(1, Math.min(4, Math.floor(input.count ?? 1)));
+    const remainingSlots = 4 - effectiveCurrentBatchTaskCount;
+    if (remainingSlots <= 0) {
       throw new Error("本轮任务已满 4 个，请开始新一轮后再提交。");
     }
 
-    const task = await createTask({
-      data: {
-        modelKey: input.modelKey,
+    const count = Math.min(requestedCount, remainingSlots);
+    const queuedTasks: FloatingTask[] = [];
+    for (let index = 0; index < count; index += 1) {
+      const task = await createTask({
+        data: {
+          modelKey: input.modelKey,
+          prompt: input.prompt,
+          inputParams: input.inputParams,
+        },
+      });
+      const title = task.prompt.trim().slice(0, 20) || input.modelName || task.modelId;
+      queuedTasks.push({
+        id: task.taskId,
+        title: count > 1 ? `${title} · ${index + 1}/${count}` : title,
+        status: "waiting",
         prompt: input.prompt,
+        modelKey: input.modelKey,
+        modelName: input.modelName,
         inputParams: input.inputParams,
-      },
-    });
+      });
+    }
 
-    const title = task.prompt.trim().slice(0, 20) || input.modelName || task.modelId;
-    const queuedTask: FloatingTask = {
-      id: task.taskId,
-      title,
-      status: "waiting",
-      prompt: input.prompt,
-      modelKey: input.modelKey,
-      modelName: input.modelName,
-      inputParams: input.inputParams,
-    };
-    setAdminTasks((tasks) => trimPanelTasks([...(!adminBatchHasContext ? [] : tasks), queuedTask]));
-    prepareCanvasForNewTask(queuedTask, {
+    setAdminTasks((tasks) =>
+      trimPanelTasks([...(!adminBatchHasContext ? [] : tasks), ...queuedTasks]),
+    );
+    prepareCanvasForNewTask(queuedTasks[0], {
       clearCurrentResult: generatedUrlSource !== "result" || adminActiveTaskCount === 0,
     });
     setAdminPreparingNextTask(false);

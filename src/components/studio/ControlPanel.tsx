@@ -255,6 +255,7 @@ type Props = {
     modelKey: string;
     modelName: string;
     inputParams: Record<string, unknown>;
+    count?: number;
   }) => Promise<boolean>;
 };
 
@@ -435,7 +436,7 @@ export function ControlPanel({
   const ActiveRatioIcon = activeRatio.icon;
   const activeCost = Number(activeModel?.cost ?? 0);
   const batchCost = activeCost * imageCount;
-  const displayedCost = isQueueMode ? activeCost : batchCost;
+  const displayedCost = batchCost;
   // 仅文生图的模型：禁止参考图（前端隐藏入口 + 提交时不带 refs）
   const TEXT_ONLY_MODELS = new Set(["wan26"]);
   const isTextOnly = activeModel ? TEXT_ONLY_MODELS.has(activeModel.model_key) : false;
@@ -864,6 +865,7 @@ export function ControlPanel({
           modelKey: activeModel.model_key,
           modelName: activeModel.name ?? activeModel.model_key,
           prompt: finalPrompt,
+          count: imageCount,
           inputParams: {
             aspectRatio: ratio,
             size,
@@ -1320,38 +1322,33 @@ export function ControlPanel({
                     </PopoverContent>
                   </Popover>
 
-                  {!isQueueMode && (
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <button className="flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/[0.05] px-2.5 py-1.5 text-[11px] font-medium transition-colors hover:border-primary/45 hover:bg-primary/[0.1]">
-                          <span className="font-mono">数量 {imageCount}张</span>
-                          <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent
-                        align="start"
-                        className="w-44 border-border bg-popover/95 p-2"
-                      >
-                        <div className="mb-1.5 px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                          生成数量
-                        </div>
-                        <div className="grid grid-cols-3 gap-1.5">
-                          {([1, 2, 4] as const).map((count) => (
-                            <button
-                              key={count}
-                              onClick={() => setImageCount(count)}
-                              className={`rounded-lg border px-2 py-2 text-xs font-semibold ${imageCount === count ? "border-primary/50 bg-primary/10 text-primary" : "border-border bg-white/[0.02] text-muted-foreground hover:bg-white/5"}`}
-                            >
-                              {count} 张
-                            </button>
-                          ))}
-                        </div>
-                        <div className="mt-2 px-1 text-[9px] text-muted-foreground">
-                          同一提示词顺序生成，每张单独计费
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  )}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/[0.05] px-2.5 py-1.5 text-[11px] font-medium transition-colors hover:border-primary/45 hover:bg-primary/[0.1]">
+                        <span className="font-mono">数量 {imageCount}张</span>
+                        <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-44 border-border bg-popover/95 p-2">
+                      <div className="mb-1.5 px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                        生成数量
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {([1, 2, 4] as const).map((count) => (
+                          <button
+                            key={count}
+                            onClick={() => setImageCount(count)}
+                            className={`rounded-lg border px-2 py-2 text-xs font-semibold ${imageCount === count ? "border-primary/50 bg-primary/10 text-primary" : "border-border bg-white/[0.02] text-muted-foreground hover:bg-white/5"}`}
+                          >
+                            {count} 张
+                          </button>
+                        ))}
+                      </div>
+                      <div className="mt-2 px-1 text-[9px] text-muted-foreground">
+                        同一提示词顺序生成，每张单独计费
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </div>
 
                 <div className="flex items-center gap-1">
